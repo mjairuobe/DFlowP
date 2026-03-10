@@ -1,0 +1,15 @@
+Bitte implementiere nun nach der Vorgabe in der @README.md und @processconfig_example.json die Prozessengine, die Models der processes, subprocesses sowie io_transformation_state und die DataFlowKlassen.
+
+Bittte lass die processes, subprocesses und dataflowklassen nicht direkt auf die Datenbank zugreifen, sondern erstelle dafür Repositories.
+
+Für die PRozesskonfigurationen und den DataFlow sollst du erstmal die Angaben aus@examples/processconfig_example.json  nehmen.
+
+Bitte füge in den Plugin Ordner auch die beiden Beispielsubprozesse FetchFeedItems und EmbedData hinzu.
+
+FetchFeedItems soll eine Liste von RSS Feeds wie in @examples/inputdata_set.json annehmen (als Dataset aus einer MongoDB oder JSON) und daraus alle RSS-Feeds fetchen.
+Die einzelnen Elemente der Feeds sollen als Outputdaten ausgegeben werden - die io_Transformation_state soll dementsprechend von Newsseite (1) -> Artikel (viele) abbilden.
+Die Outputdaten sollen neben den Artikeldaten auch die Quelle enthalten.
+
+Der EmbedData Subprozess soll mithilfe von OpenAI Embedding Modellen aus jedem wichtigen Artikelattribut, welche in der Subprozesskonfiguration angegeben sind, ein Embedding erstellen.
+
+Erstelle ein Test für die Funktionalität von Prozessen, Subprozessen sowie DataFlows im allgemeinen (einfaches Beispiel) und dann für die oben genannten konkreten Subprozesse.
