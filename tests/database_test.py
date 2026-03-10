@@ -36,7 +36,7 @@ async def test_mongodb_connection():
     assert db.name == "dflowp_test"
 
     # Ping zur Bestätigung
-    await db.client.admin.command("ping")
+    await db.command("ping")
 
     await close_mongodb_connection()
 
