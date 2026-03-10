@@ -1,0 +1,104 @@
+"""Repository für Events - persistente Speicherung von Events in MongoDB."""
+
+from datetime import datetime, timezone
+from typing import Any, AsyncGenerator, Optional
+
+from dflowp.infrastructure.database.mongo import get_database
+
+
+class EventRepository:
+    """Repository für die persistente Speicherung von Events."""
+
+    COLLECTION_NAME = "events"
+
+    def __init__(self) -> None:
+        self._db = get_database()
+        self._collection = self._db[self.COLLECTION_NAME]
+
+    async def create_indexes(self) -> None:
+        """Erstellt Indizes für effiziente Abfragen."""
+        await self._collection.create_index("process_id")
+        await self._collection.create_index("subprocess_id")
+        await self._collection.create_index("event_time")
+        await self._collection.create_index([("process_id", 1), ("event_time", 1)])
+        await self._collection.create_index([("event_type", 1), ("event_time", 1)])
+
+    async def insert(self, event: dict[str, Any]) -> str:
+        """
+        Speichert ein Event in der Datenbank.
+
+        Args:
+            event: Event-Dokument (mit process_id, subprocess_id, event_type, etc.)
+
+        Returns:
+            Die _id des eingefügten Dokuments als String
+        """
+        event["event_time"] = event.get("event_time") or datetime.now(timezone.utc)
+        result = await self._collection.insert_one(event)
+        return str(result.inserted_id)
+
+    async def find_by_process_id(
+        self,
+        process_id: str,
+        event_type: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """
+        Findet alle Events für einen Prozess.
+
+        Args:
+            process_id: Die Prozess-ID
+            event_type: Optional - filtert nach Event-Typ
+            limit: Optional - maximale Anzahl zurückzugebender Events
+        """
+        query: dict[str, Any] = {"process_id": process_id}
+        if event_type:
+            query["event_type"] = event_type
+
+        cursor = self._collection.find(query).sort("event_time", 1)
+        if limit:
+            cursor = cursor.limit(limit)
+
+        async for doc in cursor:
+            doc["_id"] = str(doc["_id"])
+            yield doc
+
+    async def find_by_subprocess_id(
+        self,
+        process_id: str,
+        subprocess_id: str,
+        event_type: Optional[str] = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Findet alle Events für einen bestimmten Teilprozess."""
+        query: dict[str, Any] = {
+            "process_id": process_id,
+            "subprocess_id": subprocess_id,
+        }
+        if event_type:
+            query["event_type"] = event_type
+
+        async for doc in self._collection.find(query).sort("event_time", 1):
+            doc["_id"] = str(doc["_id"])
+            yield doc
+
+    async def get_latest_event(
+        self,
+        process_id: str,
+        subprocess_id: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """Holt das neueste Event für einen Prozess (ggf. spezifischen Teilprozess)."""
+        query: dict[str, Any] = {"process_id": process_id}
+        if subprocess_id:
+            query["subprocess_id"] = subprocess_id
+
+        doc = await self._collection.find_one(
+            query,
+            sort=[("event_time", -1)],
+        )
+        if doc:
+            doc["_id"] = str(doc["_id"])
+        return doc
+
+    async def count_by_process(self, process_id: str) -> int:
+        """Zählt alle Events eines Prozesses."""
+        return await self._collection.count_documents({"process_id": process_id})
