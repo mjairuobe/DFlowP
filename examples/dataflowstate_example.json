@@ -1,0 +1,98 @@
+{
+  "_comment": "Dieser Beispielstate eines DataFlows zeigt den Prozess proc_news_pipeline_001. Der Subprozess der die Artikel fetcht ist fertig, aber beim Embedden fehlen noch einige Artikel. Das Clustering ist ebenfalls ausstehend.",
+  "process_id": "proc_news_pipeline_001",
+  "dataflow": {
+    "nodes": [
+      {
+        "subprocess_id": "FetchFeedItems1",
+        "subprocess_type": "FetchFeedItems",
+        "event_status": "EVENT_COMPLETED",
+        "io_transformation_states": [
+          {
+            "input_data_id": "data_feed_thueringen24",
+            "output_data_ids": ["data_article_001", "data_article_002", "data_article_003"],
+            "status": "Finished",
+            "quality": 0.95
+          },
+          {
+            "input_data_id": "data_feed_tagesschau",
+            "output_data_ids": ["data_article_004", "data_article_005", "data_article_006", "data_article_007"],
+            "status": "Finished",
+            "quality": 0.98
+          },
+          {
+            "input_data_id": "data_feed_spiegel",
+            "output_data_ids": [],
+            "status": "Failed",
+            "quality": 0.0
+          },
+          {
+            "input_data_id": "data_feed_faz",
+            "output_data_ids": [],
+            "status": "Not Started",
+            "quality": null
+          }
+        ]
+      },
+      {
+        "subprocess_id": "EmbedData1",
+        "subprocess_type": "EmbedData",
+        "event_status": "EVENT_STARTED",
+        "io_transformation_states": [
+          {
+            "input_data_id": "data_article_001",
+            "output_data_ids": ["data_embed_001"],
+            "status": "Finished",
+            "quality": 1.0
+          },
+          {
+            "input_data_id": "data_article_002",
+            "output_data_ids": ["data_embed_002"],
+            "status": "Finished",
+            "quality": 1.0
+          },
+          {
+            "input_data_id": "data_article_003",
+            "output_data_ids": [],
+            "status": "In Progress",
+            "quality": null
+          },
+          {
+            "input_data_id": "data_article_004",
+            "output_data_ids": [],
+            "status": "Not Started",
+            "quality": null
+          },
+          {
+            "input_data_id": "data_article_005",
+            "output_data_ids": [],
+            "status": "In Progress",
+            "quality": null
+          },
+          {
+            "input_data_id": "data_article_006",
+            "output_data_ids": [],
+            "status": "In Progress",
+            "quality": null
+          },
+          {
+            "input_data_id": "data_article_007",
+            "output_data_ids": [],
+            "status": "In Progress",
+            "quality": null
+          }
+        ]
+      },
+      {
+        "subprocess_id": "Clustering1",
+        "subprocess_type": "Clustering",
+        "event_status": "Not Started",
+        "io_transformation_states": []
+      }
+    ],
+    "edges": [
+      { "from": "FetchFeedItems1", "to": "EmbedData1" },
+      { "from": "EmbedData1", "to": "Clustering1" }
+    ]
+  }
+}

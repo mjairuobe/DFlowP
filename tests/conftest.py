@@ -6,13 +6,6 @@ import uuid
 import pytest
 
 
-def pytest_addoption(parser):
-    parser.addoption(
-        "--no-delete",
-        action="store_true",
-        default=False,
-        help="Testdaten nach den Tests nicht löschen",
-    )
 import pytest_asyncio
 
 from dflowp.core.events.event_bus import EventBus
@@ -21,6 +14,14 @@ from dflowp.infrastructure.database.mongo import (
     connect_to_mongodb,
     get_database,
 )
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--no-delete",
+        action="store_true",
+        default=False,
+        help="Testdaten nach den Tests nicht löschen",
+    )
 
 
 @pytest_asyncio.fixture
