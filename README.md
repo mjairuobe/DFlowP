@@ -4,31 +4,31 @@
 
 Bitte hilf mir, mein Python‑Framework zu entwickeln. Das Framework soll datenflussorientierte Programmierung (DFlowP) heißen.
 
-Die datenflussorientierte Programmierung (DFlowP) soll helfen daten, rechen- und damit kostenintensive Anwendungen zukunftsfähig zu gestalten, indem die Daten migrierbar und bei Softwarefehler neukalkulierbar sind.
+Die datenflussorientierte Programmierung (DFlowP) soll helfen, daten-, rechen- und damit kostenintensive Anwendungen zukunftsfähig zu gestalten, indem die Daten migrierbar und bei Softwarefehlern neukalkulierbar sind.
 
-Dies wird durch Monitoring des Datenflusses sowie Zwischenspeicherung der einzelner Daten erreicht. 
+Dies wird durch Monitoring des Datenflusses sowie Zwischenspeicherung der einzelnen Daten erreicht. 
 
-Damit kann man Software‑Migrationen durchzuführen und dann die Daten basierend auf der neuen Version aktualisieren, sowie bei Softwarefehlern an einer bestimmten Stelle erneut fortfahren.
+Damit kann man Software‑Migrationen durchführen und dann die Daten basierend auf der neuen Version aktualisieren sowie bei Softwarefehlern an einer bestimmten Stelle erneut fortfahren.
 
 Die Basis des Frameworks für datenflussorientierte Programmierung soll eine Event Driven Architecture im Backend sein.
 
-Per Server-Client-Architektur soll im Frontend die Ausführung verwalten werden.
+Per Server-Client-Architektur soll im Frontend die Ausführung verwaltet werden.
 
 ### Beschreibung des Problems
 
 Im Laufe der Entwicklung von datenintensiven Anwendungen kommt man oft an den Punkt, dass die Performance einer Software zu gering ist. 
 
-Dann ist eine Lösung Optimierungen an einzelnen Softwarekomponenten (hier Teilprozessen) durchzuführen. Dabei kann datenflussorientierte Programmierung helfen, denn durch die Events wird ganz genau mitgeteilt, wie lange ein einzelner Teilprozess zur Bearbeitung der Daten benötigt hat - somit ist einsehbar, welche Softwarekomponente nicht performant ist.
+Dann besteht eine Lösung darin, Optimierungen an einzelnen Softwarekomponenten (hier Teilprozessen) durchzuführen. Dabei kann datenflussorientierte Programmierung helfen, denn durch die Events wird ganz genau mitgeteilt, wie lange ein einzelner Teilprozess zur Bearbeitung der Daten benötigt hat - somit ist einsehbar, welche Softwarekomponente nicht performant ist.
 
-Wenn eine Softwarekomponente ein Update enthält, dann können Daten in Prozessen einer älteren Version, migriert werden
+Wenn eine Softwarekomponente ein Update enthält, können Daten in Prozessen einer älteren Version migriert werden.
 
-Bei einigen Vorgängen wie Webscraping sind Softwarefehler eine häufiges Ereignis.
+Bei einigen Vorgängen wie Webscraping sind Softwarefehler ein häufiges Ereignis.
 
-Stützt die Software bei der Verarbeitung von Daten ab, kann datenflussorientierte Programmierung helfen, an der Stelle, wo die Software abgestürzt ist, mit der Verarbeitung der Daten fortzufahren.
+Stürzt die Software bei der Verarbeitung von Daten ab, kann datenflussorientierte Programmierung helfen, an der Stelle, wo die Software abgestürzt ist, mit der Verarbeitung der Daten fortzufahren.
 
 Bei AI-Workflows kann es zwischen einzelnen Konfigurationen wie die des LLM oder der Embedding Engine zu Qualitätsunterschieden kommen.
 
-Ist die Datenqualität können Prozesskonfigurationen wie z. B. die Embedding Engine, die Prompt-Templates oder das LLM per Parameter ausgetauscht werden und damit einzelne Teiprozesse erneut ausgeführt werden.
+Ist die Datenqualität nicht ausreichend, können Prozesskonfigurationen wie z. B. die Embedding Engine, die Prompt-Templates oder das LLM per Parameter ausgetauscht werden und damit einzelne Teilprozesse erneut ausgeführt werden.
 
 ## Prozesse in DFlowP
 
@@ -42,7 +42,7 @@ Ein Prozess besteht aus folgenden Attributen:
 
 - eine ProzessID, welche den Prozess eindeutig identifiziert
 
-- Die Softwareversion, die entscheidend ist, weil sich die Software mit der Zeit weiterentwickelt wird und dabei auch Daten potentiell migriert werden müssen
+- Die Softwareversion, die entscheidend ist, weil sich die Software mit der Zeit weiterentwickelt und dabei auch Daten potenziell migriert werden müssen
 
 - der Prozesskonfiguration - je nach Software können hier verschiedene Parameter wie AI-Models, Schwellenwerte, Embedding-Engines, API-Provider pro Prozess angepasst werden
 
@@ -84,7 +84,7 @@ Ein Prozess besteht aus folgenden Attributen:
 
 - es existieren TeilprozessID - zur eindeutigen Identifizierung eines Teilprozesses pro Prozess
 
-- eine TeilprozessInstanz ID - falls später mehr Instanzen eines Teilprozesses zur paralellisierten Verarbeitung gespawnt werden sollen (noch nicht genutzt)
+- eine TeilprozessInstanz-ID – falls später mehr Instanzen eines Teilprozesses zur parallelisierten Verarbeitung gespawnt werden sollen (noch nicht genutzt)
 
 - ein Teilprozesstyp, welcher definiert was für eine Softwarekomponente hier überhaupt ausgeführt werden soll
 
@@ -102,9 +102,9 @@ Folgende Events sollen zunächst implementiert werden:
 
 - EVENT_FAILED - ein Teilprozess ist abgestürzt oder fehlgeschlagen - das übergeordnete Framework regelt die Auslösung des Events, falls die Softwarekomponente dies nicht mehr selber tun kann
 
-- noch nicht implementieren: EVENT_PROGRESS - es gibt einen Fortschritt bei der Verarbeitung von Daten im Teilprozess. Hier sollte neben Logs auch die optionale Angabe von Fortschritten in Prozent oder Bruchteilen z. B. 1/88 speicherbar sein
+- noch nicht implementiert: EVENT_PROGRESS - es gibt einen Fortschritt bei der Verarbeitung von Daten im Teilprozess. Hier sollte neben Logs auch die optionale Angabe von Fortschritten in Prozent oder Bruchteilen z. B. 1/88 speicherbar sein
 
-- noch nicht iplementieren: EVENT_LOG - eine Logmeldung des Teilprozesses mit unterschiedlichen typischen Logstufen bei Logging z. B. Verbose, Debug, Error
+- noch nicht implementiert: EVENT_LOG - eine Logmeldung des Teilprozesses mit unterschiedlichen typischen Logstufen bei Logging z. B. Verbose, Debug, Error
 
 Jedes Event enthält außerdem immer die zugehörige ProzessID, eine TeilprozessID, ggf. eine Teilprozessinstanz ID (Standardmäßig 1) , eine event_time - wann das Event ausgelöst wurde.
 
@@ -113,135 +113,103 @@ Beispielablauf:
 
 1. Prozesskonfiguration festlegen inkl. DataFlow
 
-2. process_engine subscribte alle Events beim EventService, um Subprozesse bzw. Aufgaben anneinander zu verketten, sowie über die Fertigstellung einzelner Subprozesse informiert zu werden
+2. process_engine subscribes alle Events beim EventService, um Subprozesse bzw. Aufgaben aneinander zu verketten sowie über die Fertigstellung einzelner Subprozesse informiert zu werden
 
-3. process_engine erstellt aus der Prozesskonfiguration und den DataFlow den Kontext für die zu erst zu startenden Subprozesse
+3. process_engine erstellt aus der Prozesskonfiguration und dem DataFlow den Kontext für die zuerst zu startenden Subprozesse
 
 4. die process_engine erstellt den dataflow_state innerhalb des process_state, der zunächst leer ist
 
-5. Die Subprozesse werden gestartet und die Elternklasse der Subprozesse löst emitted das Event EVENT_STARTED beim Event Service
+5. Die Subprozesse werden gestartet und die Elternklasse der Subprozesse löst das Event EVENT_STARTED beim Event Service aus
 
-6. Die Subprozesse verarbeiten Daten und aktualisieren kontinulierlich den dataflow_nodestate im dataflow_nodestate des process_state (z. B. bei jeden abgearbeiteten Item)
+6. Die Subprozesse verarbeiten Daten und aktualisieren kontinuierlich den dataflow_nodestate im dataflow_state des process_state (z. B. bei jedem abgearbeiteten Item)
 
 7. Bei Fertigstellung der Aufgabe löst der Subprozess das EVENT_COMPLETED beim Eventservice aus
 
 8. Der EventService published über den Eventbus die Fertigstellung des Subprozesses, womit der nächste Subprozess im DataFlow ausgeführt wird
 
-9. Sind alle Subprozesse EVENT_COMPLETED wird die process_engine ausgelöst vom EventService den Prozess als EVENT_COMPLETED vermerken
+9. Sind alle Subprozesse EVENT_COMPLETED, wird die process_engine vom EventService benachrichtigt und vermerkt den Prozess als EVENT_COMPLETED
 
 
-Ein paar mehr Daten Fragen:
+Noch ein paar Fragen zu den Daten:
 
-- wer liegt die Qualitätkriterien/spezifikationen von io_transformationen fest? (Das Plugin für den Subprozess gibt die Kriterien/Spezifikation vor)
+- Wer legt die Qualitätskriterien/Spezifikationen von io_transformationen fest? (Das Plugin für den Subprozess gibt die Kriterien/Spezifikation vor)
 
-- Referenzierung von Daten (IDs) aus der Datenbank (die abstrakte Datenklasse data.py referenziert etwas aus der Datenbank, womit ein dataset immer auch alle Referenzen enthält.
+- Referenzierung von Daten (IDs) aus der Datenbank (die abstrakte Datenklasse data.py referenziert auf Einträge in der Datenbank, womit ein Dataset immer auch alle Referenzen enthält)
 
 - ProzessID + NodePath im DataFlow + InputdatenID identifiziert die io_transformation bzw. die Outputdaten
 
 
 Die Ordnerstruktur:
 
+```
 dflowp/
-│
 ├── api/
 │   ├── routes/
-│   │   ├── processes.py - Schnittstellen zum Starten eines Prozesses mit einer Prozesskonfiguration und zum Abfragen der Prozess Status
-│   │   └── data.py - Lesen von Input- oder Output-Daten.
-│   │
-│   └── server.py - Zum Start aller API‑Schnittstellen.
+│   │   ├── processes.py - Schnittstellen zum Starten eines Prozesses mit einer Prozesskonfiguration und zum Abfragen des Prozess-Status
+│   │   └── data.py - Lesen von Input- oder Output-Daten
+│   └── server.py - Zum Start aller API-Schnittstellen
 │
 ├── core/
 │   ├── engine/
-│   │   ├── process_engine.py - Prozessengine, die zur Ausführung, Verwaltung und Überwachung aller Prozesse verantwortlich ist.
-│   │   └── runtime.py - Hauptprogramm zum Starten aller benötigten Komponenten in der Core Application.
-│   │
+│   │   ├── process_engine.py - Prozessengine zur Ausführung, Verwaltung und Überwachung aller Prozesse
+│   │   └── runtime.py - Hauptprogramm zum Starten aller benötigten Komponenten
 │   ├── events/
-│   │   ├── event_bus.py - Kommunikation des Event-Systems inklusive persistente Speicherung in der Datenbank.
+│   │   ├── event_bus.py - Kommunikation des Event-Systems inkl. persistenter Speicherung
 │   │   ├── event_types.py - Alle Typen von Events
-│   │   └── event_service.py - Die grundlegenden Funktionen des Event-Systems wie Emit, Subscriben.
-│   │
+│   │   └── event_service.py - Grundlegende Funktionen (Emit, Subscriben)
 │   ├── processes/
-│   │   ├── process.py - Abstrakte Implementation eines Prozesses.
-
-|   |   ├── process_configuration.py - Die komplette Konfiguration, die ein Prozess beim Starten benötigt
-│   │   └── process_state.py - Enthält Metadaten zum Prozess Status und den kompletten Dataflow State
-│   │
-
-|   ├── subprocesses/
-
-│   │     ├── subprocess.py - Abstrakte Implementation eines Subprozesses
-
-│   │     ├── subprocess_context.py - enthält den kompletten Kontext, den ein zu startender Subprozess benötigt. Dieser wird aus der Prozesskonfiguration der Hauptprozesses und den Input‑Daten der vorherigen Subprozesse zusammengesetzt.
-
-|   |     ├── io_transformation_state.py - Enthält den Status der Transformation von den einzelnen Input-Daten zu Output-Daten, inklusive eine Bewertung der Qualität der Transformation
-
-
-
-|   ├── datastructures/
-
-│   │    ├── data.py - Übergeordnete Datenklasse, die auch eine ID zur Lokalisierung der Daten innerhalb der Datenbank enthält
-
-|    |    ├── dataset.py - Enthält Mengen von Daten (data.py) ohne Ordnung, welche ebenfalls auf das Dataset in der Datenbank referenziert
-
-
-
+│   │   ├── process.py - Abstrakte Implementation eines Prozesses
+│   │   ├── process_configuration.py - Konfiguration für den Prozessstart
+│   │   └── process_state.py - Metadaten zum Prozess-Status und Dataflow-State
+│   ├── subprocesses/
+│   │   ├── subprocess.py - Abstrakte Implementation eines Subprozesses
+│   │   ├── subprocess_context.py - Kontext für Subprozess (Prozesskonfiguration + Input-Daten)
+│   │   └── io_transformation_state.py - Status der Input-Output-Transformation und Qualitätsbewertung
+│   ├── datastructures/
+│   │   ├── data.py - Datenklasse mit ID zur Lokalisierung in der Datenbank
+│   │   └── dataset.py - Mengen von Daten, referenzieren auf Dataset in der Datenbank
 │   └── dataflow/
-
-│       ├── dataflow.py - Datenstruktur, die beschreibt, wann welcher Subprozess ausgeführt werden soll, ist also unabhängig von einer konkreten Ausführung z. B. Scraping -> Embedding - Clustering -> Notification
-
-│       ├── dataflow_node.py - enthält einen Datenfluss (io_transformation_state) und den Status (Fehler, noch nicht gestartet, fertig)
-
-|       ├── dataflow_state.py - enthält alle Datenflüsse (dataflow_node) im gesamten Prozess
-
-│       └── dataflow_parser.py - zum Parsen eines Datenflows aus einer JSON Darstellung
+│       ├── dataflow.py - Beschreibt Ablauf (z. B. Scraping -> Embedding -> Clustering)
+│       ├── dataflow_node.py - Datenfluss und Status
+│       ├── dataflow_state.py - Alle Datenflüsse im Prozess
+│       └── dataflow_parser.py - Parsen eines Datenflusses aus JSON
 │
 ├── plugins/
 │   ├── embedding/
-│   │   └── embedder.py - Embedding eines Input datasets
-│   │
+│   │   └── embedder.py
 │   ├── scraping/
 │   │   └── web_scraper.py
-│   │
 │   ├── clustering/
 │   │   └── clustering.py
-│   │
 │   └── notification/
 │       └── notify_client.py
 │
 ├── infrastructure/
 │   ├── database/
 │   │   ├── mongo.py
-│   │   ├── process_repository.py - Repository von allen Prozessen, inklusive deren Konfigurationen
-
-│   │   ├── data_repository.py - Repository für alle Input- und Output-Daten
-
-│   │  ├── dataset_repository.py - Repository, dass Daten miteinander gruppiert z. B. einzelne Inputdaten
-
-│   │   └── event_repository.py - Repository von allen Events
-│   │
-│   │
+│   │   ├── process_repository.py
+│   │   ├── data_repository.py
+│   │   ├── dataset_repository.py
+│   │   └── event_repository.py
 │   └── plugins/
-│       └── plugin_loader.py - Ladet alle Plugins zur Verwendung.
+│       └── plugin_loader.py
 │
 ├── examples/
-
-|   ├──  inputdata_example.json - Beispiel Input‑Daten eines Subprozesses.
-│   ├── dataflow_example.json - Beispiel Datenfluss für eine Prozesskonfiguration.
-│   ├── processconfiguration_example.json - Beispiel Prozesskonfiguration
-
-│   └── dataflowstate_example.json - Beispiel eines States der Prozessdatenflüsse.
+│   ├── inputdata_example.json
+│   ├── dataflow_example.json
+│   ├── processconfiguration_example.json
+│   └── dataflowstate_example.json
 │
 ├── tests/
-│   ├── database_test.py - Testet, ob in die Datenbank geschrieben und davon gelesen werden kann (in allen Repositories)
-│   ├── eventsystem_test.py- Testet das Eventsystem
-│   └── process_test.py - Testet einen kompletten Prozess, das heißt, Konfiguration mit Dataflow, Prozessen und Datenbank zusammen.
+│   ├── database_test.py
+│   ├── eventsystem_test.py
+│   └── process_test.py
 │
 ├── utils/
-│   └── logger.py - Logging in the software
+│   └── logger.py
 │
 └── main.py
-
-
+```
 
 ## Aktuelle Version testen
 
@@ -287,6 +255,3 @@ pytest tests/ -v
 
 Hinweis: Für Datenbank-Tests muss MongoDB laufen (localhost:27017).
 
-## Lizenz
-
-Siehe [LICENSE](LICENSE) falls vorhanden.
