@@ -1,5 +1,5 @@
 {
-  "_comment": "Dieser Beispielstate eines DataFlows zeigt den Prozess proc_news_pipeline_001. Der Subprozess der die Artikel fetcht ist fertig, aber beim Embedden fehlen noch einige Artikel. Das Clustering ist ebenfalls ausstehend.",
+  "_comment": "Beispielstate: FetchFeedItems abgeschlossen, EmbedData läuft noch.",
   "process_id": "proc_news_pipeline_001",
   "dataflow": {
     "nodes": [
@@ -16,7 +16,7 @@
           },
           {
             "input_data_id": "data_feed_tagesschau",
-            "output_data_ids": ["data_article_004", "data_article_005", "data_article_006", "data_article_007"],
+            "output_data_ids": ["data_article_004", "data_article_005", "data_article_006"],
             "status": "Finished",
             "quality": 0.98
           },
@@ -25,12 +25,6 @@
             "output_data_ids": [],
             "status": "Failed",
             "quality": 0.0
-          },
-          {
-            "input_data_id": "data_feed_faz",
-            "output_data_ids": [],
-            "status": "Not Started",
-            "quality": null
           }
         ]
       },
@@ -47,52 +41,21 @@
           },
           {
             "input_data_id": "data_article_002",
-            "output_data_ids": ["data_embed_002"],
-            "status": "Finished",
-            "quality": 1.0
+            "output_data_ids": [],
+            "status": "In Progress",
+            "quality": null
           },
           {
             "input_data_id": "data_article_003",
             "output_data_ids": [],
-            "status": "In Progress",
-            "quality": null
-          },
-          {
-            "input_data_id": "data_article_004",
-            "output_data_ids": [],
             "status": "Not Started",
-            "quality": null
-          },
-          {
-            "input_data_id": "data_article_005",
-            "output_data_ids": [],
-            "status": "In Progress",
-            "quality": null
-          },
-          {
-            "input_data_id": "data_article_006",
-            "output_data_ids": [],
-            "status": "In Progress",
-            "quality": null
-          },
-          {
-            "input_data_id": "data_article_007",
-            "output_data_ids": [],
-            "status": "In Progress",
             "quality": null
           }
         ]
-      },
-      {
-        "subprocess_id": "Clustering1",
-        "subprocess_type": "Clustering",
-        "event_status": "Not Started",
-        "io_transformation_states": []
       }
     ],
     "edges": [
-      { "from": "FetchFeedItems1", "to": "EmbedData1" },
-      { "from": "EmbedData1", "to": "Clustering1" }
+      { "from": "FetchFeedItems1", "to": "EmbedData1" }
     ]
   }
 }

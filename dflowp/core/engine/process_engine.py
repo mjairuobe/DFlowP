@@ -98,6 +98,9 @@ class ProcessEngine:
             process_id, subprocess_id, node_def.subprocess_type, configuration
         )
         if not context:
+            await self._dataflow_state_repo.update_node_state(
+                process_id, subprocess_id, event_status=EVENT_FAILED
+            )
             await self._event_service.emit_failed(
                 process_id=process_id,
                 subprocess_id=subprocess_id,
@@ -107,6 +110,9 @@ class ProcessEngine:
 
         subprocess = self._get_subprocess(node_def.subprocess_type)
         if not subprocess:
+            await self._dataflow_state_repo.update_node_state(
+                process_id, subprocess_id, event_status=EVENT_FAILED
+            )
             await self._event_service.emit_failed(
                 process_id=process_id,
                 subprocess_id=subprocess_id,
@@ -215,6 +221,10 @@ class ProcessEngine:
         process_id = event.get("process_id")
         subprocess_id = event.get("subprocess_id")
         if not process_id or not subprocess_id:
+            return
+
+        # Prozess-Level-Events (subprocess_id="0") nicht rekursiv verarbeiten
+        if subprocess_id == "0":
             return
 
         proc_doc = await self._process_repo.find_by_id(process_id)

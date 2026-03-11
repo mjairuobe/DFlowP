@@ -1,36 +1,26 @@
 {
-    "_TODO": "Startbedingung für Subprozesse z. B. ein vorherhiger io_transformation_state ist fertig oder der gesamte vorherhige Prozesseinfügen",
-    "process_id": "proc_news_pipeline_001",
-    "software_version": "1.0.0",
-    "input_dataset_id": "ds_news_001",
-    "dataflow": {
-      "nodes": [
-        {
-          "subprocess_id": "FetchFeedItems1",
-          "subprocess_type": "FetchFeedItems"
-        },
-        {
-          "subprocess_id": "EmbedData1",
-          "subprocess_type": "EmbedData"
-        },
-        {
-          "subprocess_id": "Clustering1",
-          "subprocess_type": "Clustering"
-        }
-      ],
-      "edges": [
-        { "from": "FetchFeedItems1", "to": "EmbedData1" },
-        { "from": "EmbedData1", "to": "Clustering1" }
-      ]
-    },
-    "subprocess_config": {
-      "FetchFeedItems1": {},
-      "EmbedData1": {
-        "embedding_engine": "sentence-transformers",
-        "model": "all-MiniLM-L6-v2"
+  "process_id": "proc_news_pipeline_001",
+  "software_version": "1.0.0",
+  "input_dataset_id": "ds_news_001",
+  "dataflow": {
+    "nodes": [
+      {
+        "subprocess_id": "FetchFeedItems1",
+        "subprocess_type": "FetchFeedItems"
       },
-      "Clustering1": {
-        "similarity_threshold": 0.7
+      {
+        "subprocess_id": "EmbedData1",
+        "subprocess_type": "EmbedData"
       }
+    ],
+    "edges": [
+      { "from": "FetchFeedItems1", "to": "EmbedData1" }
+    ]
+  },
+  "subprocess_config": {
+    "FetchFeedItems1": {},
+    "EmbedData1": {
+      "model": "text-embedding-3-small"
     }
   }
+}

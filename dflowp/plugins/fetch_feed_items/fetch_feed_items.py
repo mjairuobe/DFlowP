@@ -83,7 +83,7 @@ class FetchFeedItems(BaseSubprocess):
                         quality=0.0,
                     )
                 )
-                raise
+                # Kein raise: einzelne Feed-Fehler stoppen nicht die gesamte Verarbeitung
 
         return results
 

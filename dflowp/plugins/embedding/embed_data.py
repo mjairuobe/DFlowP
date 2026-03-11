@@ -84,7 +84,7 @@ class EmbedData(BaseSubprocess):
                         quality=0.0,
                     )
                 )
-                raise
+                # Kein raise: einzelne Embedding-Fehler stoppen nicht die gesamte Verarbeitung
 
         return results
 
