@@ -16,6 +16,7 @@ Start:
 
 import asyncio
 import json
+import time
 import os
 import signal
 import sys
@@ -34,8 +35,8 @@ logger = get_logger(__name__)
 MONGODB_URI      = os.environ.get("MONGODB_URI",      "mongodb://localhost:27017")
 MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "dflowp")
 CONFIG_PATH      = os.environ.get("PROCESS_CONFIG",   "examples/processconfig_example.json")
-INPUT_PATH       = os.environ.get("INPUT_DATA",       "examples/inputdata_set.json")
-
+INPUT_PATH       = os.environ.get("INPUT_DATA",       "examples/inputdata_set.json") # ds_news_002 in der DB
+BIG_INPUT_PATH       = os.environ.get("INPUT_DATA",       "examples/inputdata_set_big.json") # ds_news_001 in der DB
 
 async def main() -> None:
     # --- Voraussetzungen prüfen -------------------------------------------
@@ -69,8 +70,9 @@ async def main() -> None:
         with open(CONFIG_PATH, encoding="utf-8") as f:
             config_dict = json.load(f)
 
+        config_dict["process_id"] = f"{config_dict["process_id"]}_{time.time()}"
         config = ProcessConfiguration.from_dict(config_dict)
-
+        
         # OpenAI API Key in die EmbedData-Config eintragen, falls nicht
         # explizit in der JSON-Config gesetzt
         for subprocess_id, sub_cfg in config.subprocess_config.items():

@@ -1,7 +1,7 @@
 {
   "process_id": "proc_news_pipeline_001",
   "software_version": "1.0.0",
-  "input_dataset_id": "ds_news_001",
+  "input_dataset_id": "ds_news_002",
   "dataflow": {
     "nodes": [
       {
