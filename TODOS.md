@@ -1,5 +1,7 @@
 # ToDos
 
+- DataRepository und DataSetRepository zusammen machen nicht soviel Sinn und sollten durch eins mit einer sinnvollen Struuktur ersetzt werden.
+
 - Ich möchte, dass im Output‑Datensatz vom Embed‑Data‑Plugin unter "content" und dem Subkey "text" nicht die ersten 500 Zeichen des Textes gespeichert werden, sondern ein F‑String, der auf den Attributen des Artikels der Input‑Daten basiert. In diesem Beispiel wäre es {title} {summary}. Damit kann ich die Daten besser reproduzieren und habe eine konsistentere Software.
   Erzeuge den Wert dieses Feldes gerne dynamisch und füge entsprechende Kommentare hinzu, um die Funktionsweise und den Nutzen transparent zu machen.
   Gebe mir zudem ein Command für die Shell, um mit mongod alle bisherigen Datensätze dementsprechend zu migrieren
