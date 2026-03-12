@@ -4,6 +4,7 @@ import pytest
 import pytest_asyncio
 
 from dflowp.infrastructure.database.data_repository import DataRepository
+from dflowp.infrastructure.database.data_item_repository import DataItemRepository
 from dflowp.infrastructure.database.dataset_repository import DatasetRepository
 from dflowp.infrastructure.database.event_repository import EventRepository
 from dflowp.infrastructure.database.mongo import (
@@ -101,7 +102,7 @@ async def test_process_repository_crud(db_session):
 
 @pytest.mark.asyncio
 async def test_data_repository_crud(db_session):
-    """Testet DataRepository: Insert und Find."""
+    """Testet DataRepository: Insert und Find (Wrapper-Test)."""
     repo = DataRepository()
     await repo.create_indexes()
 
@@ -117,16 +118,19 @@ async def test_data_repository_crud(db_session):
     assert found is not None
     assert found["data_id"] == "data_test_001"
     assert found["content"]["value"] == 42
+    # Wrapper soll doc_type hinzugefügt haben
+    assert found.get("doc_type") == "data"
 
     if should_delete():
-        await db_session[DataRepository.COLLECTION_NAME].delete_one(
-            {"data_id": "data_test_001"}
+        # Cleanup in der neuen unified collection
+        await db_session[DataItemRepository.COLLECTION_NAME].delete_one(
+            {"id": "data_test_001"}
         )
 
 
 @pytest.mark.asyncio
 async def test_dataset_repository_crud(db_session):
-    """Testet DatasetRepository: Insert und Find."""
+    """Testet DatasetRepository: Insert und Find (Wrapper-Test)."""
     repo = DatasetRepository()
     await repo.create_indexes()
 
@@ -141,12 +145,92 @@ async def test_dataset_repository_crud(db_session):
     assert found is not None
     assert found["dataset_id"] == "ds_test_001"
     assert len(found["data_ids"]) == 2
+    # Wrapper soll doc_type hinzugefügt haben
+    assert found.get("doc_type") == "dataset"
 
     # Cleanup
     if should_delete():
-        await db_session[DatasetRepository.COLLECTION_NAME].delete_one(
-            {"dataset_id": "ds_test_001"}
+        # Cleanup in der neuen unified collection
+        await db_session[DataItemRepository.COLLECTION_NAME].delete_one(
+            {"id": "ds_test_001"}
         )
+
+
+@pytest.mark.asyncio
+async def test_data_item_repository_crud(db_session):
+    """Testet DataItemRepository (unified repository) direkt."""
+    repo = DataItemRepository()
+    await repo.create_indexes()
+
+    # Test: Data-Dokument einfügen
+    data_doc = {
+        "id": "data_item_test_001",
+        "doc_type": "data",
+        "type": "output",
+        "content": {"value": 100},
+    }
+    data_id = await repo.insert(data_doc)
+    assert data_id
+
+    found_data = await repo.find_by_id("data_item_test_001")
+    assert found_data is not None
+    assert found_data["id"] == "data_item_test_001"
+    assert found_data["doc_type"] == "data"
+    assert found_data["content"]["value"] == 100
+
+    # Test: Dataset-Dokument einfügen
+    dataset_doc = {
+        "id": "dataset_item_test_001",
+        "doc_type": "dataset",
+        "data_ids": ["data_1", "data_2", "data_3"],
+    }
+    dataset_id = await repo.insert(dataset_doc)
+    assert dataset_id
+
+    found_dataset = await repo.find_by_id("dataset_item_test_001")
+    assert found_dataset is not None
+    assert found_dataset["id"] == "dataset_item_test_001"
+    assert found_dataset["doc_type"] == "dataset"
+    assert len(found_dataset["data_ids"]) == 3
+
+    # Cleanup
+    if should_delete():
+        await db_session[DataItemRepository.COLLECTION_NAME].delete_many(
+            {"id": {"$in": ["data_item_test_001", "dataset_item_test_001"]}}
+        )
+
+
+@pytest.mark.asyncio
+async def test_data_item_repository_type_validation(db_session):
+    """Testet dass DataItemRepository doc_type validiert."""
+    repo = DataItemRepository()
+    await repo.create_indexes()
+
+    # Test: Fehler bei fehlender doc_type
+    with pytest.raises(ValueError, match="doc_type field is required"):
+        await repo.insert({"id": "test_001", "content": {}})
+
+    # Test: Fehler bei ungültigem doc_type
+    with pytest.raises(ValueError, match="Invalid doc_type"):
+        await repo.insert({
+            "id": "test_002",
+            "doc_type": "invalid",
+            "content": {}
+        })
+
+    # Test: Fehler bei Data ohne content
+    with pytest.raises(ValueError, match="content field is required"):
+        await repo.insert({
+            "id": "test_003",
+            "doc_type": "data"
+        })
+
+    # Test: Fehler bei Dataset ohne data_ids
+    with pytest.raises(ValueError, match="data_ids field is required"):
+        await repo.insert({
+            "id": "test_004",
+            "doc_type": "dataset"
+        })
 
 
 @pytest.mark.asyncio

@@ -61,8 +61,15 @@ db.processes.find()
 # View all events for a process
 db.events.find({process_id: "your_process_id"})
 
+# List all data items (unified collection for Data and Dataset documents)
+db.data_items.find()
+
+# Filter by type (data vs dataset)
+db.data_items.find({doc_type: "data"})
+db.data_items.find({doc_type: "dataset"})
+
 # Data migration (e.g., updating embedded text format)
-db.datasets.updateMany({}, [{ $set: {...} }])
+db.data_items.updateMany({}, [{ $set: {...} }])
 ```
 
 ## Architecture
@@ -79,8 +86,9 @@ Runtime
 │   └── Persists all events to MongoDB for auditability
 └── Repositories (data persistence)
     ├── ProcessRepository
-    ├── DataRepository (actual data content)
-    ├── DatasetRepository (collections of Data references)
+    ├── DataItemRepository (unified: data content + dataset references)
+    │   ├── DataRepository (wrapper for backward compatibility)
+    │   └── DatasetRepository (wrapper for backward compatibility)
     └── EventRepository
 
 Process Execution Flow:
@@ -120,9 +128,21 @@ Process Execution Flow:
 - `event_service.py`: Pub/sub interface (emit, subscribe by process_id or subprocess_id)
 - `event_bus.py`: Persistent event storage and broadcasting
 
-**`dflowp/infrastructure/`**
-- Repositories for MongoDB access (process, data, dataset, event)
+**`dflowp/infrastructure/database/`**
+- `data_item_repository.py`: Unified repository for Data and Dataset documents with `doc_type` discriminator
+- `data_repository.py`: Backward-compatible wrapper delegating to DataItemRepository
+- `dataset_repository.py`: Backward-compatible wrapper delegating to DataItemRepository
+- `process_repository.py`, `event_repository.py`, etc.: Other MongoDB repositories
 - MongoDB schema is auto-initialized via Pydantic models
+
+**Collections:**
+- `data_items`: Unified collection storing both data (doc_type="data") and datasets (doc_type="dataset")
+  - Field `id`: Unified identifier (replaces data_id and dataset_id)
+  - Field `doc_type`: "data" or "dataset" (discriminator)
+  - For data: includes `content` (dict) and `type` (str)
+  - For dataset: includes `data_ids` (list of data references)
+- `processes`: Process configuration and state
+- `events`: Event log for auditability
 
 ### Plugin System
 
@@ -185,8 +205,9 @@ Edit `examples/processconfig_example.json` to define your DataFlow and subproces
 
 1. Check event history: `db.events.find({process_id: "X"}).sort({event_time: -1})`
 2. Inspect process state: `db.processes.findOne({process_id: "X"})`
-3. View subprocess output data: `db.datasets.findOne({_id: ObjectId(...)})`
+3. View subprocess output data: `db.data_items.findOne({id: "data_..."})` (for data) or `db.data_items.findOne({id: "ds_..."})` (for dataset)
 4. Check io_transformation_state for quality metrics: `db.processes.findOne().dataflow_state.nodes[...].io_transformation_state`
+5. Filter data items by type: `db.data_items.find({doc_type: "data"})` or `db.data_items.find({doc_type: "dataset"})`
 
 ### Adding a Database Schema Migration
 

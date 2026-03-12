@@ -1,31 +1,63 @@
-"""Repository für Datasets - Gruppierung von Daten."""
+"""Repository für Datasets (Wrapper für einheitliches DataItemRepository)."""
 
 from typing import Any, Optional
 
-from dflowp.infrastructure.database.mongo import get_database
+from dflowp.infrastructure.database.data_item_repository import DataItemRepository
 
 
 class DatasetRepository:
-    """Repository für Datasets (Gruppierung von Daten)."""
+    """
+    Wrapper-Klasse für Rückwärtskompatibilität.
 
-    COLLECTION_NAME = "datasets"
+    Delegiert an das einheitliche DataItemRepository und mappt Feldnamen
+    zwischen "dataset_id" (alte API) und "id" (neue interne Darstellung).
+    """
+
+    COLLECTION_NAME = "datasets"  # Behält alte Konstante für Kompatibilität
 
     def __init__(self) -> None:
-        self._db = get_database()
-        self._collection = self._db[self.COLLECTION_NAME]
+        self._unified_repo = DataItemRepository()
 
     async def create_indexes(self) -> None:
-        """Erstellt Indizes."""
-        await self._collection.create_index("dataset_id", unique=True)
+        """Erstellt Indizes im einheitlichen Repository."""
+        await self._unified_repo.create_indexes()
 
     async def insert(self, dataset: dict[str, Any]) -> str:
-        """Speichert ein Dataset."""
-        result = await self._collection.insert_one(dataset)
-        return str(result.inserted_id)
+        """
+        Speichert ein Dataset. Mappt dataset_id zu id und setzt doc_type.
+
+        Args:
+            dataset: Datasetdict mit mindestens dataset_id, data_ids
+
+        Returns:
+            Die MongoDB _id des eingefügten Dokuments
+        """
+        # Konvertiere dataset_id zu id für internes Format
+        doc = dict(dataset)
+        if "dataset_id" in doc:
+            doc["id"] = doc.pop("dataset_id")
+
+        # Stelle sicher, dass doc_type gesetzt ist
+        if "doc_type" not in doc:
+            doc["doc_type"] = "dataset"
+
+        return await self._unified_repo.insert(doc)
 
     async def find_by_id(self, dataset_id: str) -> Optional[dict[str, Any]]:
-        """Findet ein Dataset anhand der dataset_id."""
-        doc = await self._collection.find_one({"dataset_id": dataset_id})
+        """
+        Findet ein Dataset anhand der dataset_id.
+
+        Mappt das interne "id"-Feld zurück zu "dataset_id" für Rückwärtskompatibilität.
+
+        Args:
+            dataset_id: Die Dataset-ID
+
+        Returns:
+            Das Datasetdict mit dataset_id (statt id) oder None
+        """
+        doc = await self._unified_repo.find_by_id(dataset_id)
         if doc:
-            doc["_id"] = str(doc["_id"])
+            # Stelle "dataset_id" für Rückwärtskompatibilität wieder her
+            if "id" in doc:
+                doc["dataset_id"] = doc.pop("id")
         return doc
