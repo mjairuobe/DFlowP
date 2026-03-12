@@ -56,6 +56,7 @@ class FetchFeedItems(BaseSubprocess):
             try:
                 parsed = await self._fetch_feed(xml_url)
                 for entry in parsed.entries:
+                    # TODO: Set quality of article based on entry attributes
                     article = self._entry_to_article(entry, source)
                     data_id = f"data_article_{context.process_id}_{uuid.uuid4().hex[:12]}"
                     await data_repository.insert({
