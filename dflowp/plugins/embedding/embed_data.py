@@ -16,10 +16,18 @@ class EmbedData(BaseSubprocess):
     Erstellt Embeddings aus Artikel-Attributen (z.B. title, summary).
     Attribute werden in der Subprozess-Konfiguration angegeben (embedding_attributes).
     Nutzt OpenAI Embedding API.
+
+    Konfigurierbare Parameter:
+    - embedding_attributes: Liste der Artikel-Attribute für Embeddings (Standard: ["title", "summary"])
+    - model: OpenAI Modell (Standard: "text-embedding-3-small")
+    - openai_api_key: API-Schlüssel (Standard: OPENAI_API_KEY Umgebungsvariable)
+    - text_template: F-String Template für Reproduzierbarkeit (Standard: "{title} {summary}")
+      Beispiele: "{title}", "{title} {summary}", "{url} {title}"
     """
 
     DEFAULT_ATTRIBUTES = ["title", "summary"]
     DEFAULT_MODEL = "text-embedding-3-small"
+    DEFAULT_TEXT_TEMPLATE = "{title} {summary}"  # F-String Template für konsistente Daten
 
     def __init__(self) -> None:
         super().__init__("EmbedData")
@@ -40,6 +48,7 @@ class EmbedData(BaseSubprocess):
         )
         model = context.config.get("model", self.DEFAULT_MODEL)
         openai_api_key = context.config.get("openai_api_key")
+        text_template = context.config.get("text_template", self.DEFAULT_TEXT_TEMPLATE)
 
         results: list[IOTransformationState] = []
 
@@ -58,12 +67,18 @@ class EmbedData(BaseSubprocess):
             try:
                 embedding = await self._get_embedding(text, model, openai_api_key)
                 data_id = f"data_embed_{context.process_id}_{uuid.uuid4().hex[:12]}"
+
+                # Speichere nur das Template (die "Bauanleitung")
+                # Der ursprüngliche Text kann jederzeit aus source_data_id + text_template rekonstruiert werden:
+                # 1. Hole Input-Daten via source_data_id aus dem Repository
+                # 2. Wende das Template "{title} {summary}" auf die Input-Daten an
+                # Dies ermöglicht vollständige Reproduzierbarkeit ohne Speicherung von gekürzt/verarbeiteten Texten
                 await data_repository.insert({
                     "data_id": data_id,
                     "content": {
                         "embedding": embedding,
                         "source_data_id": input_data.data_id,
-                        "text": text[:500],
+                        "text_template": text_template,  # Die "Bauanleitung" - z.B. "{title} {summary}"
                     },
                     "type": "output",
                 })

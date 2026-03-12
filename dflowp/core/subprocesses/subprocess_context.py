@@ -21,5 +21,5 @@ class SubprocessContext(BaseModel):
     input_dataset: Optional[Dataset] = None
     input_data: list[Data] = Field(default_factory=list)
 
-    class Config:
+    class ConfigDict:
         arbitrary_types_allowed = True
