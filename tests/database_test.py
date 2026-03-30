@@ -1,5 +1,6 @@
 """Tests für die MongoDB-Verbindung und alle Repositories."""
 
+import os
 import pytest
 import pytest_asyncio
 
@@ -17,7 +18,8 @@ from dflowp.infrastructure.database.process_repository import ProcessRepository
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def cleanup_database():
     """Löscht alle Collections in der dflowp_test-Datenbank."""
-    db = await connect_to_mongodb(uri="mongodb://localhost:27017", database_name="dflowp_test")
+    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
+    db = await connect_to_mongodb(uri=uri, database_name="dflowp_test")
     collections = await db.list_collection_names()
     for coll in collections:
         await db[coll].delete_many({})
@@ -31,7 +33,7 @@ def should_delete():
 @pytest.mark.asyncio
 async def test_mongodb_connection():
     """Testet ob die MongoDB-Verbindung hergestellt werden kann."""
-    uri = "mongodb://localhost:27017"
+    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
     db = await connect_to_mongodb(uri=uri, database_name="dflowp_test")
     assert db is not None
     assert db.name == "dflowp_test"
@@ -45,12 +47,13 @@ async def test_mongodb_connection():
 @pytest.mark.asyncio
 async def test_mongodb_connection_reuses_singleton():
     """Testet ob mehrfache Verbindungen dieselbe Instanz nutzen."""
+    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
     db1 = await connect_to_mongodb(
-        uri="mongodb://localhost:27017",
+        uri=uri,
         database_name="dflowp_test",
     )
     db2 = await connect_to_mongodb(
-        uri="mongodb://localhost:27017",
+        uri=uri,
         database_name="dflowp_test",
     )
     assert db1 is db2
@@ -60,8 +63,9 @@ async def test_mongodb_connection_reuses_singleton():
 @pytest_asyncio.fixture
 async def db_session():
     """Setup und Teardown für Repo-Tests."""
+    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
     await connect_to_mongodb(
-        uri="mongodb://localhost:27017",
+        uri=uri,
         database_name="dflowp_test",
     )
     yield get_database()

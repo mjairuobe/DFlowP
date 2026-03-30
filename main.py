@@ -70,7 +70,7 @@ async def main() -> None:
         with open(CONFIG_PATH, encoding="utf-8") as f:
             config_dict = json.load(f)
 
-        config_dict["process_id"] = f"{config_dict["process_id"]}_{time.time()}"
+        config_dict["process_id"] = f"{config_dict['process_id']}_{time.time()}"
         config = ProcessConfiguration.from_dict(config_dict)
         
         # OpenAI API Key in die EmbedData-Config eintragen, falls nicht

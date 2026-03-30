@@ -1,0 +1,35 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: dflowp-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USERNAME:-dflowp}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-dflowp_password}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --eval \"db.adminCommand({ ping: 1 }).ok\" | grep -q 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+    image: ${DOCKER_IMAGE:-dflowp:local}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGODB_URI: mongodb://${MONGODB_USERNAME:-dflowp}:${MONGODB_PASSWORD:-dflowp_password}@mongo:27017/?authSource=admin
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
+      MONGODB_TEST_DB: ${MONGODB_TEST_DB:-dflowp_test}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PROCESS_CONFIG: ${PROCESS_CONFIG:-examples/processconfig_example.json}
+      INPUT_DATA: ${INPUT_DATA:-examples/inputdata_set.json}
+    command: ["python", "main.py"]
+
+volumes:
+  mongo_data:
+

@@ -14,17 +14,23 @@
         agent any
 
         options {
-            timeout(time: 60, unit: 'MINUTES')
+        timestamps()
+        timeout(time: 60, unit: 'MINUTES')
         }
 
         environment {
-            // MongoDB aus dem Docker-Container (Port auf dem Host)
-            MONGODB_URI       = 'mongodb://127.0.0.1:27017'
-            MONGODB_DATABASE  = 'dflowp'
-            MONGODB_TEST_DB   = 'dflowp_test'
-            PYTHONUNBUFFERED  = '1'
-            VENV_DIR          = "${WORKSPACE}/venv-jenkins"
-            MONGO_CONTAINER   = "dflowp-mongo-${env.BUILD_TAG.replaceAll('[^a-zA-Z0-9_.-]', '-')}"
+        // Docker Hub Target
+        DOCKER_IMAGE_REPO = 'CHANGE_ME_DOCKERHUB_USER/dflowp'
+
+        // Jenkins Credential IDs (bitte in Jenkins anpassen)
+        DOCKERHUB_CREDS_ID = 'dockerhub-creds'
+        OPENAI_KEY_ID      = 'openai-api-key'
+        GITHUB_PAT_ID      = 'github-pat'
+        MONGODB_CREDS_ID   = 'mongodb-creds'
+
+        // Compose / App Settings
+        MONGODB_DATABASE = 'dflowp'
+        MONGODB_TEST_DB  = 'dflowp_test'
         }
 
         stages {
@@ -34,95 +40,69 @@
                 }
             }
 
-            stage('MongoDB (Docker)') {
+        stage('Build Docker Image') {
                 steps {
                     sh '''
                         set -e
-                        echo "Starte MongoDB-Container: ${MONGO_CONTAINER}"
-                        docker pull mongo:7
-                        docker rm -f "${MONGO_CONTAINER}" 2>/dev/null || true
-                        docker run -d \
-                        --name "${MONGO_CONTAINER}" \
-                        -p 27017:27017 \
-                        mongo:7
-
-                        echo "Warte auf MongoDB …"
-                        for i in $(seq 1 60); do
-                        if docker exec "${MONGO_CONTAINER}" mongosh --quiet --eval "db.adminCommand({ ping: 1 }).ok" 2>/dev/null | grep -q 1; then
-                            echo "MongoDB ist erreichbar."
-                            exit 0
-                        fi
-                        sleep 1
-                        done
-                        echo "Timeout: MongoDB nicht bereit."
-                        exit 1
+                    docker --version
+                    docker build -t "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}" .
                     '''
                 }
             }
 
-            stage('Python venv & Abhängigkeiten') {
+        stage('Compose up (MongoDB + App)') {
                 steps {
+                withCredentials([
+                    usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY')
+                ]) {
                     sh '''
                         set -e
-                        python3.11 --version
-                        python3.11 -m ensurepip --upgrade
-                        python3.11 -m venv "${VENV_DIR}"
-                        . "${VENV_DIR}/bin/activate"
-                        pip install --upgrade pip setuptools wheel
-                        pip install -r requirements.txt
-                        pip install -e ".[dev]"
+                        export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
+                        docker compose up -d --build
+                        docker compose ps
                     '''
+                }
                 }
             }
 
             stage('Tests (pytest)') {
                 steps {
+                withCredentials([
+                    usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY')
+                ]) {
                     sh '''
                         set -e
-                        . "${VENV_DIR}/bin/activate"
-                        export MONGODB_URI="${MONGODB_URI}"
-                        export MONGODB_TEST_DB="${MONGODB_TEST_DB}"
-                        pytest tests/ -v --tb=short
+                        export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
+                        # Tests laufen im App-Container und nutzen Compose-Mongo via Service-Name "mongo"
+                        docker compose run --rm \
+                          -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
+                          app pytest tests/ -v --tb=short
                     '''
+                }
                 }
             }
 
-            stage('Projekt ausführen (main.py)') {
-                when {
-                    anyOf {
-                        environment name: 'RUN_MAIN', value: 'true'
-                        expression {
-                            def k = env.OPENAI_API_KEY
-                            return k != null && !k.trim().isEmpty()
-                        }
-                    }
-                }
-                options {
-                    timeout(time: 45, unit: 'MINUTES')
-                }
+        stage('Docker Hub Login & Push') {
                 steps {
+                withCredentials([
+                    usernamePassword(credentialsId: "${DOCKERHUB_CREDS_ID}", usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')
+                ]) {
                     sh '''
                         set -e
-                        . "${VENV_DIR}/bin/activate"
-                        export MONGODB_URI="${MONGODB_URI}"
-                        export MONGODB_DATABASE="${MONGODB_DATABASE}"
-
-                        if [ -z "${OPENAI_API_KEY:-}" ]; then
-                        echo "OPENAI_API_KEY fehlt – main.py wird nicht gestartet (Job-Parameter RUN_MAIN oder Secret setzen)."
-                        exit 0
-                        fi
-
-                        python main.py
+                        echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+                        docker push "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
+                        docker logout || true
                     '''
+                }
                 }
             }
         }
 
         post {
             always {
-                sh '''
-                    docker rm -f "${MONGO_CONTAINER}" 2>/dev/null || true
-                '''
+                
             }
             success {
                 echo 'Pipeline erfolgreich abgeschlossen.'
