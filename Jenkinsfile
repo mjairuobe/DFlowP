@@ -20,7 +20,7 @@
 
         environment {
         // Docker Hub Target
-        DOCKER_IMAGE_REPO = 'crwalabase/dflowp'
+        DOCKER_IMAGE_REPO = 'docker.io/crawlabase/dflowp'
 
         // Jenkins Credential IDs (bitte in Jenkins anpassen)
         DOCKERHUB_CREDS_ID = 'dockerhub-creds'
@@ -96,7 +96,6 @@
                     sh '''
                         set -e
                         echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
-                        docker tag "${DOCKER_IMAGE_REPO}" "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
                         docker push "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
                         docker logout || true
                     '''
