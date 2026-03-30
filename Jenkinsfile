@@ -101,9 +101,6 @@
         }
 
         post {
-            always {
-                
-            }
             success {
                 echo 'Pipeline erfolgreich abgeschlossen.'
             }
