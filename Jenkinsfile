@@ -57,7 +57,7 @@
                     string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY')
                 ]) {
                     echo "MONGODB_USERNAME: ${MONGODB_USERNAME}"
-                    
+
                     sh '''
                         set -e
                         export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
@@ -96,6 +96,7 @@
                     sh '''
                         set -e
                         echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+                        docker tag "${DOCKER_IMAGE_REPO}" "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
                         docker push "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
                         docker logout || true
                     '''
