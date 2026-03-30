@@ -24,6 +24,7 @@ from pathlib import Path
 
 from dflowp.core.engine.runtime import Runtime
 from dflowp.core.processes.process_configuration import ProcessConfiguration
+from dflowp.infrastructure.database.mongo import resolve_mongodb_uri
 from dflowp.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -32,7 +33,7 @@ logger = get_logger(__name__)
 # Konfiguration (überschreibbar per Umgebungsvariable)
 # ---------------------------------------------------------------------------
 
-MONGODB_URI      = os.environ.get("MONGODB_URI",      "mongodb://localhost:27017")
+MONGODB_URI      = resolve_mongodb_uri()
 MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "dflowp")
 CONFIG_PATH      = os.environ.get("PROCESS_CONFIG",   "examples/processconfig_example.json")
 INPUT_PATH       = os.environ.get("INPUT_DATA",       "examples/inputdata_set.json") # ds_news_002 in der DB
