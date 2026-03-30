@@ -59,7 +59,9 @@
                     sh '''
                         set -e
                         export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
-                        docker-compose up -d --build
+                        # Kein --build: Image wurde in der Stage „Build Docker Image“ gebaut.
+                        # Neuere docker-compose Versionen verlangen sonst Buildx >= 0.17.0 (Bake).
+                        docker-compose up -d
                         docker-compose ps
                     '''
                 }
@@ -101,6 +103,11 @@
         }
 
         post {
+            failure {
+                sh '''
+                    docker-compose down -v 2>/dev/null || true
+                '''
+            }
             success {
                 echo 'Pipeline erfolgreich abgeschlossen.'
             }
