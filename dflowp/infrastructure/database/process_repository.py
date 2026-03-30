@@ -2,6 +2,8 @@
 
 from typing import Any, Optional
 
+from pymongo import ReturnDocument
+
 from dflowp.infrastructure.database.mongo import get_database
 
 
@@ -17,6 +19,7 @@ class ProcessRepository:
     async def create_indexes(self) -> None:
         """Erstellt Indizes für effiziente Abfragen."""
         await self._collection.create_index("process_id", unique=True)
+        await self._collection.create_index("status")
 
     async def insert(self, process: dict[str, Any]) -> str:
         """Speichert einen Prozess. Gibt die _id zurück."""
@@ -41,3 +44,19 @@ class ProcessRepository:
             {"$set": update},
         )
         return result.matched_count > 0
+
+    async def claim_next_pending(self) -> Optional[dict[str, Any]]:
+        """
+        Übernimmt atomisch den ältesten Prozess mit status 'pending' (status -> 'running').
+        Das Dokument muss wie bei insert die Felder process_id und configuration enthalten
+        (optional dataflow_state; wird bei Bedarf ergänzt).
+        """
+        doc = await self._collection.find_one_and_update(
+            {"status": "pending"},
+            {"$set": {"status": "running"}},
+            sort=[("_id", 1)],
+            return_document=ReturnDocument.AFTER,
+        )
+        if doc:
+            doc["_id"] = str(doc["_id"])
+        return doc

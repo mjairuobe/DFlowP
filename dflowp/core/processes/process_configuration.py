@@ -1,5 +1,6 @@
 """Prozesskonfiguration - komplette Konfiguration für den Prozessstart."""
 
+import os
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -46,3 +47,13 @@ class ProcessConfiguration(BaseModel):
             },
             "subprocess_config": self.subprocess_config,
         }
+
+    def apply_default_openai_key_from_env(self) -> None:
+        """Trägt OPENAI_API_KEY in EmbedData-Subprozess-Configs ein, falls nicht gesetzt."""
+        key = os.environ.get("OPENAI_API_KEY")
+        if not key:
+            return
+        for subprocess_id, sub_cfg in self.subprocess_config.items():
+            node = self.dataflow.get_node(subprocess_id)
+            if node and node.subprocess_type == "EmbedData":
+                sub_cfg.setdefault("openai_api_key", key)

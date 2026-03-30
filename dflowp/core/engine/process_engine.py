@@ -3,7 +3,6 @@
 import asyncio
 from typing import Any, Callable, Optional
 
-from dflowp.core.dataflow.dataflow_parser import parse_dataflow_state
 from dflowp.core.dataflow.dataflow_state import DataflowState
 from dflowp.core.events.event_types import EVENT_COMPLETED, EVENT_FAILED, EVENT_STARTED
 from dflowp.core.processes.process_configuration import ProcessConfiguration
@@ -38,12 +37,60 @@ class ProcessEngine:
         self._dataset_repo = dataset_repository
         self._get_subprocess = get_subprocess
         self._running: dict[str, asyncio.Task] = {}
+        self._active_subprocess_count: int = 0
 
     def start(self) -> None:
         """Registriert Event-Handler."""
         self._event_service.subscribe(EVENT_COMPLETED, self._on_subprocess_completed)
         self._event_service.subscribe(EVENT_FAILED, self._on_subprocess_failed)
         logger.info("ProcessEngine gestartet, Events subscrit")
+
+    async def wait_until_idle(
+        self,
+        *,
+        shutdown: Optional[asyncio.Event] = None,
+        poll_seconds: float = 0.5,
+    ) -> None:
+        """Wartet bis alle Subprozess-Tasks beendet sind (oder shutdown gesetzt)."""
+        while self._active_subprocess_count > 0:
+            if shutdown is not None and shutdown.is_set():
+                return
+            await asyncio.sleep(poll_seconds)
+
+    async def activate_pending_process(self, process_id: str) -> bool:
+        """
+        Startet Root-Subprozesse für ein bereits in der DB übernommenes Dokument
+        (status wurde z. B. per claim_next_pending auf 'running' gesetzt).
+        """
+        doc = await self._process_repo.find_by_id(process_id)
+        if not doc:
+            logger.error("Prozess %s nicht in der Datenbank", process_id)
+            return False
+
+        cfg_dict = doc.get("configuration")
+        if not cfg_dict:
+            logger.error("Prozess %s enthält kein Feld 'configuration'", process_id)
+            await self._process_repo.update(process_id, {"status": "failed"})
+            return False
+
+        configuration = ProcessConfiguration.from_dict(cfg_dict)
+        configuration.apply_default_openai_key_from_env()
+
+        if not doc.get("dataflow_state"):
+            dataflow_state = DataflowState.from_dataflow(configuration.dataflow)
+            await self._process_repo.update(
+                process_id,
+                {
+                    "dataflow_state": dataflow_state.to_dict(),
+                    "software_version": configuration.software_version,
+                    "input_dataset_id": configuration.input_dataset_id,
+                },
+            )
+
+        root_ids = configuration.dataflow.get_root_nodes()
+        for subprocess_id in root_ids:
+            await self._start_subprocess(process_id, subprocess_id, configuration)
+        return True
 
     async def start_process(
         self, configuration: ProcessConfiguration
@@ -52,6 +99,7 @@ class ProcessEngine:
         Startet einen Prozess mit der gegebenen Konfiguration.
         Erstellt Process-Dokument, DataflowState und startet Root-Subprozesse.
         """
+        configuration.apply_default_openai_key_from_env()
         process_id = configuration.process_id
 
         # Process und initialen DataflowState speichern
@@ -120,6 +168,8 @@ class ProcessEngine:
             )
             return
 
+        self._active_subprocess_count += 1
+
         async def run_wrapper() -> None:
             try:
                 io_states = await subprocess.run(
@@ -147,6 +197,8 @@ class ProcessEngine:
                     subprocess_id=subprocess_id,
                     error=str(e),
                 )
+            finally:
+                self._active_subprocess_count -= 1
 
         asyncio.create_task(run_wrapper())
 

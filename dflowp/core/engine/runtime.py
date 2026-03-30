@@ -41,6 +41,7 @@ class Runtime:
         self._mongodb_uri = mongodb_uri
         self._mongodb_database = mongodb_database
         self._engine: Optional[ProcessEngine] = None
+        self._process_repo: Optional[ProcessRepository] = None
 
     async def start(self) -> "Runtime":
         """
@@ -98,6 +99,12 @@ class Runtime:
         if self._engine is None:
             raise RuntimeError("Runtime wurde noch nicht gestartet. Rufe zuerst await runtime.start() auf.")
         return self._engine
+
+    @property
+    def process_repository(self) -> ProcessRepository:
+        if self._process_repo is None:
+            raise RuntimeError("Runtime wurde noch nicht gestartet. Rufe zuerst await runtime.start() auf.")
+        return self._process_repo
 
     async def load_input_dataset(
         self,
