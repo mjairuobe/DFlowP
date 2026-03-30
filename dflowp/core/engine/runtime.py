@@ -83,6 +83,7 @@ class Runtime:
         )
         self._engine.start()
 
+        self._process_repo = process_repo
         self._data_repo = data_repo
         self._dataset_repo = dataset_repo
 
