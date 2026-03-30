@@ -27,7 +27,7 @@ def resolve_mongodb_uri() -> str:
     if explicit:
         return explicit
 
-    println(f"Using MONGO_HOST: '{os.environ.get("MONGO_HOST")}'")
+    print(f"Using MONGO_HOST: '{os.environ.get('MONGO_HOST')}'")
     host = (os.environ.get("MONGO_HOST") or "localhost").strip() or "localhost"
     port = (os.environ.get("MONGO_PORT") or "27017").strip() or "27017"
     user = (
