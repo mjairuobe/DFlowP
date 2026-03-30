@@ -56,6 +56,8 @@
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
                     string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY')
                 ]) {
+                    echo "MONGODB_USERNAME: ${MONGODB_USERNAME}"
+                    
                     sh '''
                         set -e
                         export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
