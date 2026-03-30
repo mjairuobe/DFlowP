@@ -9,6 +9,7 @@ from dflowp.infrastructure.database.data_item_repository import DataItemReposito
 from dflowp.infrastructure.database.dataset_repository import DatasetRepository
 from dflowp.infrastructure.database.event_repository import EventRepository
 from dflowp.infrastructure.database.mongo import (
+    resolve_mongodb_uri,
     close_mongodb_connection,
     connect_to_mongodb,
     get_database,
@@ -18,7 +19,7 @@ from dflowp.infrastructure.database.process_repository import ProcessRepository
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def cleanup_database():
     """Löscht alle Collections in der dflowp_test-Datenbank."""
-    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
+    uri = os.environ.get("MONGODB_URI", resolve_mongodb_uri())
     db = await connect_to_mongodb(uri=uri, database_name="dflowp_test")
     collections = await db.list_collection_names()
     for coll in collections:
@@ -33,7 +34,7 @@ def should_delete():
 @pytest.mark.asyncio
 async def test_mongodb_connection():
     """Testet ob die MongoDB-Verbindung hergestellt werden kann."""
-    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
+    uri = os.environ.get("MONGODB_URI", resolve_mongodb_uri())
     db = await connect_to_mongodb(uri=uri, database_name="dflowp_test")
     assert db is not None
     assert db.name == "dflowp_test"
@@ -47,7 +48,7 @@ async def test_mongodb_connection():
 @pytest.mark.asyncio
 async def test_mongodb_connection_reuses_singleton():
     """Testet ob mehrfache Verbindungen dieselbe Instanz nutzen."""
-    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
+    uri = os.environ.get("MONGODB_URI", resolve_mongodb_uri())
     db1 = await connect_to_mongodb(
         uri=uri,
         database_name="dflowp_test",
@@ -63,7 +64,7 @@ async def test_mongodb_connection_reuses_singleton():
 @pytest_asyncio.fixture
 async def db_session():
     """Setup und Teardown für Repo-Tests."""
-    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
+    uri = os.environ.get("MONGODB_URI", resolve_mongodb_uri())
     await connect_to_mongodb(
         uri=uri,
         database_name="dflowp_test",
