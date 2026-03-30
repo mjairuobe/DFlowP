@@ -104,15 +104,14 @@
 
         post {
             failure {
+                echo 'Pipeline fehlgeschlagen – Logs prüfen.'
+                echo 'Deleting containers, volumes and networks...'
                 sh '''
                     docker-compose down -v 2>/dev/null || true
                 '''
             }
             success {
                 echo 'Pipeline erfolgreich abgeschlossen.'
-            }
-            failure {
-                echo 'Pipeline fehlgeschlagen – Logs prüfen.'
             }
         }
     }
