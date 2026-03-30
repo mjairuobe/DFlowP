@@ -20,7 +20,7 @@
 
         environment {
         // Docker Hub Target
-        DOCKER_IMAGE_REPO = 'CHANGE_ME_DOCKERHUB_USER/dflowp'
+        DOCKER_IMAGE_REPO = 'crwalabase/dflowp'
 
         // Jenkins Credential IDs (bitte in Jenkins anpassen)
         DOCKERHUB_CREDS_ID = 'dockerhub-creds'
