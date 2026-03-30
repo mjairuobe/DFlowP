@@ -19,7 +19,7 @@ from dflowp.infrastructure.database.data_repository import DataRepository
 from dflowp.infrastructure.database.dataflow_state_repository import DataflowStateRepository
 from dflowp.infrastructure.database.dataset_repository import DatasetRepository
 from dflowp.infrastructure.database.event_repository import EventRepository
-from dflowp.infrastructure.database.mongo import connect_to_mongodb, close_mongodb_connection
+from dflowp.infrastructure.database.mongo import connect_to_mongodb, close_mongodb_connection, resolve_mongodb_uri
 from dflowp.infrastructure.database.process_repository import ProcessRepository
 from dflowp.infrastructure.plugins.plugin_loader import get_subprocess, load_builtin_plugins
 from dflowp.utils.logger import get_logger
@@ -35,7 +35,7 @@ class Runtime:
 
     def __init__(
         self,
-        mongodb_uri: str = "mongodb://localhost:27017",
+        mongodb_uri: str = resolve_mongodb_uri(),
         mongodb_database: str = "dflowp",
     ) -> None:
         self._mongodb_uri = mongodb_uri

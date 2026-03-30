@@ -27,7 +27,7 @@ def pytest_addoption(parser):
 @pytest_asyncio.fixture
 async def mongodb_connection():
     """Stellt eine MongoDB-Verbindung für Tests her."""
-    uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
+    uri = os.environ.get("MONGODB_URI", resolve_mongodb_uri())
     db_name = os.environ.get("MONGODB_TEST_DB", "dflowp_test")
     await connect_to_mongodb(uri=uri, database_name=db_name)
     yield get_database()

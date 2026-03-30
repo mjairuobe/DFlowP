@@ -15,7 +15,7 @@ import logging
 import sys
 
 from dflowp.infrastructure.database.migrations import migrate_all
-from dflowp.infrastructure.database.mongo import connect_to_mongodb, close_mongodb_connection
+from dflowp.infrastructure.database.mongo import connect_to_mongodb, close_mongodb_uri, resolve_mongodb_uri
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,7 +34,7 @@ async def main():
 
     # Verbinde mit MongoDB
     await connect_to_mongodb(
-        uri="mongodb://localhost:27017",
+        uri=resolve_mongodb_uri(),
         database_name="dflowp"
     )
 
