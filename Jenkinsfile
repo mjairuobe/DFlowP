@@ -59,8 +59,8 @@
                     sh '''
                         set -e
                         export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
-                        docker compose up -d --build
-                        docker compose ps
+                        docker-compose up -d --build
+                        docker-compose ps
                     '''
                 }
                 }
@@ -76,7 +76,7 @@
                         set -e
                         export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
                         # Tests laufen im App-Container und nutzen Compose-Mongo via Service-Name "mongo"
-                        docker compose run --rm \
+                        docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           app pytest tests/ -v --tb=short
                     '''
