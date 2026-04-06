@@ -85,10 +85,15 @@
 import sys
 v = sys.argv[1]
 try:
-    major, minor, patch = map(int, v.split("."))
-    print(f"{major}.{minor}.{patch + 1}")
+    parts = v.split(".")
+    if len(parts) == 3 and all(p.isdigit() for p in parts):
+        print(int(parts[2]) + 1)
+    elif v.isdigit():
+        print(int(v) + 1)
+    else:
+        print("1")
 except Exception:
-    print("latest")
+    print("1")
 PY
 )"
                     fi

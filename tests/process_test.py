@@ -43,6 +43,7 @@ from dflowp.infrastructure.plugins.plugin_loader import (
 from dflowp.plugins.embedding.embed_data import EmbedData
 from dflowp.plugins.fetch_feed_items.fetch_feed_items import FetchFeedItems
 from dflowp.utils.document_naming import build_human_readable_document_id
+from dflowp.core.processes.software_version import MAJOR_VERSION, MINOR_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -466,13 +467,13 @@ def test_process_configuration_to_dict_roundtrip():
 
 
 def test_process_configuration_apply_software_version_from_env(monkeypatch):
-    """Software-Version wird aus SOFTWARE_VERSION übernommen."""
+    """Software-Version wird als major.minor.build aus SOFTWARE_VERSION übernommen."""
     pc = _make_process_config(process_id="test_softver")
-    monkeypatch.setenv("SOFTWARE_VERSION", "2.1.3")
+    monkeypatch.setenv("SOFTWARE_VERSION", "12")
 
     pc.apply_software_version_from_env()
 
-    assert pc.software_version == "2.1.3"
+    assert pc.software_version == f"{MAJOR_VERSION}.{MINOR_VERSION}.12"
 
 
 def test_process_state_to_dict():
