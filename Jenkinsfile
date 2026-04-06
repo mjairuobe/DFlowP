@@ -68,7 +68,7 @@
                     set -e
                     # Versucht die letzte Version aus Docker Hub-Tagliste abzuleiten.
                     # Fallback ist "latest", falls keine semver-artigen Tags gefunden werden.
-                    PREV_VERSION="$(curl -fsSL "https://registry.hub.docker.com/v2/repositories/crawlabase/dflowp/tags?page_size=100" \
+                    PREV_VERSION="$(curl -fsSL "https://hub.docker.com/repository/docker/crawlabase/dflowp/tags?page_size=100" \
                       | python3 -c 'import json, re, sys; data=json.load(sys.stdin); tags=[r.get("name","") for r in data.get("results",[])]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
                     export PREV_VERSION
 
