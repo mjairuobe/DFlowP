@@ -25,6 +25,7 @@
         // Jenkins Credential IDs (bitte in Jenkins anpassen)
         DOCKERHUB_CREDS_ID = 'dockerhub-creds'
         OPENAI_KEY_ID      = 'openai-api-key'
+        DFLOWP_API_KEY_ID  = 'DFlowP_API_Key'
         GITHUB_PAT_ID      = 'github-pat'
         MONGODB_CREDS_ID   = 'mongodb-creds'
 
@@ -54,7 +55,8 @@
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
-                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY')
+                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: "${DFLOWP_API_KEY_ID}", variable: 'DFlowP_API_Key')
                 ]) {
                     echo "MONGODB_USERNAME: ${MONGODB_USERNAME}"
 
@@ -74,7 +76,8 @@
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
-                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY')
+                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: "${DFLOWP_API_KEY_ID}", variable: 'DFlowP_API_Key')
                 ]) {
                     sh '''
                         set -e

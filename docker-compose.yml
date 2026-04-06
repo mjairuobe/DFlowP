@@ -33,9 +33,12 @@ services:
       MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
       MONGODB_TEST_DB: ${MONGODB_TEST_DB:-dflowp_test}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DFlowP_API_Key: ${DFlowP_API_Key:-}
       PROCESS_CONFIG: ${PROCESS_CONFIG:-examples/processconfig_example.json}
       INPUT_DATA: ${INPUT_DATA:-examples/inputdata_set.json}
-    command: ["python", "main.py"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    command: ["uvicorn", "dflowp.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
 
 volumes:
   mongo_data:
