@@ -4,9 +4,10 @@ from contextlib import asynccontextmanager
 import os
 from typing import AsyncGenerator
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 
 from dflowp.api.auth import require_api_key
+from dflowp.api.schemas import ProcessCloneRequest
 from dflowp.infrastructure.database.data_item_repository import DataItemRepository
 from dflowp.infrastructure.database.mongo import (
     close_mongodb_connection,
@@ -125,3 +126,43 @@ async def get_subprocess(
             detail=f"Subprozess '{subprocess_id}' wurde nicht gefunden.",
         )
     return subprocess_doc
+
+
+@app.post(
+    "/api/v1/processes/{process_id}/clone",
+    dependencies=[Depends(require_api_key)],
+    status_code=status.HTTP_201_CREATED,
+)
+async def copy_process(
+    process_id: str,
+    request: ProcessCloneRequest = Body(...),
+    process_repo: ProcessRepository = Depends(get_process_repository),
+) -> dict:
+    """
+    Kopiert einen Prozess unter neuer ID und markiert Teile des DAGs zur Re-Execution.
+    """
+    source_process = await process_repo.find_by_id(process_id)
+    if not source_process:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Prozess '{process_id}' wurde nicht gefunden.",
+        )
+
+    target_process_id = request.new_process_id or f"{process_id}_copy"
+    if not request.new_process_id:
+        counter = 1
+        while await process_repo.find_by_id(target_process_id):
+            counter += 1
+            target_process_id = f"{process_id}_copy_{counter}"
+
+    copied = await process_repo.copy_process_with_reexecution(
+        source_process_id=process_id,
+        target_process_id=target_process_id,
+        parent_subprocess_ids=request.parent_subprocess_ids,
+    )
+    if not copied:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Prozess konnte nicht kopiert werden.",
+        )
+    return copied

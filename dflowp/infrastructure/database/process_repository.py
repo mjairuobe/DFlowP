@@ -145,6 +145,63 @@ class ProcessRepository:
         result = await self._collection.aggregate(pipeline).to_list(length=1)
         return result[0] if result else None
 
+    async def copy_process_with_reexecution(
+        self,
+        *,
+        source_process_id: str,
+        target_process_id: str,
+        parent_subprocess_ids: list[str],
+    ) -> Optional[dict[str, Any]]:
+        """
+        Kopiert einen Prozess und entfernt IO-States für Re-Execution-Teilgraphen.
+
+        - Alle unveränderten Knoten behalten ihre IO-Transformation-States.
+        - Für alle angegebenen Parent-Knoten und deren Nachfolger werden
+          io_transformation_states geleert und event_status auf "Not Started" gesetzt.
+        """
+        source = await self.find_by_id(source_process_id)
+        if not source:
+            return None
+
+        copied = dict(source)
+        copied.pop("_id", None)
+        copied["process_id"] = target_process_id
+        copied["status"] = "pending"
+
+        cfg = copied.get("configuration", {})
+        if isinstance(cfg, dict):
+            cfg["process_id"] = target_process_id
+            copied["configuration"] = cfg
+
+        nodes = copied.get("dataflow_state", {}).get("nodes", []) or []
+        edges = copied.get("dataflow_state", {}).get("edges", []) or []
+        successors: dict[str, list[str]] = {}
+        for edge in edges:
+            from_node = edge.get("from")
+            to_node = edge.get("to")
+            if not from_node or not to_node:
+                continue
+            successors.setdefault(from_node, []).append(to_node)
+
+        to_reset: set[str] = set()
+        stack = list(parent_subprocess_ids)
+        while stack:
+            node_id = stack.pop()
+            if node_id in to_reset:
+                continue
+            to_reset.add(node_id)
+            stack.extend(successors.get(node_id, []))
+
+        for node in nodes:
+            node_id = node.get("subprocess_id")
+            if node_id in to_reset:
+                node["io_transformation_states"] = []
+                node["event_status"] = "Not Started"
+
+        enrich_document_timestamps(copied)
+        await self._collection.insert_one(copied)
+        return copied
+
     async def update(
         self,
         process_id: str,

@@ -20,3 +20,15 @@ def enrich_with_timestamps(document: dict[str, Any]) -> dict[str, Any]:
     doc.setdefault("timestamp_unix_ms", int(now.timestamp() * 1000))
     doc.setdefault("timestamp_human", now.strftime("%d-%m-%y"))
     return doc
+
+
+def add_timestamps(document: dict[str, Any]) -> dict[str, Any]:
+    """Kompatibilitätsalias für bestehende Aufrufer."""
+    return enrich_with_timestamps(document)
+
+
+def enrich_document_timestamps(document: dict[str, Any]) -> dict[str, Any]:
+    """Kompatibilitätsalias für bestehende Aufrufer."""
+    enriched = enrich_with_timestamps(document)
+    document.update(enriched)
+    return document

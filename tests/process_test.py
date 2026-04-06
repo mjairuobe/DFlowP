@@ -273,6 +273,28 @@ def test_dataflow_successors_and_predecessors():
     assert df.get_successors("C") == []
 
 
+def test_dataflow_get_descendants_including_self():
+    """Descendants enthalten Knoten selbst und alle transitiven Nachfolger."""
+    config = {
+        "nodes": [
+            {"subprocess_id": "A", "subprocess_type": "T"},
+            {"subprocess_id": "B", "subprocess_type": "T"},
+            {"subprocess_id": "C", "subprocess_type": "T"},
+            {"subprocess_id": "D", "subprocess_type": "T"},
+        ],
+        "edges": [
+            {"from": "A", "to": "B"},
+            {"from": "B", "to": "C"},
+            {"from": "A", "to": "D"},
+        ],
+    }
+    df = parse_dataflow(config)
+
+    assert df.get_descendants_including_self("A") == {"A", "B", "C", "D"}
+    assert df.get_descendants_including_self("B") == {"B", "C"}
+    assert df.get_descendants_including_self("C") == {"C"}
+
+
 def test_dataflow_get_node():
     """get_node gibt den richtigen Knoten zurück."""
     df = parse_dataflow(_SIMPLE_DATAFLOW_CONFIG)

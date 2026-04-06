@@ -49,3 +49,27 @@ class DataFlow(BaseModel):
         all_nodes = {n.subprocess_id for n in self.nodes}
         has_predecessor = {e.to_node for e in self.edges}
         return list(all_nodes - has_predecessor)
+
+    def get_descendants(self, subprocess_id: str) -> list[str]:
+        """Gibt alle transitiven Nachfolger einer subprocess_id zurück."""
+        descendants: set[str] = set()
+        queue = list(self.get_successors(subprocess_id))
+        while queue:
+            node_id = queue.pop(0)
+            if node_id in descendants:
+                continue
+            descendants.add(node_id)
+            queue.extend(self.get_successors(node_id))
+        return list(descendants)
+
+    def get_descendants_including_self(self, subprocess_id: str) -> set[str]:
+        """Liefert den Knoten selbst und alle transitiven Nachfolger."""
+        visited: set[str] = set()
+        stack = [subprocess_id]
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            stack.extend(self.get_successors(current))
+        return visited

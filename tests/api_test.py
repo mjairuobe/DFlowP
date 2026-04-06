@@ -72,6 +72,32 @@ class _FakeProcessRepository:
             }
         return None
 
+    async def copy_process_with_reexecution(
+        self,
+        *,
+        source_process_id: str,
+        target_process_id: str,
+        parent_subprocess_ids: list[str],
+    ) -> dict | None:
+        if source_process_id != "proc_001":
+            return None
+        return {
+            "process_id": target_process_id,
+            "status": "pending",
+            "configuration": {"process_id": target_process_id},
+            "dataflow_state": {
+                "nodes": [
+                    {
+                        "subprocess_id": "sub_001",
+                        "event_status": "Not Started",
+                        "io_transformation_states": [],
+                    }
+                ],
+                "edges": [],
+            },
+            "reexecution_roots": parent_subprocess_ids,
+        }
+
 
 def _create_client() -> TestClient:
     os.environ["DFLOWP_SKIP_DB_INIT"] = "1"
@@ -163,4 +189,34 @@ def test_get_subprocess_detail() -> None:
 def test_get_subprocess_detail_not_found() -> None:
     client = _create_client()
     response = client.get("/api/v1/subprocesses/not_found", headers=_auth_headers())
+    assert response.status_code == 404
+
+
+def test_clone_process_with_reexecution() -> None:
+    client = _create_client()
+    response = client.post(
+        "/api/v1/processes/proc_001/clone",
+        headers=_auth_headers(),
+        json={
+            "parent_subprocess_ids": ["sub_001"],
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["process_id"].startswith("proc_001_copy")
+    assert payload["status"] == "pending"
+    node = payload["dataflow_state"]["nodes"][0]
+    assert node["event_status"] == "Not Started"
+    assert node["io_transformation_states"] == []
+
+
+def test_clone_process_source_not_found() -> None:
+    client = _create_client()
+    response = client.post(
+        "/api/v1/processes/proc_404/clone",
+        headers=_auth_headers(),
+        json={
+            "parent_subprocess_ids": ["sub_001"],
+        },
+    )
     assert response.status_code == 404
