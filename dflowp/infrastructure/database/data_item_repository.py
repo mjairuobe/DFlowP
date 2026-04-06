@@ -66,6 +66,31 @@ class DataItemRepository:
         doc = await self._collection.find_one({"id": dataset_id, "doc_type": "dataset"})
         return self._with_string_id(doc)
 
+    async def list_dataitems(
+        self,
+        *,
+        page: int,
+        page_size: int,
+    ) -> dict[str, Any]:
+        """Liefert paginierte DataItem-Dokumente (data + dataset)."""
+        total_items = await self._collection.count_documents({})
+        skip = (page - 1) * page_size
+        docs = (
+            await self._collection.find({})
+            .sort("id", 1)
+            .skip(skip)
+            .limit(page_size)
+            .to_list(length=page_size)
+        )
+        items = [self._with_string_id(doc) for doc in docs]
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": ceil(total_items / page_size) if total_items else 0,
+        }
+
     async def list_datasets(
         self,
         *,
@@ -77,6 +102,25 @@ class DataItemRepository:
         total_items = await self._collection.count_documents(query)
         skip = (page - 1) * page_size
         docs = await self._collection.find(query).sort("id", 1).skip(skip).limit(page_size).to_list(length=page_size)
+        items = [self._with_string_id(doc) for doc in docs]
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": ceil(total_items / page_size) if total_items else 0,
+        }
+
+    async def list_data_items(
+        self,
+        *,
+        page: int,
+        page_size: int,
+    ) -> dict[str, Any]:
+        """Liefert paginierte DataItem-Dokumente (data + dataset)."""
+        total_items = await self._collection.count_documents({})
+        skip = (page - 1) * page_size
+        docs = await self._collection.find({}).sort("id", 1).skip(skip).limit(page_size).to_list(length=page_size)
         items = [self._with_string_id(doc) for doc in docs]
         return {
             "items": items,

@@ -39,6 +39,44 @@ class EventRepository:
         result = await self._collection.insert_one(enriched_event)
         return str(result.inserted_id)
 
+    async def list_events(
+        self,
+        *,
+        page: int,
+        page_size: int,
+        process_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Liefert paginierte Event-Dokumente."""
+        query: dict[str, Any] = {}
+        if process_id:
+            query["process_id"] = process_id
+
+        total_items = await self._collection.count_documents(query)
+        skip = (page - 1) * page_size
+        docs = await self._collection.find(query).skip(skip).limit(page_size).to_list(length=page_size)
+        items: list[dict[str, Any]] = []
+        for doc in docs:
+            doc["_id"] = str(doc["_id"])
+            items.append(doc)
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": (total_items + page_size - 1) // page_size if total_items else 0,
+        }
+
+    async def find_by_id(self, event_id: str) -> Optional[dict[str, Any]]:
+        """Liest ein Event anhand der MongoDB-_id."""
+        from bson import ObjectId
+
+        if not ObjectId.is_valid(event_id):
+            return None
+        doc = await self._collection.find_one({"_id": ObjectId(event_id)})
+        if doc:
+            doc["_id"] = str(doc["_id"])
+        return doc
+
     async def find_by_process_id(
         self,
         process_id: str,

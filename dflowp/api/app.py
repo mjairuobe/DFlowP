@@ -9,6 +9,7 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 from dflowp.api.auth import require_api_key
 from dflowp.api.schemas import ProcessCloneRequest
 from dflowp.infrastructure.database.data_item_repository import DataItemRepository
+from dflowp.infrastructure.database.event_repository import EventRepository
 from dflowp.infrastructure.database.mongo import (
     close_mongodb_connection,
     connect_to_mongodb,
@@ -56,6 +57,10 @@ def get_data_item_repository() -> DataItemRepository:
     return DataItemRepository()
 
 
+def get_event_repository() -> EventRepository:
+    return EventRepository()
+
+
 @app.get("/api/v1/datasets", dependencies=[Depends(require_api_key)])
 async def list_datasets(
     pagination: tuple[int, int] = Depends(_pagination_params),
@@ -77,6 +82,54 @@ async def get_dataset(
             detail=f"Dataset '{dataset_id}' wurde nicht gefunden.",
         )
     return dataset
+
+
+@app.get("/api/v1/dataitems", dependencies=[Depends(require_api_key)])
+async def list_dataitems(
+    pagination: tuple[int, int] = Depends(_pagination_params),
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict:
+    page, page_size = pagination
+    return await data_item_repo.list_dataitems(page=page, page_size=page_size)
+
+
+@app.get("/api/v1/dataitems/{item_id}", dependencies=[Depends(require_api_key)])
+async def get_dataitem(
+    item_id: str,
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict:
+    item = await data_item_repo.find_by_id(item_id)
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"DataItem '{item_id}' wurde nicht gefunden.",
+        )
+    return item
+
+
+@app.get("/api/v1/data-items", dependencies=[Depends(require_api_key)])
+async def list_data_items_alias(
+    pagination: tuple[int, int] = Depends(_pagination_params),
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict:
+    """Alias-Endpunkt für dataitems mit Bindestrich."""
+    page, page_size = pagination
+    return await data_item_repo.list_data_items(page=page, page_size=page_size)
+
+
+@app.get("/api/v1/data-items/{item_id}", dependencies=[Depends(require_api_key)])
+async def get_data_item_alias(
+    item_id: str,
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict:
+    """Alias-Endpunkt für DataItem-Detail mit Bindestrich."""
+    item = await data_item_repo.find_data_item_by_id(item_id)
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"DataItem '{item_id}' wurde nicht gefunden.",
+        )
+    return item
 
 
 @app.get("/api/v1/processes", dependencies=[Depends(require_api_key)])
@@ -126,6 +179,29 @@ async def get_subprocess(
             detail=f"Subprozess '{subprocess_id}' wurde nicht gefunden.",
         )
     return subprocess_doc
+
+
+@app.get("/api/v1/events", dependencies=[Depends(require_api_key)])
+async def list_events(
+    pagination: tuple[int, int] = Depends(_pagination_params),
+    event_repo: EventRepository = Depends(get_event_repository),
+) -> dict:
+    page, page_size = pagination
+    return await event_repo.list_events(page=page, page_size=page_size)
+
+
+@app.get("/api/v1/events/{event_id}", dependencies=[Depends(require_api_key)])
+async def get_event(
+    event_id: str,
+    event_repo: EventRepository = Depends(get_event_repository),
+) -> dict:
+    event = await event_repo.find_by_id(event_id)
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Event '{event_id}' wurde nicht gefunden.",
+        )
+    return event
 
 
 @app.post(

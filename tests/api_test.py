@@ -25,6 +25,25 @@ class _FakeDataItemRepository:
             return {"id": "ds_001", "doc_type": "dataset", "data_ids": ["d1", "d2"]}
         return None
 
+    async def list_data_items(self, *, page: int, page_size: int) -> dict:
+        return {
+            "items": [
+                {"id": "data_001", "doc_type": "data", "content": {"k": "v"}},
+                {"id": "ds_001", "doc_type": "dataset", "data_ids": ["d1", "d2"]},
+            ][:page_size],
+            "page": page,
+            "page_size": page_size,
+            "total_items": 2,
+            "total_pages": 1,
+        }
+
+    async def find_data_item_by_id(self, item_id: str) -> dict | None:
+        if item_id == "data_001":
+            return {"id": "data_001", "doc_type": "data", "content": {"k": "v"}}
+        if item_id == "ds_001":
+            return {"id": "ds_001", "doc_type": "dataset", "data_ids": ["d1", "d2"]}
+        return None
+
 
 class _FakeProcessRepository:
     async def list_processes(self, *, page: int, page_size: int) -> dict:
@@ -99,12 +118,45 @@ class _FakeProcessRepository:
         }
 
 
+class _FakeEventRepository:
+    async def list_events(self, *, page: int, page_size: int, process_id: str | None = None) -> dict:
+        return {
+            "items": [
+                {
+                    "_id": "evt_001",
+                    "process_id": "proc_001",
+                    "subprocess_id": "sub_001",
+                    "event_type": "EVENT_COMPLETED",
+                    "event_time": "2026-04-06T10:00:00Z",
+                }
+            ][:page_size],
+            "page": page,
+            "page_size": page_size,
+            "total_items": 1,
+            "total_pages": 1,
+        }
+
+    async def find_by_id(self, event_id: str) -> dict | None:
+        if event_id == "evt_001":
+            return {
+                "_id": "evt_001",
+                "process_id": "proc_001",
+                "subprocess_id": "sub_001",
+                "event_type": "EVENT_COMPLETED",
+                "event_time": "2026-04-06T10:00:00Z",
+            }
+        return None
+
+
 def _create_client() -> TestClient:
+    from dflowp.api.app import get_event_repository
+
     os.environ["DFLOWP_SKIP_DB_INIT"] = "1"
     os.environ["DFlowP_API_Key"] = "test-key"
 
     app.dependency_overrides[get_data_item_repository] = _FakeDataItemRepository
     app.dependency_overrides[get_process_repository] = _FakeProcessRepository
+    app.dependency_overrides[get_event_repository] = _FakeEventRepository
 
     return TestClient(app, base_url="http://127.0.0.1:8000")
 
@@ -189,6 +241,54 @@ def test_get_subprocess_detail() -> None:
 def test_get_subprocess_detail_not_found() -> None:
     client = _create_client()
     response = client.get("/api/v1/subprocesses/not_found", headers=_auth_headers())
+    assert response.status_code == 404
+
+
+def test_list_data_items_with_pagination() -> None:
+    client = _create_client()
+    response = client.get("/api/v1/data-items?page=1&page_size=1", headers=_auth_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 1
+    assert payload["total_items"] == 2
+    assert len(payload["items"]) == 1
+
+
+def test_get_data_item_detail() -> None:
+    client = _create_client()
+    response = client.get("/api/v1/data-items/data_001", headers=_auth_headers())
+    assert response.status_code == 200
+    assert response.json()["id"] == "data_001"
+
+
+def test_get_data_item_detail_not_found() -> None:
+    client = _create_client()
+    response = client.get("/api/v1/data-items/not_found", headers=_auth_headers())
+    assert response.status_code == 404
+
+
+def test_list_events_with_pagination() -> None:
+    client = _create_client()
+    response = client.get("/api/v1/events?page=1&page_size=1", headers=_auth_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 1
+    assert payload["total_items"] == 1
+    assert len(payload["items"]) == 1
+
+
+def test_get_event_detail() -> None:
+    client = _create_client()
+    response = client.get("/api/v1/events/evt_001", headers=_auth_headers())
+    assert response.status_code == 200
+    assert response.json()["_id"] == "evt_001"
+
+
+def test_get_event_detail_not_found() -> None:
+    client = _create_client()
+    response = client.get("/api/v1/events/not_found", headers=_auth_headers())
     assert response.status_code == 404
 
 
