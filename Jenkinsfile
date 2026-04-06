@@ -35,6 +35,17 @@
         }
 
         stages {
+            stage('Cleanup old containers') {
+                steps {
+                    sh '''
+                        set -e
+                        # Stoppt und entfernt nur Container, Volumes bleiben erhalten.
+                        docker container stop $(docker container ls -aq) 2>/dev/null || true
+                        docker container rm $(docker container ls -aq) 2>/dev/null || true
+                    '''
+                }
+            }
+
             stage('Checkout') {
                 steps {
                     checkout scm
@@ -85,7 +96,7 @@
                         # Tests laufen im App-Container und nutzen Compose-Mongo via Service-Name "mongo"
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
-                          app pytest tests/ -v --tb=short
+                          api pytest tests/ -v --tb=short
                     '''
                 }
                 }

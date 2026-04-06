@@ -28,3 +28,6 @@ htmlcov/
 # Environment
 .env
 .env.local
+
+# Persistent local Docker data
+volumes/
