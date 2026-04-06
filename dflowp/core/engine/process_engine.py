@@ -91,11 +91,45 @@ class ProcessEngine:
                     "input_dataset_id": configuration.input_dataset_id,
                 },
             )
+        dataflow_doc = await self._dataflow_state_repo.get_dataflow_state(process_id)
+        if not dataflow_doc:
+            logger.error("[ProcessEngine] Prozess %s enthält keinen dataflow_state", process_id)
+            await self._process_repo.update(process_id, {"status": "failed"})
+            return False
 
-        root_ids = configuration.dataflow.get_root_nodes()
-        for subprocess_id in root_ids:
-            logger.progress("%s Root-Subprozess wird gestartet", self._source(process_id, subprocess_id))
+        nodes = dataflow_doc.get("nodes", []) or []
+        status_by_id = {
+            node.get("subprocess_id"): node.get("event_status")
+            for node in nodes
+            if node.get("subprocess_id")
+        }
+
+        def is_ready_to_start(subprocess_id: str) -> bool:
+            status = status_by_id.get(subprocess_id)
+            if status not in (None, "Not Started"):
+                return False
+
+            predecessors = configuration.dataflow.get_predecessors(subprocess_id)
+            return all(status_by_id.get(pred) == EVENT_COMPLETED for pred in predecessors)
+
+        runnable_subprocesses = [
+            node.subprocess_id
+            for node in configuration.dataflow.nodes
+            if is_ready_to_start(node.subprocess_id)
+        ]
+
+        for subprocess_id in runnable_subprocesses:
+            logger.progress(
+                "%s Ready-Subprozess wird gestartet",
+                self._source(process_id, subprocess_id),
+            )
             await self._start_subprocess(process_id, subprocess_id, configuration)
+
+        if not runnable_subprocesses:
+            logger.info(
+                "[ProcessEngine] Keine startbaren Subprozesse für Prozess %s gefunden",
+                process_id,
+            )
         return True
 
     async def start_process(

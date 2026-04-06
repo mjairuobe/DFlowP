@@ -800,6 +800,135 @@ async def test_process_engine_handles_missing_subprocess_type(
     ), "Kein EVENT_FAILED für unbekannten Subprocess-Typ"
 
 
+@pytest.mark.asyncio
+async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reexecution(
+    isolated_event_service,
+):
+    """
+    Bei partiellem Re-Execution-Clone (z. B. nur EmbedData1 auf Not Started)
+    darf activate_pending_process nicht pauschal den Root neu starten.
+    """
+    config = ProcessConfiguration.from_dict(
+        {
+            "process_id": "proc_partial_reexec",
+            "software_version": "1.0.0",
+            "input_dataset_id": "ds_chain",
+            "dataflow": {
+                "nodes": [
+                    {"subprocess_id": "FetchFeedItems1", "subprocess_type": "TypeA"},
+                    {"subprocess_id": "EmbedData1", "subprocess_type": "TypeB"},
+                ],
+                "edges": [{"from": "FetchFeedItems1", "to": "EmbedData1"}],
+            },
+            "subprocess_config": {},
+        }
+    )
+
+    process_repo = AsyncMock()
+    process_repo.update = AsyncMock(return_value=True)
+    process_repo.find_by_id = AsyncMock(
+        return_value={
+            "process_id": "proc_partial_reexec",
+            "configuration": config.to_dict(),
+            "dataflow_state": {
+                "nodes": [
+                    {
+                        "subprocess_id": "FetchFeedItems1",
+                        "subprocess_type": "TypeA",
+                        "event_status": "EVENT_COMPLETED",
+                        "io_transformation_states": [
+                            {
+                                "input_data_id": "d1",
+                                "output_data_ids": ["out_fetch_1"],
+                                "status": "Finished",
+                                "quality": 1.0,
+                            }
+                        ],
+                    },
+                    {
+                        "subprocess_id": "EmbedData1",
+                        "subprocess_type": "TypeB",
+                        "event_status": "Not Started",
+                        "io_transformation_states": [],
+                    },
+                ],
+                "edges": [{"from": "FetchFeedItems1", "to": "EmbedData1"}],
+            },
+        }
+    )
+
+    dataflow_state_repo = AsyncMock()
+    dataflow_state_repo.update_node_state = AsyncMock(return_value=True)
+    dataflow_state_repo.get_dataflow_state = AsyncMock(
+        return_value={
+            "nodes": [
+                {
+                    "subprocess_id": "FetchFeedItems1",
+                    "subprocess_type": "TypeA",
+                    "event_status": "EVENT_COMPLETED",
+                    "io_transformation_states": [
+                        {
+                            "input_data_id": "d1",
+                            "output_data_ids": ["out_fetch_1"],
+                            "status": "Finished",
+                            "quality": 1.0,
+                        }
+                    ],
+                },
+                {
+                    "subprocess_id": "EmbedData1",
+                    "subprocess_type": "TypeB",
+                    "event_status": "Not Started",
+                    "io_transformation_states": [],
+                },
+            ],
+            "edges": [{"from": "FetchFeedItems1", "to": "EmbedData1"}],
+        }
+    )
+
+    async def mock_find_data(data_id: str):
+        return {"data_id": data_id, "content": {"text": data_id}, "type": "output"}
+
+    data_repo = AsyncMock()
+    data_repo.find_by_id = mock_find_data
+    data_repo.insert = AsyncMock()
+
+    dataset_repo = AsyncMock()
+    dataset_repo.find_by_id = AsyncMock(return_value={"dataset_id": "ds_chain", "data_ids": ["d1"]})
+
+    started: list[str] = []
+
+    async def mock_run(context, **kwargs):
+        started.append(context.subprocess_id)
+        return [
+            IOTransformationState(
+                input_data_id=context.input_data[0].data_id if context.input_data else "none",
+                output_data_ids=[f"out_{context.subprocess_id}"],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+
+    dummy = AsyncMock()
+    dummy.run = mock_run
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy,
+    )
+    engine.start()
+
+    ok = await engine.activate_pending_process("proc_partial_reexec")
+    assert ok is True
+    await asyncio.sleep(0.2)
+
+    assert "EmbedData1" in started
+    assert "FetchFeedItems1" not in started
+
+
 # ===========================================================================
 # Abschnitt 6: FetchFeedItems Plugin Tests
 # ===========================================================================
