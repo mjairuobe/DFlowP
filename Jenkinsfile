@@ -64,12 +64,23 @@
 
         stage('Resolve Software Version') {
                 steps {
+                withCredentials([
+                    usernamePassword(credentialsId: "${DOCKERHUB_CREDS_ID}", usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')
+                ]) {
                 sh '''
                     set -e
-                    # Versucht die letzte Version aus Docker Hub-Tagliste abzuleiten.
-                    # Fallback ist "latest", falls keine semver-artigen Tags gefunden werden.
-                    PREV_VERSION="$(curl -fsSL "https://hub.docker.com/repository/docker/crawlabase/dflowp/tags?page_size=100" \
-                      | python3 -c 'import json, re, sys; data=json.load(sys.stdin); tags=[r.get("name","") for r in data.get("results",[])]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
+
+                    if ! command -v docker-browse >/dev/null 2>&1; then
+                        echo "docker-browse nicht gefunden - installiere via npm..."
+                        npm install -g docker-browse
+                    fi
+
+                    echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin index.docker.io
+
+                    # Nutzt docker-browse (authentifiziertes Docker-Setup) zum Tag-Auslesen.
+                    TAGS_RAW="$(docker-browse tags crawlabase/dflowp || true)"
+                    PREV_VERSION="$(printf "%s\n" "${TAGS_RAW}" \
+                      | python3 -c 'import re,sys; tags=[line.strip() for line in sys.stdin if line.strip()]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
                     export PREV_VERSION
 
                     if [ "$PREV_VERSION" = "latest" ]; then
@@ -90,6 +101,7 @@ PY
                     echo "Resolved SOFTWARE_VERSION=${SOFTWARE_VERSION}"
                     printf "SOFTWARE_VERSION=%s\n" "${SOFTWARE_VERSION}" > .jenkins_runtime.env
                 '''
+                }
                 }
             }
 
