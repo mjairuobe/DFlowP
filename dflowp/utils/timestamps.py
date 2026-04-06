@@ -8,20 +8,20 @@ BERLIN_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 
 def _format_timestamp_human_from_ms(timestamp_ms: int) -> str:
-    """Formatiert Timestamp als ddmmyyyyHHMMUTC+n in Europe/Berlin."""
+    """Formatiert Timestamp als dd_mm_yyyy_HH:MM_UTC+n in Europe/Berlin."""
     dt_berlin = datetime.fromtimestamp(
         timestamp_ms / 1000,
         tz=timezone.utc,
     ).astimezone(BERLIN_TIMEZONE)
     utc_offset_hours = int((dt_berlin.utcoffset() or 0).total_seconds() // 3600)
-    return f"{dt_berlin.strftime('%d%m%Y%H%M')}UTC{utc_offset_hours:+d}"
+    return f"{dt_berlin.strftime('%d_%m_%Y_%H:%M')}_UTC{utc_offset_hours:+d}"
 
 
 def enrich_with_timestamps(document: dict[str, Any]) -> dict[str, Any]:
     """
     Ergänzt ein Dokument um:
     - timestamp_ms (Unixzeit in Millisekunden)
-    - timestamp_human (Format ddmmyyyyHHMMUTC+n, Europe/Berlin)
+    - timestamp_human (Format dd_mm_yyyy_HH:MM_UTC+n, Europe/Berlin)
 
     Bestehende Werte werden nicht überschrieben.
     """
