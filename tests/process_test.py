@@ -18,6 +18,7 @@ from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pymongo.errors import DuplicateKeyError
 
 from dflowp.core.dataflow.dataflow import DataFlow, DataflowEdge, DataflowNodeDef
 from dflowp.core.dataflow.dataflow_node import DataflowNodeState
@@ -831,6 +832,11 @@ async def test_fetch_feed_items_success_two_articles():
     assert results[0].status == TransformationStatus.FINISHED
     assert len(results[0].output_data_ids) == 2
     assert data_repo.insert.call_count == 2
+    inserted_1 = data_repo.insert.call_args_list[0][0][0]["data_id"]
+    inserted_2 = data_repo.insert.call_args_list[1][0][0]["data_id"]
+    assert inserted_1 != inserted_2
+    assert "proc_fetch_test" in inserted_1
+    assert "FetchFeedItems1" in inserted_1
 
 
 @pytest.mark.asyncio
@@ -1068,6 +1074,74 @@ async def test_embed_data_success():
     assert "embedding" in inserted["content"]
     assert inserted["content"]["embedding"] == MOCK_EMBEDDING
     assert inserted["content"]["source_data_id"] == "article_0"
+    assert "proc_embed_test" in inserted["data_id"]
+    assert "EmbedData1" in inserted["data_id"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_feed_items_duplicate_key_retries_with_new_id():
+    """Bei DuplicateKey wird mit neuer ID erneut versucht."""
+    data_repo = AsyncMock()
+    attempts = {"count": 0}
+
+    async def mock_insert(_doc):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise DuplicateKeyError("duplicate key")
+        return "ok"
+
+    data_repo.insert = mock_insert
+
+    context = _make_feed_context(
+        [{"title": "Retry Feed", "xmlUrl": "https://example.com/feed"}]
+    )
+    plugin = FetchFeedItems()
+
+    with patch(
+        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+    ) as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.text = SAMPLE_RSS_XML
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert attempts["count"] >= 2
+    assert results[0].status == TransformationStatus.FINISHED
+
+
+@pytest.mark.asyncio
+async def test_embed_data_duplicate_key_retries_with_new_id():
+    """Bei DuplicateKey wird im Embedder mit neuer ID erneut versucht."""
+    data_repo = AsyncMock()
+    attempts = {"count": 0}
+
+    async def mock_insert(_doc):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise DuplicateKeyError("duplicate key")
+        return "ok"
+
+    data_repo.insert = mock_insert
+
+    context = _make_article_context(
+        [{"title": "Retry Article", "summary": "Summary"}],
+        config={"openai_api_key": "test-key"},
+    )
+    plugin = EmbedData()
+
+    with patch("openai.AsyncOpenAI") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = _mock_openai_create()
+        mock_openai_cls.return_value = mock_client
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert attempts["count"] >= 2
+    assert results[0].status == TransformationStatus.FINISHED
 
 
 @pytest.mark.asyncio
