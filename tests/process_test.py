@@ -442,6 +442,16 @@ def test_process_configuration_to_dict_roundtrip():
     assert len(pc2.dataflow.edges) == 1
 
 
+def test_process_configuration_apply_software_version_from_env(monkeypatch):
+    """Software-Version wird aus SOFTWARE_VERSION übernommen."""
+    pc = _make_process_config(process_id="test_softver")
+    monkeypatch.setenv("SOFTWARE_VERSION", "2.1.3")
+
+    pc.apply_software_version_from_env()
+
+    assert pc.software_version == "2.1.3"
+
+
 def test_process_state_to_dict():
     """ProcessState.to_dict enthält alle Felder."""
     ps = ProcessState(process_id="proc_xyz", status="running")

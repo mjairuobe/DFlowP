@@ -62,6 +62,37 @@
                 }
             }
 
+        stage('Resolve Software Version') {
+                steps {
+                sh '''
+                    set -e
+                    # Versucht die letzte Version aus Docker Hub-Tagliste abzuleiten.
+                    # Fallback ist "latest", falls keine semver-artigen Tags gefunden werden.
+                    PREV_VERSION="$(curl -fsSL "https://registry.hub.docker.com/v2/repositories/crawlabase/dflowp/tags?page_size=100" \
+                      | python3 -c 'import json, re, sys; data=json.load(sys.stdin); tags=[r.get("name","") for r in data.get("results",[])]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
+                    export PREV_VERSION
+
+                    if [ "$PREV_VERSION" = "latest" ]; then
+                      SOFTWARE_VERSION="${BUILD_NUMBER}"
+                    else
+                      SOFTWARE_VERSION="$(python3 - "$PREV_VERSION" <<'PY'
+import sys
+v = sys.argv[1]
+try:
+    major, minor, patch = map(int, v.split("."))
+    print(f"{major}.{minor}.{patch + 1}")
+except Exception:
+    print("latest")
+PY
+)"
+                    fi
+
+                    echo "Resolved SOFTWARE_VERSION=${SOFTWARE_VERSION}"
+                    printf "SOFTWARE_VERSION=%s\n" "${SOFTWARE_VERSION}" > .jenkins_runtime.env
+                '''
+                }
+            }
+
         stage('Compose up (MongoDB + App)') {
                 steps {
                 withCredentials([
@@ -74,6 +105,8 @@
                     sh '''
                         set -e
                         export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
+                        . ./.jenkins_runtime.env
+                        export SOFTWARE_VERSION
                         # Kein --build: Image wurde in der Stage „Build Docker Image“ gebaut.
                         # Neuere docker-compose Versionen verlangen sonst Buildx >= 0.17.0 (Bake).
                         docker-compose up -d
@@ -93,6 +126,8 @@
                     sh '''
                         set -e
                         export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
+                        . ./.jenkins_runtime.env
+                        export SOFTWARE_VERSION
                         # Tests laufen im App-Container und nutzen Compose-Mongo via Service-Name "mongo"
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \

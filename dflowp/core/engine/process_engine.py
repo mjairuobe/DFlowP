@@ -75,6 +75,7 @@ class ProcessEngine:
 
         configuration = ProcessConfiguration.from_dict(cfg_dict)
         configuration.apply_default_openai_key_from_env()
+        configuration.apply_software_version_from_env()
 
         if not doc.get("dataflow_state"):
             dataflow_state = DataflowState.from_dataflow(configuration.dataflow)
@@ -100,6 +101,7 @@ class ProcessEngine:
         Erstellt Process-Dokument, DataflowState und startet Root-Subprozesse.
         """
         configuration.apply_default_openai_key_from_env()
+        configuration.apply_software_version_from_env()
         process_id = configuration.process_id
 
         # Process und initialen DataflowState speichern

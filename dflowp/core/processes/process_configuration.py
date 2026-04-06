@@ -57,3 +57,15 @@ class ProcessConfiguration(BaseModel):
             node = self.dataflow.get_node(subprocess_id)
             if node and node.subprocess_type == "EmbedData":
                 sub_cfg.setdefault("openai_api_key", key)
+
+    def apply_software_version_from_env(self) -> None:
+        """
+        Überschreibt die Software-Version aus der Umgebung.
+
+        Priorität:
+        1) SOFTWARE_VERSION
+        2) DFLOWP_SOFTWARE_VERSION
+        """
+        version = os.environ.get("SOFTWARE_VERSION") or os.environ.get("DFLOWP_SOFTWARE_VERSION")
+        if version:
+            self.software_version = version
