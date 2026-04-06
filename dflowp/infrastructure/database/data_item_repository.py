@@ -27,6 +27,8 @@ class DataItemRepository:
         await self._collection.create_index("id", unique=True)
         await self._collection.create_index("doc_type")
         await self._collection.create_index([("doc_type", 1), ("id", 1)])
+        await self._collection.create_index([("doc_type", 1), ("timestamp_ms", -1)])
+        await self._collection.create_index([("timestamp_ms", -1)])
 
     def _validate(self, doc: dict[str, Any]) -> None:
         if "doc_type" not in doc:
@@ -61,6 +63,10 @@ class DataItemRepository:
         doc = await self._collection.find_one({"id": item_id})
         return self._with_string_id(doc)
 
+    async def find_data_item_by_id(self, item_id: str) -> Optional[dict[str, Any]]:
+        """Alias für find_by_id (API-Kompatibilität)."""
+        return await self.find_by_id(item_id)
+
     async def find_dataset_by_id(self, dataset_id: str) -> Optional[dict[str, Any]]:
         """Findet ein Dataset-Dokument anhand der ID."""
         doc = await self._collection.find_one({"id": dataset_id, "doc_type": "dataset"})
@@ -77,7 +83,7 @@ class DataItemRepository:
         skip = (page - 1) * page_size
         docs = (
             await self._collection.find({})
-            .sort("id", 1)
+            .sort([("timestamp_ms", -1), ("id", 1)])
             .skip(skip)
             .limit(page_size)
             .to_list(length=page_size)
@@ -101,7 +107,13 @@ class DataItemRepository:
         query = {"doc_type": "dataset"}
         total_items = await self._collection.count_documents(query)
         skip = (page - 1) * page_size
-        docs = await self._collection.find(query).sort("id", 1).skip(skip).limit(page_size).to_list(length=page_size)
+        docs = (
+            await self._collection.find(query)
+            .sort([("timestamp_ms", -1), ("id", 1)])
+            .skip(skip)
+            .limit(page_size)
+            .to_list(length=page_size)
+        )
         items = [self._with_string_id(doc) for doc in docs]
         return {
             "items": items,
@@ -120,7 +132,13 @@ class DataItemRepository:
         """Liefert paginierte DataItem-Dokumente (data + dataset)."""
         total_items = await self._collection.count_documents({})
         skip = (page - 1) * page_size
-        docs = await self._collection.find({}).sort("id", 1).skip(skip).limit(page_size).to_list(length=page_size)
+        docs = (
+            await self._collection.find({})
+            .sort([("timestamp_ms", -1), ("id", 1)])
+            .skip(skip)
+            .limit(page_size)
+            .to_list(length=page_size)
+        )
         items = [self._with_string_id(doc) for doc in docs]
         return {
             "items": items,

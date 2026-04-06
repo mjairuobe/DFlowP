@@ -21,6 +21,8 @@ class EventRepository:
         await self._collection.create_index("process_id")
         await self._collection.create_index("subprocess_id")
         await self._collection.create_index("event_time")
+        await self._collection.create_index("timestamp_ms")
+        await self._collection.create_index([("process_id", 1), ("timestamp_ms", -1)])
         await self._collection.create_index([("process_id", 1), ("event_time", 1)])
         await self._collection.create_index([("event_type", 1), ("event_time", 1)])
 
@@ -53,7 +55,13 @@ class EventRepository:
 
         total_items = await self._collection.count_documents(query)
         skip = (page - 1) * page_size
-        docs = await self._collection.find(query).skip(skip).limit(page_size).to_list(length=page_size)
+        docs = (
+            await self._collection.find(query)
+            .sort("timestamp_ms", -1)
+            .skip(skip)
+            .limit(page_size)
+            .to_list(length=page_size)
+        )
         items: list[dict[str, Any]] = []
         for doc in docs:
             doc["_id"] = str(doc["_id"])

@@ -22,6 +22,8 @@ class ProcessRepository:
         """Erstellt Indizes für effiziente Abfragen."""
         await self._collection.create_index("process_id", unique=True)
         await self._collection.create_index("status")
+        await self._collection.create_index([("timestamp_ms", -1), ("process_id", 1)])
+        await self._collection.create_index([("timestamp_ms", -1), ("dataflow_state.nodes.subprocess_id", 1)])
 
     @staticmethod
     def _with_string_id(doc: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -49,7 +51,13 @@ class ProcessRepository:
         """Liefert paginierte Prozesse."""
         total_items = await self._collection.count_documents({})
         skip = (page - 1) * page_size
-        docs = await self._collection.find({}).sort("process_id", 1).skip(skip).limit(page_size).to_list(length=page_size)
+        docs = (
+            await self._collection.find({})
+            .sort([("timestamp_ms", -1), ("process_id", 1)])
+            .skip(skip)
+            .limit(page_size)
+            .to_list(length=page_size)
+        )
         items = [self._with_string_id(doc) for doc in docs]
         return {
             "items": items,
@@ -79,7 +87,7 @@ class ProcessRepository:
                     "io_transformation_states": "$dataflow_state.nodes.io_transformation_states",
                 }
             },
-            {"$sort": {"process_id": 1, "subprocess_id": 1}},
+            {"$sort": {"timestamp_ms": -1, "process_id": 1, "subprocess_id": 1}},
         ]
 
         count_pipeline = pipeline + [{"$count": "count"}]
