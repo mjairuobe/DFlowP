@@ -70,15 +70,10 @@
                 sh '''
                     set -e
 
-                    if ! command -v docker-browse >/dev/null 2>&1; then
-                        echo "docker-browse nicht gefunden - installiere via npm..."
-                        npm install -g docker-browse
-                    fi
-
                     echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin index.docker.io
 
-                    # Nutzt docker-browse (authentifiziertes Docker-Setup) zum Tag-Auslesen.
-                    TAGS_RAW="$(docker-browse tags crawlabase/dflowp || true)"
+                    # Nutzt docker-browse (authentifiziertes Docker-Setup) via npx zum Tag-Auslesen.
+                    TAGS_RAW="$(npx docker-browse tags crawlabase/dflowp || true)"
                     PREV_VERSION="$(printf "%s\n" "${TAGS_RAW}" \
                       | python3 -c 'import re,sys; tags=[line.strip() for line in sys.stdin if line.strip()]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
                     export PREV_VERSION
