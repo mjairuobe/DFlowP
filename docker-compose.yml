@@ -7,7 +7,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USERNAME:-dflowp}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-dflowp_password}
     volumes:
-      - mongo_data:/data/db
+      - ./volumes/mongo:/data/db
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --eval \"db.adminCommand({ ping: 1 }).ok\" | grep -q 1"]
       interval: 5s
@@ -16,7 +16,7 @@ services:
     ports:
       - "127.0.0.1:27017:27017"
 
-  app:
+  api:
     build:
       context: .
     image: ${DOCKER_IMAGE:-dflowp:local}
@@ -33,10 +33,32 @@ services:
       MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
       MONGODB_TEST_DB: ${MONGODB_TEST_DB:-dflowp_test}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DFlowP_API_Key: ${DFlowP_API_Key:-}
+      SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
       PROCESS_CONFIG: ${PROCESS_CONFIG:-examples/processconfig_example.json}
       INPUT_DATA: ${INPUT_DATA:-examples/inputdata_set.json}
-    command: ["python", "main.py"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    command: ["uvicorn", "dflowp.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
 
-volumes:
-  mongo_data:
+  worker:
+    build:
+      context: .
+    image: ${DOCKER_IMAGE:-dflowp:local}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_HOST: mongo
+      MONGO_PORT: "27017"
+      MONGODB_USERNAME: ${MONGODB_USERNAME:-dflowp}
+      MONGODB_PASSWORD: ${MONGODB_PASSWORD:-dflowp_password}
+      MONGODB_AUTH_SOURCE: admin
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
+      PROCESS_CONFIG: ${PROCESS_CONFIG:-examples/processconfig_example.json}
+      INPUT_DATA: ${INPUT_DATA:-examples/inputdata_set.json}
+      DFLOWP_POLL_INTERVAL: ${DFLOWP_POLL_INTERVAL:-5}
+    command: ["python", "-m", "dflowp.worker.engine_worker"]
 

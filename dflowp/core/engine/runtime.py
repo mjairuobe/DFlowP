@@ -22,6 +22,7 @@ from dflowp.infrastructure.database.event_repository import EventRepository
 from dflowp.infrastructure.database.mongo import connect_to_mongodb, close_mongodb_connection, resolve_mongodb_uri
 from dflowp.infrastructure.database.process_repository import ProcessRepository
 from dflowp.infrastructure.plugins.plugin_loader import get_subprocess, load_builtin_plugins
+from dflowp.utils.document_naming import build_human_readable_document_id
 from dflowp.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -144,8 +145,10 @@ class Runtime:
 
         data_ids = []
         for i, item in enumerate(items):
-            label = item.get("title", str(i)).replace(" ", "_")[:30]
-            data_id = f"data_input_{dataset_id}_{i:04d}_{label}"
+            data_id = build_human_readable_document_id(
+                domain=dataset_id,
+                document_type="data",
+            )
             await self._data_repo.insert({
                 "data_id": data_id,
                 "content": item,

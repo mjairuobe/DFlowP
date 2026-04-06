@@ -18,6 +18,7 @@ from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pymongo.errors import DuplicateKeyError
 
 from dflowp.core.dataflow.dataflow import DataFlow, DataflowEdge, DataflowNodeDef
 from dflowp.core.dataflow.dataflow_node import DataflowNodeState
@@ -42,6 +43,8 @@ from dflowp.infrastructure.plugins.plugin_loader import (
 )
 from dflowp.plugins.embedding.embed_data import EmbedData
 from dflowp.plugins.fetch_feed_items.fetch_feed_items import FetchFeedItems
+from dflowp.utils.document_naming import build_human_readable_document_id
+from dflowp.core.processes.software_version import MAJOR_VERSION, MINOR_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +275,28 @@ def test_dataflow_successors_and_predecessors():
     assert df.get_successors("C") == []
 
 
+def test_dataflow_get_descendants_including_self():
+    """Descendants enthalten Knoten selbst und alle transitiven Nachfolger."""
+    config = {
+        "nodes": [
+            {"subprocess_id": "A", "subprocess_type": "T"},
+            {"subprocess_id": "B", "subprocess_type": "T"},
+            {"subprocess_id": "C", "subprocess_type": "T"},
+            {"subprocess_id": "D", "subprocess_type": "T"},
+        ],
+        "edges": [
+            {"from": "A", "to": "B"},
+            {"from": "B", "to": "C"},
+            {"from": "A", "to": "D"},
+        ],
+    }
+    df = parse_dataflow(config)
+
+    assert df.get_descendants_including_self("A") == {"A", "B", "C", "D"}
+    assert df.get_descendants_including_self("B") == {"B", "C"}
+    assert df.get_descendants_including_self("C") == {"C"}
+
+
 def test_dataflow_get_node():
     """get_node gibt den richtigen Knoten zurück."""
     df = parse_dataflow(_SIMPLE_DATAFLOW_CONFIG)
@@ -442,6 +467,16 @@ def test_process_configuration_to_dict_roundtrip():
     assert len(pc2.dataflow.edges) == 1
 
 
+def test_process_configuration_apply_software_version_from_env(monkeypatch):
+    """Software-Version wird als major.minor.build aus SOFTWARE_VERSION übernommen."""
+    pc = _make_process_config(process_id="test_softver")
+    monkeypatch.setenv("SOFTWARE_VERSION", "12")
+
+    pc.apply_software_version_from_env()
+
+    assert pc.software_version == f"{MAJOR_VERSION}.{MINOR_VERSION}.12"
+
+
 def test_process_state_to_dict():
     """ProcessState.to_dict enthält alle Felder."""
     ps = ProcessState(process_id="proc_xyz", status="running")
@@ -450,6 +485,15 @@ def test_process_state_to_dict():
     assert d["process_id"] == "proc_xyz"
     assert d["status"] == "running"
     assert "dataflow_state" in d
+
+
+def test_document_name_generator_format():
+    """Generierte Dokumentnamen folgen dem human-readable Pattern."""
+    doc_id = build_human_readable_document_id(domain="news", document_type="ds")
+    parts = doc_id.split("_")
+    assert len(parts) == 5
+    assert parts[-2] == "news"
+    assert parts[-1] == "ds"
 
 
 # ===========================================================================
@@ -756,6 +800,135 @@ async def test_process_engine_handles_missing_subprocess_type(
     ), "Kein EVENT_FAILED für unbekannten Subprocess-Typ"
 
 
+@pytest.mark.asyncio
+async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reexecution(
+    isolated_event_service,
+):
+    """
+    Bei partiellem Re-Execution-Clone (z. B. nur EmbedData1 auf Not Started)
+    darf activate_pending_process nicht pauschal den Root neu starten.
+    """
+    config = ProcessConfiguration.from_dict(
+        {
+            "process_id": "proc_partial_reexec",
+            "software_version": "1.0.0",
+            "input_dataset_id": "ds_chain",
+            "dataflow": {
+                "nodes": [
+                    {"subprocess_id": "FetchFeedItems1", "subprocess_type": "TypeA"},
+                    {"subprocess_id": "EmbedData1", "subprocess_type": "TypeB"},
+                ],
+                "edges": [{"from": "FetchFeedItems1", "to": "EmbedData1"}],
+            },
+            "subprocess_config": {},
+        }
+    )
+
+    process_repo = AsyncMock()
+    process_repo.update = AsyncMock(return_value=True)
+    process_repo.find_by_id = AsyncMock(
+        return_value={
+            "process_id": "proc_partial_reexec",
+            "configuration": config.to_dict(),
+            "dataflow_state": {
+                "nodes": [
+                    {
+                        "subprocess_id": "FetchFeedItems1",
+                        "subprocess_type": "TypeA",
+                        "event_status": "EVENT_COMPLETED",
+                        "io_transformation_states": [
+                            {
+                                "input_data_id": "d1",
+                                "output_data_ids": ["out_fetch_1"],
+                                "status": "Finished",
+                                "quality": 1.0,
+                            }
+                        ],
+                    },
+                    {
+                        "subprocess_id": "EmbedData1",
+                        "subprocess_type": "TypeB",
+                        "event_status": "Not Started",
+                        "io_transformation_states": [],
+                    },
+                ],
+                "edges": [{"from": "FetchFeedItems1", "to": "EmbedData1"}],
+            },
+        }
+    )
+
+    dataflow_state_repo = AsyncMock()
+    dataflow_state_repo.update_node_state = AsyncMock(return_value=True)
+    dataflow_state_repo.get_dataflow_state = AsyncMock(
+        return_value={
+            "nodes": [
+                {
+                    "subprocess_id": "FetchFeedItems1",
+                    "subprocess_type": "TypeA",
+                    "event_status": "EVENT_COMPLETED",
+                    "io_transformation_states": [
+                        {
+                            "input_data_id": "d1",
+                            "output_data_ids": ["out_fetch_1"],
+                            "status": "Finished",
+                            "quality": 1.0,
+                        }
+                    ],
+                },
+                {
+                    "subprocess_id": "EmbedData1",
+                    "subprocess_type": "TypeB",
+                    "event_status": "Not Started",
+                    "io_transformation_states": [],
+                },
+            ],
+            "edges": [{"from": "FetchFeedItems1", "to": "EmbedData1"}],
+        }
+    )
+
+    async def mock_find_data(data_id: str):
+        return {"data_id": data_id, "content": {"text": data_id}, "type": "output"}
+
+    data_repo = AsyncMock()
+    data_repo.find_by_id = mock_find_data
+    data_repo.insert = AsyncMock()
+
+    dataset_repo = AsyncMock()
+    dataset_repo.find_by_id = AsyncMock(return_value={"dataset_id": "ds_chain", "data_ids": ["d1"]})
+
+    started: list[str] = []
+
+    async def mock_run(context, **kwargs):
+        started.append(context.subprocess_id)
+        return [
+            IOTransformationState(
+                input_data_id=context.input_data[0].data_id if context.input_data else "none",
+                output_data_ids=[f"out_{context.subprocess_id}"],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+
+    dummy = AsyncMock()
+    dummy.run = mock_run
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy,
+    )
+    engine.start()
+
+    ok = await engine.activate_pending_process("proc_partial_reexec")
+    assert ok is True
+    await asyncio.sleep(0.2)
+
+    assert "EmbedData1" in started
+    assert "FetchFeedItems1" not in started
+
+
 # ===========================================================================
 # Abschnitt 6: FetchFeedItems Plugin Tests
 # ===========================================================================
@@ -788,6 +961,11 @@ async def test_fetch_feed_items_success_two_articles():
     assert results[0].status == TransformationStatus.FINISHED
     assert len(results[0].output_data_ids) == 2
     assert data_repo.insert.call_count == 2
+    inserted_1 = data_repo.insert.call_args_list[0][0][0]["data_id"]
+    inserted_2 = data_repo.insert.call_args_list[1][0][0]["data_id"]
+    assert inserted_1 != inserted_2
+    assert "proc_fetch_test" in inserted_1
+    assert "FetchFeedItems1" in inserted_1
 
 
 @pytest.mark.asyncio
@@ -1025,6 +1203,74 @@ async def test_embed_data_success():
     assert "embedding" in inserted["content"]
     assert inserted["content"]["embedding"] == MOCK_EMBEDDING
     assert inserted["content"]["source_data_id"] == "article_0"
+    assert "proc_embed_test" in inserted["data_id"]
+    assert "EmbedData1" in inserted["data_id"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_feed_items_duplicate_key_retries_with_new_id():
+    """Bei DuplicateKey wird mit neuer ID erneut versucht."""
+    data_repo = AsyncMock()
+    attempts = {"count": 0}
+
+    async def mock_insert(_doc):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise DuplicateKeyError("duplicate key")
+        return "ok"
+
+    data_repo.insert = mock_insert
+
+    context = _make_feed_context(
+        [{"title": "Retry Feed", "xmlUrl": "https://example.com/feed"}]
+    )
+    plugin = FetchFeedItems()
+
+    with patch(
+        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+    ) as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.text = SAMPLE_RSS_XML
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert attempts["count"] >= 2
+    assert results[0].status == TransformationStatus.FINISHED
+
+
+@pytest.mark.asyncio
+async def test_embed_data_duplicate_key_retries_with_new_id():
+    """Bei DuplicateKey wird im Embedder mit neuer ID erneut versucht."""
+    data_repo = AsyncMock()
+    attempts = {"count": 0}
+
+    async def mock_insert(_doc):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise DuplicateKeyError("duplicate key")
+        return "ok"
+
+    data_repo.insert = mock_insert
+
+    context = _make_article_context(
+        [{"title": "Retry Article", "summary": "Summary"}],
+        config={"openai_api_key": "test-key"},
+    )
+    plugin = EmbedData()
+
+    with patch("openai.AsyncOpenAI") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = _mock_openai_create()
+        mock_openai_cls.return_value = mock_client
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert attempts["count"] >= 2
+    assert results[0].status == TransformationStatus.FINISHED
 
 
 @pytest.mark.asyncio

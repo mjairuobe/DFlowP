@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Optional
 
 from dflowp.infrastructure.database.mongo import get_database
+from dflowp.utils.timestamps import enrich_with_timestamps
 
 
 class EventRepository:
@@ -20,6 +21,8 @@ class EventRepository:
         await self._collection.create_index("process_id")
         await self._collection.create_index("subprocess_id")
         await self._collection.create_index("event_time")
+        await self._collection.create_index("timestamp_ms")
+        await self._collection.create_index([("process_id", 1), ("timestamp_ms", -1)])
         await self._collection.create_index([("process_id", 1), ("event_time", 1)])
         await self._collection.create_index([("event_type", 1), ("event_time", 1)])
 
@@ -33,9 +36,54 @@ class EventRepository:
         Returns:
             Die _id des eingefügten Dokuments als String
         """
-        event["event_time"] = event.get("event_time") or datetime.now(timezone.utc)
-        result = await self._collection.insert_one(event)
+        enriched_event = enrich_with_timestamps(event)
+        enriched_event["event_time"] = enriched_event.get("event_time") or datetime.now(timezone.utc)
+        result = await self._collection.insert_one(enriched_event)
         return str(result.inserted_id)
+
+    async def list_events(
+        self,
+        *,
+        page: int,
+        page_size: int,
+        process_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Liefert paginierte Event-Dokumente."""
+        query: dict[str, Any] = {}
+        if process_id:
+            query["process_id"] = process_id
+
+        total_items = await self._collection.count_documents(query)
+        skip = (page - 1) * page_size
+        docs = (
+            await self._collection.find(query)
+            .sort("timestamp_ms", -1)
+            .skip(skip)
+            .limit(page_size)
+            .to_list(length=page_size)
+        )
+        items: list[dict[str, Any]] = []
+        for doc in docs:
+            doc["_id"] = str(doc["_id"])
+            items.append(doc)
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": (total_items + page_size - 1) // page_size if total_items else 0,
+        }
+
+    async def find_by_id(self, event_id: str) -> Optional[dict[str, Any]]:
+        """Liest ein Event anhand der MongoDB-_id."""
+        from bson import ObjectId
+
+        if not ObjectId.is_valid(event_id):
+            return None
+        doc = await self._collection.find_one({"_id": ObjectId(event_id)})
+        if doc:
+            doc["_id"] = str(doc["_id"])
+        return doc
 
     async def find_by_process_id(
         self,

@@ -1,6 +1,7 @@
 """Tests für die MongoDB-Verbindung und alle Repositories."""
 
 import os
+import re
 import pytest
 import pytest_asyncio
 
@@ -15,6 +16,9 @@ from dflowp.infrastructure.database.mongo import (
     get_database,
 )
 from dflowp.infrastructure.database.process_repository import ProcessRepository
+
+
+TIMESTAMP_HUMAN_PATTERN = re.compile(r"^\d{2}_\d{2}_\d{4}_\d{2}:\d{2}_UTC[+-]\d+$")
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def cleanup_database():
@@ -91,6 +95,9 @@ async def test_process_repository_crud(db_session):
     assert found is not None
     assert found["process_id"] == "proc_test_001"
     assert found["status"] == "running"
+    assert isinstance(found["timestamp_ms"], int)
+    assert isinstance(found["timestamp_human"], str)
+    assert TIMESTAMP_HUMAN_PATTERN.match(found["timestamp_human"])
 
     updated = await repo.update("proc_test_001", {"status": "completed"})
     assert updated is True
@@ -182,6 +189,9 @@ async def test_data_item_repository_crud(db_session):
     assert found_data["id"] == "data_item_test_001"
     assert found_data["doc_type"] == "data"
     assert found_data["content"]["value"] == 100
+    assert isinstance(found_data["timestamp_ms"], int)
+    assert isinstance(found_data["timestamp_human"], str)
+    assert TIMESTAMP_HUMAN_PATTERN.match(found_data["timestamp_human"])
 
     # Test: Dataset-Dokument einfügen
     dataset_doc = {
@@ -197,6 +207,9 @@ async def test_data_item_repository_crud(db_session):
     assert found_dataset["id"] == "dataset_item_test_001"
     assert found_dataset["doc_type"] == "dataset"
     assert len(found_dataset["data_ids"]) == 3
+    assert isinstance(found_dataset["timestamp_ms"], int)
+    assert isinstance(found_dataset["timestamp_human"], str)
+    assert TIMESTAMP_HUMAN_PATTERN.match(found_dataset["timestamp_human"])
 
     # Cleanup
     if should_delete():
@@ -265,6 +278,9 @@ async def test_event_repository_crud(db_session):
     latest = await repo.get_latest_event("proc_evt_001", "sub_evt_001")
     assert latest is not None
     assert latest["event_type"] == "EVENT_STARTED"
+    assert isinstance(latest["timestamp_ms"], int)
+    assert isinstance(latest["timestamp_human"], str)
+    assert TIMESTAMP_HUMAN_PATTERN.match(latest["timestamp_human"])
 
     if should_delete():
         await db_session[EventRepository.COLLECTION_NAME].delete_many(

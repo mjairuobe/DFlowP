@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from dflowp.core.dataflow.dataflow import DataFlow
 from dflowp.core.dataflow.dataflow_parser import parse_dataflow
+from dflowp.core.processes.software_version import build_semantic_software_version
 
 
 class ProcessConfiguration(BaseModel):
@@ -16,7 +17,7 @@ class ProcessConfiguration(BaseModel):
     """
 
     process_id: str
-    software_version: str = "1.0.0"
+    software_version: str = "0.1.0"
     input_dataset_id: str = Field(..., description="ID des Input-Datasets")
     dataflow: DataFlow = Field(...)
     subprocess_config: dict[str, dict[str, Any]] = Field(default_factory=dict)
@@ -29,7 +30,7 @@ class ProcessConfiguration(BaseModel):
             dataflow = parse_dataflow(dataflow)
         return cls(
             process_id=d["process_id"],
-            software_version=d.get("software_version", "1.0.0"),
+            software_version=d.get("software_version", "0.1.0"),
             input_dataset_id=d["input_dataset_id"],
             dataflow=dataflow,
             subprocess_config=d.get("subprocess_config", {}),
@@ -57,3 +58,15 @@ class ProcessConfiguration(BaseModel):
             node = self.dataflow.get_node(subprocess_id)
             if node and node.subprocess_type == "EmbedData":
                 sub_cfg.setdefault("openai_api_key", key)
+
+    def apply_software_version_from_env(self) -> None:
+        """
+        Überschreibt die Software-Version aus der Umgebung.
+
+        Priorität:
+        1) SOFTWARE_VERSION
+        2) DFLOWP_SOFTWARE_VERSION
+        """
+        raw_version = os.environ.get("SOFTWARE_VERSION") or os.environ.get("DFLOWP_SOFTWARE_VERSION")
+        if raw_version:
+            self.software_version = build_semantic_software_version(raw_version)
