@@ -199,7 +199,8 @@ class ProcessRepository:
                 node["event_status"] = "Not Started"
 
         enrich_document_timestamps(copied)
-        await self._collection.insert_one(copied)
+        result = await self._collection.insert_one(copied)
+        copied["_id"] = str(result.inserted_id)
         return copied
 
     async def update(
