@@ -4,6 +4,7 @@ from math import ceil
 from typing import Any, Optional
 
 from dflowp.infrastructure.database.mongo import get_database
+from dflowp.utils.timestamps import add_timestamps
 
 
 class DataItemRepository:
@@ -51,7 +52,8 @@ class DataItemRepository:
     async def insert(self, doc: dict[str, Any]) -> str:
         """Speichert ein Dokument (Data oder Dataset) und gibt die MongoDB-_id zurück."""
         self._validate(doc)
-        result = await self._collection.insert_one(doc)
+        doc_with_timestamps = add_timestamps(doc)
+        result = await self._collection.insert_one(doc_with_timestamps)
         return str(result.inserted_id)
 
     async def find_by_id(self, item_id: str) -> Optional[dict[str, Any]]:

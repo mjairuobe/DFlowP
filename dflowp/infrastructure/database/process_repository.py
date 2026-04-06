@@ -6,6 +6,7 @@ from typing import Any, Optional
 from pymongo import ReturnDocument
 
 from dflowp.infrastructure.database.mongo import get_database
+from dflowp.utils.timestamps import enrich_document_timestamps
 
 
 class ProcessRepository:
@@ -30,6 +31,7 @@ class ProcessRepository:
 
     async def insert(self, process: dict[str, Any]) -> str:
         """Speichert einen Prozess. Gibt die _id zurück."""
+        enrich_document_timestamps(process)
         result = await self._collection.insert_one(process)
         return str(result.inserted_id)
 

@@ -91,6 +91,8 @@ async def test_process_repository_crud(db_session):
     assert found is not None
     assert found["process_id"] == "proc_test_001"
     assert found["status"] == "running"
+    assert isinstance(found["timestamp_ms"], int)
+    assert isinstance(found["timestamp_dd_mm_yy"], str)
 
     updated = await repo.update("proc_test_001", {"status": "completed"})
     assert updated is True
@@ -182,6 +184,8 @@ async def test_data_item_repository_crud(db_session):
     assert found_data["id"] == "data_item_test_001"
     assert found_data["doc_type"] == "data"
     assert found_data["content"]["value"] == 100
+    assert isinstance(found_data["timestamp_ms"], int)
+    assert isinstance(found_data["timestamp_dd_mm_yy"], str)
 
     # Test: Dataset-Dokument einfügen
     dataset_doc = {
@@ -197,6 +201,8 @@ async def test_data_item_repository_crud(db_session):
     assert found_dataset["id"] == "dataset_item_test_001"
     assert found_dataset["doc_type"] == "dataset"
     assert len(found_dataset["data_ids"]) == 3
+    assert isinstance(found_dataset["timestamp_ms"], int)
+    assert isinstance(found_dataset["timestamp_dd_mm_yy"], str)
 
     # Cleanup
     if should_delete():
@@ -265,6 +271,8 @@ async def test_event_repository_crud(db_session):
     latest = await repo.get_latest_event("proc_evt_001", "sub_evt_001")
     assert latest is not None
     assert latest["event_type"] == "EVENT_STARTED"
+    assert isinstance(latest["timestamp_ms"], int)
+    assert isinstance(latest["timestamp_dd_mm_yy"], str)
 
     if should_delete():
         await db_session[EventRepository.COLLECTION_NAME].delete_many(

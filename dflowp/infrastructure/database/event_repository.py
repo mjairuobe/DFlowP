@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Optional
 
 from dflowp.infrastructure.database.mongo import get_database
+from dflowp.utils.timestamps import enrich_with_timestamps
 
 
 class EventRepository:
@@ -33,8 +34,9 @@ class EventRepository:
         Returns:
             Die _id des eingefügten Dokuments als String
         """
-        event["event_time"] = event.get("event_time") or datetime.now(timezone.utc)
-        result = await self._collection.insert_one(event)
+        enriched_event = enrich_with_timestamps(event)
+        enriched_event["event_time"] = enriched_event.get("event_time") or datetime.now(timezone.utc)
+        result = await self._collection.insert_one(enriched_event)
         return str(result.inserted_id)
 
     async def find_by_process_id(
