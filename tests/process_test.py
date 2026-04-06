@@ -42,6 +42,7 @@ from dflowp.infrastructure.plugins.plugin_loader import (
 )
 from dflowp.plugins.embedding.embed_data import EmbedData
 from dflowp.plugins.fetch_feed_items.fetch_feed_items import FetchFeedItems
+from dflowp.utils.document_naming import build_human_readable_document_id
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +461,15 @@ def test_process_state_to_dict():
     assert d["process_id"] == "proc_xyz"
     assert d["status"] == "running"
     assert "dataflow_state" in d
+
+
+def test_document_name_generator_format():
+    """Generierte Dokumentnamen folgen dem human-readable Pattern."""
+    doc_id = build_human_readable_document_id(domain="news", document_type="ds")
+    parts = doc_id.split("_")
+    assert len(parts) == 5
+    assert parts[-2] == "news"
+    assert parts[-1] == "ds"
 
 
 # ===========================================================================

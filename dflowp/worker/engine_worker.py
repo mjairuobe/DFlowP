@@ -11,6 +11,7 @@ from pathlib import Path
 from dflowp.core.engine.runtime import Runtime
 from dflowp.core.processes.process_configuration import ProcessConfiguration
 from dflowp.infrastructure.database.mongo import resolve_mongodb_uri
+from dflowp.utils.document_naming import build_human_readable_document_id
 from dflowp.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -56,7 +57,10 @@ async def run_worker() -> None:
         with open(CONFIG_PATH, encoding="utf-8") as file:
             config_dict = json.load(file)
 
-        config_dict["process_id"] = f"{config_dict['process_id']}_{time.time()}"
+        config_dict["process_id"] = build_human_readable_document_id(
+            domain="pipeline",
+            document_type="proc",
+        )
         config = ProcessConfiguration.from_dict(config_dict)
         config.apply_default_openai_key_from_env()
 

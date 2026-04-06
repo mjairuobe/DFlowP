@@ -1,6 +1,5 @@
 """EmbedData - Erstellt Embeddings mit OpenAI für konfigurierbare Artikelattribute."""
 
-import uuid
 from typing import Any, Optional
 
 from dflowp.core.subprocesses.subprocess import BaseSubprocess
@@ -9,6 +8,7 @@ from dflowp.core.subprocesses.io_transformation_state import (
     IOTransformationState,
     TransformationStatus,
 )
+from dflowp.utils.document_naming import build_human_readable_document_id
 
 
 class EmbedData(BaseSubprocess):
@@ -66,7 +66,10 @@ class EmbedData(BaseSubprocess):
 
             try:
                 embedding = await self._get_embedding(text, model, openai_api_key)
-                data_id = f"data_embed_{context.process_id}_{uuid.uuid4().hex[:12]}"
+                data_id = build_human_readable_document_id(
+                    domain="embedding",
+                    document_type="data",
+                )
 
                 # Speichere nur das Template (die "Bauanleitung")
                 # Der ursprüngliche Text kann jederzeit aus source_data_id + text_template rekonstruiert werden:

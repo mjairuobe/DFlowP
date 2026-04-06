@@ -13,6 +13,7 @@ from dflowp.core.subprocesses.io_transformation_state import (
     TransformationStatus,
 )
 from dflowp.core.datastructures.data import Data
+from dflowp.utils.document_naming import build_human_readable_document_id
 
 
 class FetchFeedItems(BaseSubprocess):
@@ -58,7 +59,10 @@ class FetchFeedItems(BaseSubprocess):
                 for entry in parsed.entries:
                     # TODO: Set quality of article based on entry attributes
                     article = self._entry_to_article(entry, source)
-                    data_id = f"data_article_{context.process_id}_{uuid.uuid4().hex[:12]}"
+                    data_id = build_human_readable_document_id(
+                        domain="news",
+                        document_type="data",
+                    )
                     await data_repository.insert({
                         "data_id": data_id,
                         "content": article,
