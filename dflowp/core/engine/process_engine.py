@@ -39,11 +39,15 @@ class ProcessEngine:
         self._running: dict[str, asyncio.Task] = {}
         self._active_subprocess_count: int = 0
 
+    @staticmethod
+    def _source(process_id: str, subprocess_id: str) -> str:
+        return f"[{process_id}][{subprocess_id}]"
+
     def start(self) -> None:
         """Registriert Event-Handler."""
         self._event_service.subscribe(EVENT_COMPLETED, self._on_subprocess_completed)
         self._event_service.subscribe(EVENT_FAILED, self._on_subprocess_failed)
-        logger.info("ProcessEngine gestartet, Events subscrit")
+        logger.info("[ProcessEngine] gestartet, Events subscribed")
 
     async def wait_until_idle(
         self,
@@ -64,12 +68,12 @@ class ProcessEngine:
         """
         doc = await self._process_repo.find_by_id(process_id)
         if not doc:
-            logger.error("Prozess %s nicht in der Datenbank", process_id)
+            logger.error("[ProcessEngine] Prozess %s nicht in der Datenbank", process_id)
             return False
 
         cfg_dict = doc.get("configuration")
         if not cfg_dict:
-            logger.error("Prozess %s enthält kein Feld 'configuration'", process_id)
+            logger.error("[ProcessEngine] Prozess %s enthält kein Feld 'configuration'", process_id)
             await self._process_repo.update(process_id, {"status": "failed"})
             return False
 
@@ -90,6 +94,7 @@ class ProcessEngine:
 
         root_ids = configuration.dataflow.get_root_nodes()
         for subprocess_id in root_ids:
+            logger.progress("%s Root-Subprozess wird gestartet", self._source(process_id, subprocess_id))
             await self._start_subprocess(process_id, subprocess_id, configuration)
         return True
 
@@ -103,6 +108,7 @@ class ProcessEngine:
         configuration.apply_default_openai_key_from_env()
         configuration.apply_software_version_from_env()
         process_id = configuration.process_id
+        logger.info("[ProcessEngine] Starte Prozess %s", process_id)
 
         # Process und initialen DataflowState speichern
         dataflow_state = DataflowState.from_dataflow(configuration.dataflow)
@@ -119,6 +125,7 @@ class ProcessEngine:
         # Root-Nodes starten
         root_ids = configuration.dataflow.get_root_nodes()
         for subprocess_id in root_ids:
+            logger.progress("%s Root-Subprozess wird gestartet", self._source(process_id, subprocess_id))
             await self._start_subprocess(process_id, subprocess_id, configuration)
 
         return True
@@ -132,8 +139,14 @@ class ProcessEngine:
         """Startet einen Subprozess."""
         node_def = configuration.dataflow.get_node(subprocess_id)
         if not node_def:
-            logger.error("Subprocess %s nicht in DataFlow gefunden", subprocess_id)
+            logger.error("%s nicht in DataFlow gefunden", self._source(process_id, subprocess_id))
             return
+
+        logger.info(
+            "%s Starte Subprozess-Typ %s",
+            self._source(process_id, subprocess_id),
+            node_def.subprocess_type,
+        )
 
         # Event-Status aktualisieren
         await self._dataflow_state_repo.update_node_state(
@@ -190,7 +203,7 @@ class ProcessEngine:
                     process_id=process_id, subprocess_id=subprocess_id
                 )
             except Exception as e:
-                logger.exception("Subprocess %s fehlgeschlagen: %s", subprocess_id, e)
+                logger.exception("%s fehlgeschlagen: %s", self._source(process_id, subprocess_id), e)
                 await self._dataflow_state_repo.update_node_state(
                     process_id, subprocess_id, event_status=EVENT_FAILED
                 )
@@ -201,6 +214,11 @@ class ProcessEngine:
                 )
             finally:
                 self._active_subprocess_count -= 1
+                logger.debug(
+                    "%s beendet, aktive Subprozesse=%d",
+                    self._source(process_id, subprocess_id),
+                    self._active_subprocess_count,
+                )
 
         asyncio.create_task(run_wrapper())
 
@@ -220,6 +238,11 @@ class ProcessEngine:
                 configuration.input_dataset_id
             )
             if not dataset_doc:
+                logger.error(
+                    "%s Input-Dataset %s nicht gefunden",
+                    self._source(process_id, subprocess_id),
+                    configuration.input_dataset_id,
+                )
                 return None
             data_ids = dataset_doc.get("data_ids", [])
             input_data = []
@@ -277,6 +300,8 @@ class ProcessEngine:
         if not process_id or not subprocess_id:
             return
 
+        logger.success("%s EVENT_COMPLETED empfangen", self._source(process_id, subprocess_id))
+
         # Prozess-Level-Events (subprocess_id="0") nicht rekursiv verarbeiten
         if subprocess_id == "0":
             return
@@ -290,12 +315,14 @@ class ProcessEngine:
         successors = configuration.dataflow.get_successors(subprocess_id)
 
         for succ_id in successors:
+            logger.progress("%s Trigger Nachfolger %s", self._source(process_id, subprocess_id), succ_id)
             await self._start_subprocess(process_id, succ_id, configuration)
 
         if not successors:
             all_completed = await self._check_all_completed(process_id, configuration)
             if all_completed:
                 await self._process_repo.update(process_id, {"status": "completed"})
+                logger.success("[ProcessEngine] Prozess %s vollständig abgeschlossen", process_id)
                 await self._event_service.emit_completed(
                     process_id=process_id, subprocess_id="0"
                 )
@@ -303,7 +330,12 @@ class ProcessEngine:
     async def _on_subprocess_failed(self, event: dict) -> None:
         """Handler für EVENT_FAILED."""
         process_id = event.get("process_id")
+        subprocess_id = event.get("subprocess_id")
         if process_id:
+            logger.error(
+                "%s EVENT_FAILED empfangen",
+                self._source(process_id, str(subprocess_id or "unknown")),
+            )
             await self._process_repo.update(process_id, {"status": "failed"})
 
     async def _check_all_completed(

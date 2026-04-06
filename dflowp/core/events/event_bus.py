@@ -1,15 +1,15 @@
 """Event-Bus für In-Process-Kommunikation mit persistenter Speicherung."""
 
 import asyncio
+import json
 from collections import defaultdict
-from datetime import datetime
 from typing import Any, Callable, Optional
 
 from dflowp.core.events.event_types import EVENT_TYPES
 from dflowp.infrastructure.database.event_repository import EventRepository
-from dflowp.utils.logger import get_logger
+from dflowp.utils.logger import get_component_logger
 
-logger = get_logger(__name__)
+logger = get_component_logger("Eventsystem")
 
 # Typ für Event-Handler (async callable)
 EventEventHandler = Callable[[dict[str, Any]], Any]
@@ -66,6 +66,8 @@ class EventBus:
         if not event_type:
             logger.warning("Event ohne event_type ignoriert: %s", event)
             return
+
+        logger.info(json.dumps(event, default=str, ensure_ascii=False))
 
         # Persistenz
         if self._event_repository:

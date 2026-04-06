@@ -14,6 +14,9 @@ from dflowp.core.subprocesses.io_transformation_state import (
 )
 from dflowp.core.datastructures.data import Data
 from dflowp.utils.document_naming import build_human_readable_document_id
+from dflowp.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class FetchFeedItems(BaseSubprocess):
@@ -33,16 +36,19 @@ class FetchFeedItems(BaseSubprocess):
         data_repository: Optional[Any] = None,
         dataset_repository: Optional[Any] = None,
     ) -> list[IOTransformationState]:
+        source = f"[{context.process_id}][{context.subprocess_id}]"
         if not data_repository:
             raise ValueError("data_repository erforderlich")
 
         results: list[IOTransformationState] = []
+        logger.info("%s starte Feed-Verarbeitung für %d Inputs", source, len(context.input_data))
 
         for input_data in context.input_data:
             source = input_data.content
             xml_url = source.get("xmlUrl", source.get("url", ""))
             title = source.get("title", "Unknown")
             if not xml_url:
+                logger.warning("%s fehlende xmlUrl für Input '%s'", source, title)
                 results.append(
                     IOTransformationState(
                         input_data_id=input_data.data_id,
@@ -56,6 +62,7 @@ class FetchFeedItems(BaseSubprocess):
             output_ids: list[str] = []
             try:
                 parsed = await self._fetch_feed(xml_url)
+                logger.progress("%s Feed geladen: %s (%d entries)", source, xml_url, len(parsed.entries))
                 for entry in parsed.entries:
                     # TODO: Set quality of article based on entry attributes
                     article = self._entry_to_article(entry, source)
@@ -71,6 +78,12 @@ class FetchFeedItems(BaseSubprocess):
                     output_ids.append(data_id)
 
                 quality = 1.0 if output_ids else 0.0
+                logger.success(
+                    "%s Feed '%s' verarbeitet, %d Artikel gespeichert",
+                    source,
+                    title,
+                    len(output_ids),
+                )
                 results.append(
                     IOTransformationState(
                         input_data_id=input_data.data_id,
@@ -80,6 +93,7 @@ class FetchFeedItems(BaseSubprocess):
                     )
                 )
             except Exception as e:
+                logger.error("%s Fehler beim Feed '%s': %s", source, title, e)
                 results.append(
                     IOTransformationState(
                         input_data_id=input_data.data_id,

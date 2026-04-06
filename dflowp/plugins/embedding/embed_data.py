@@ -9,6 +9,9 @@ from dflowp.core.subprocesses.io_transformation_state import (
     TransformationStatus,
 )
 from dflowp.utils.document_naming import build_human_readable_document_id
+from dflowp.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class EmbedData(BaseSubprocess):
@@ -42,6 +45,9 @@ class EmbedData(BaseSubprocess):
     ) -> list[IOTransformationState]:
         if not data_repository:
             raise ValueError("data_repository erforderlich")
+
+        process_subprocess_source = f"[{context.process_id}][{context.subprocess_id}]"
+        logger.info("%s EmbedData gestartet", process_subprocess_source)
 
         attrs = context.config.get(
             "embedding_attributes", self.DEFAULT_ATTRIBUTES
@@ -93,6 +99,11 @@ class EmbedData(BaseSubprocess):
                         quality=1.0,
                     )
                 )
+                logger.success(
+                    "%s Embedding erfolgreich erstellt für input_data_id=%s",
+                    process_subprocess_source,
+                    input_data.data_id,
+                )
             except Exception as e:
                 results.append(
                     IOTransformationState(
@@ -103,7 +114,18 @@ class EmbedData(BaseSubprocess):
                     )
                 )
                 # Kein raise: einzelne Embedding-Fehler stoppen nicht die gesamte Verarbeitung
+                logger.error(
+                    "%s EmbedData fehlgeschlagen für input_data_id=%s: %s",
+                    process_subprocess_source,
+                    input_data.data_id,
+                    str(e),
+                )
 
+        logger.progress(
+            "%s EmbedData beendet (verarbeitet=%d)",
+            process_subprocess_source,
+            len(results),
+        )
         return results
 
     async def _get_embedding(
