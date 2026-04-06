@@ -7,6 +7,9 @@ from pymongo import ReturnDocument
 
 from dflowp.infrastructure.database.mongo import get_database
 from dflowp.utils.timestamps import enrich_document_timestamps
+from dflowp.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ProcessRepository:
@@ -209,6 +212,7 @@ class ProcessRepository:
         enrich_document_timestamps(copied)
         result = await self._collection.insert_one(copied)
         copied["_id"] = str(result.inserted_id)
+        logger.info("[ProcessRepository] Geklonter Prozess gespeichert: %s", copied)
         return copied
 
     async def update(
