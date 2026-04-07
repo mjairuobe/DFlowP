@@ -74,7 +74,7 @@
                     python3.11 -m build packages/dflowp-core
                     python3.11 -m build packages/dflowp-processruntime
                     python3.11 -m pip install --force-reinstall packages/dflowp-core/dist/*.whl
-                    python3.11 -m pip install --force-reinstall packages/dflowp-processruntime/dist/*.whl
+                    python3.11 -m pip install --force-reinstall --no-deps packages/dflowp-processruntime/dist/*.whl
                     docker build -t "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}" .
                     '''
                 }

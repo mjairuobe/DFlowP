@@ -18,7 +18,7 @@ COPY main.py /app/main.py
 
 RUN pip install --upgrade pip setuptools wheel build \
     && pip install -r requirements.txt \
-    && /app/scripts/build_and_install_libraries.sh \
+    && /bin/bash /app/scripts/build_and_install_libraries.sh \
     && pip install -e ".[dev]"
 
 CMD ["python", "main.py"]

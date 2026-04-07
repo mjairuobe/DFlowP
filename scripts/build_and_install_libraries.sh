@@ -9,5 +9,6 @@ python3.11 -m build packages/dflowp-core
 python3.11 -m build packages/dflowp-processruntime
 
 python3.11 -m pip install --force-reinstall \
-  packages/dflowp-core/dist/dflowp_core-*.whl \
+  packages/dflowp-core/dist/dflowp_core-*.whl
+python3.11 -m pip install --force-reinstall --no-deps \
   packages/dflowp-processruntime/dist/dflowp_processruntime-*.whl
