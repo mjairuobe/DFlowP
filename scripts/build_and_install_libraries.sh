@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+python3.11 -m ensurepip --upgrade
 python3.11 -m pip install --upgrade pip setuptools wheel build
 
 rm -rf packages/dflowp-core/dist packages/dflowp-processruntime/dist

@@ -57,6 +57,7 @@
                 steps {
                     sh '''
                         set -e
+                        python3.11 -m ensurepip --upgrade
                         ./scripts/build_and_install_libraries.sh
                     '''
                 }
@@ -68,6 +69,7 @@
                         set -e
                     docker --version
                     # Build libraries and install from wheels before image build.
+                    python3.11 -m ensurepip --upgrade
                     python3.11 -m pip install --upgrade pip build
                     python3.11 -m build packages/dflowp-core
                     python3.11 -m build packages/dflowp-processruntime
