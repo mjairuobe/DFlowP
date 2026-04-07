@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml requirements.txt /app/
 COPY dflowp /app/dflowp
 COPY packages /app/packages
+COPY scripts /app/scripts
 COPY examples /app/examples
 COPY tests /app/tests
 COPY main.py /app/main.py
