@@ -2,7 +2,7 @@
     //
     // Voraussetzungen auf dem Jenkins-Agenten:
     //   - Docker (zum Starten von MongoDB)
-    //   - Python 3.10+ (python3, venv)
+    //   - Python 3.11+ (python3.11, venv)
     //   - build-Modul für Wheel-Builds (wird in der Pipeline installiert)
     //
     // Optional – Stage „Projekt ausführen (main.py)“:
@@ -68,11 +68,11 @@
                         set -e
                     docker --version
                     # Build libraries and install from wheels before image build.
-                    pip3 install --upgrade pip build
-                    python3 -m build packages/dflowp-core
-                    python3 -m build packages/dflowp-processruntime
-                    pip3 install --force-reinstall packages/dflowp-core/dist/*.whl
-                    pip3 install --force-reinstall packages/dflowp-processruntime/dist/*.whl
+                    python3.11 -m pip install --upgrade pip build
+                    python3.11 -m build packages/dflowp-core
+                    python3.11 -m build packages/dflowp-processruntime
+                    python3.11 -m pip install --force-reinstall packages/dflowp-core/dist/*.whl
+                    python3.11 -m pip install --force-reinstall packages/dflowp-processruntime/dist/*.whl
                     docker build -t "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}" .
                     '''
                 }
@@ -91,13 +91,13 @@
                     # Nutzt docker-browse (authentifiziertes Docker-Setup) via npx zum Tag-Auslesen.
                     TAGS_RAW="$(npx docker-browse tags crawlabase/dflowp || true)"
                     PREV_VERSION="$(printf "%s\n" "${TAGS_RAW}" \
-                      | python3 -c 'import re,sys; tags=[line.strip() for line in sys.stdin if line.strip()]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
+                      | python3.11 -c 'import re,sys; tags=[line.strip() for line in sys.stdin if line.strip()]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
                     export PREV_VERSION
 
                     if [ "$PREV_VERSION" = "latest" ]; then
                       SOFTWARE_VERSION="${BUILD_NUMBER}"
                     else
-                      SOFTWARE_VERSION="$(python3 - "$PREV_VERSION" <<'PY'
+                      SOFTWARE_VERSION="$(python3.11 - "$PREV_VERSION" <<'PY'
 import sys
 v = sys.argv[1]
 try:
