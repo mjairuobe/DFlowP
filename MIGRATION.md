@@ -188,7 +188,7 @@ mongorestore --uri="mongodb://localhost:27017/dflowp" ./backup_before_migration/
 Die Wrapper-Klassen bleiben erhalten, aber für neue Code kannst du das neue einheitliche Repository verwenden:
 
 ```python
-from dflowp.infrastructure.database.data_item_repository import DataItemRepository
+from dflowp_core.database.data_item_repository import DataItemRepository
 
 repo = DataItemRepository()
 

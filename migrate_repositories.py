@@ -14,8 +14,12 @@ import asyncio
 import logging
 import sys
 
-from dflowp.infrastructure.database.migrations import migrate_all
-from dflowp.infrastructure.database.mongo import connect_to_mongodb, close_mongodb_uri, resolve_mongodb_uri
+from dflowp_core.database.migrations import migrate_all
+from dflowp_core.database.mongo import (
+    close_mongodb_connection,
+    connect_to_mongodb,
+    resolve_mongodb_uri,
+)
 
 logging.basicConfig(
     level=logging.INFO,

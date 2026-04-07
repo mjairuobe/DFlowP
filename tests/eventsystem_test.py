@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from dflowp.core.events.event_bus import EventBus
-from dflowp.core.events.event_service import EventService, get_event_service
-from dflowp.core.events.event_types import (
+from dflowp_core.eventinterfaces.event_bus import EventBus
+from dflowp_core.eventinterfaces.event_service import EventService, get_event_service
+from dflowp_core.eventinterfaces.event_types import (
     EVENT_COMPLETED,
     EVENT_FAILED,
     EVENT_STARTED,
@@ -151,7 +151,7 @@ async def test_event_service_emit_failed():
 @pytest.mark.asyncio
 async def test_event_bus_with_persistence(mongodb_connection):
     """Testet Event-Bus mit persistenter Speicherung in MongoDB."""
-    from dflowp.infrastructure.database.event_repository import EventRepository
+    from dflowp_core.database.event_repository import EventRepository
 
     bus = EventBus()  # Frischer Bus für isolierten Test
     repo = EventRepository()

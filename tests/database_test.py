@@ -5,17 +5,17 @@ import re
 import pytest
 import pytest_asyncio
 
-from dflowp.infrastructure.database.data_repository import DataRepository
-from dflowp.infrastructure.database.data_item_repository import DataItemRepository
-from dflowp.infrastructure.database.dataset_repository import DatasetRepository
-from dflowp.infrastructure.database.event_repository import EventRepository
-from dflowp.infrastructure.database.mongo import (
+from dflowp_core.database.data_repository import DataRepository
+from dflowp_core.database.data_item_repository import DataItemRepository
+from dflowp_core.database.dataset_repository import DatasetRepository
+from dflowp_core.database.event_repository import EventRepository
+from dflowp_core.database.mongo import (
     resolve_mongodb_uri,
     close_mongodb_connection,
     connect_to_mongodb,
     get_database,
 )
-from dflowp.infrastructure.database.process_repository import ProcessRepository
+from dflowp_core.database.process_repository import ProcessRepository
 
 
 TIMESTAMP_HUMAN_PATTERN = re.compile(r"^\d{2}_\d{2}_\d{4}_\d{2}:\d{2}_UTC[+-]\d+$")

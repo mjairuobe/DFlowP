@@ -11,12 +11,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml requirements.txt /app/
 COPY dflowp /app/dflowp
+COPY packages /app/packages
 COPY examples /app/examples
 COPY tests /app/tests
 COPY main.py /app/main.py
 
-RUN pip install --upgrade pip setuptools wheel \
+RUN pip install --upgrade pip setuptools wheel build \
     && pip install -r requirements.txt \
+    && /app/scripts/build_and_install_libraries.sh \
     && pip install -e ".[dev]"
 
 CMD ["python", "main.py"]

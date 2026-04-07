@@ -60,5 +60,5 @@ services:
       PROCESS_CONFIG: ${PROCESS_CONFIG:-examples/processconfig_example.json}
       INPUT_DATA: ${INPUT_DATA:-examples/inputdata_set.json}
       DFLOWP_POLL_INTERVAL: ${DFLOWP_POLL_INTERVAL:-5}
-    command: ["python", "-m", "dflowp.worker.engine_worker"]
+    command: ["python", "-m", "dflowp_processruntime.engine.engine_worker"]
 

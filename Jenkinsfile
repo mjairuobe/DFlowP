@@ -3,6 +3,7 @@
     // Voraussetzungen auf dem Jenkins-Agenten:
     //   - Docker (zum Starten von MongoDB)
     //   - Python 3.10+ (python3, venv)
+    //   - build-Modul für Wheel-Builds (wird in der Pipeline installiert)
     //
     // Optional – Stage „Projekt ausführen (main.py)“:
     //   - OPENAI_API_KEY als Umgebungsvariable oder Jenkins „Secret text“ einbinden
@@ -52,11 +53,26 @@
                 }
             }
 
+        stage('Build and install libraries') {
+                steps {
+                    sh '''
+                        set -e
+                        ./scripts/build_and_install_libraries.sh
+                    '''
+                }
+            }
+
         stage('Build Docker Image') {
                 steps {
                     sh '''
                         set -e
                     docker --version
+                    # Build libraries and install from wheels before image build.
+                    pip3 install --upgrade pip build
+                    python3 -m build packages/dflowp-core
+                    python3 -m build packages/dflowp-processruntime
+                    pip3 install --force-reinstall packages/dflowp-core/dist/*.whl
+                    pip3 install --force-reinstall packages/dflowp-processruntime/dist/*.whl
                     docker build -t "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}" .
                     '''
                 }

@@ -220,10 +220,16 @@ dflowp/
 
 ### Installation
 
-#### Mit pip
+#### Libraries bauen + installieren (empfohlen)
 
 ```bash
-pip install -e .
+./scripts/build_and_install_libraries.sh
+```
+
+#### Danach Service-Paket installieren
+
+```bash
+pip install -e ".[dev]"
 ```
 
 #### Mit dem Install-Skript (Ubuntu)
@@ -238,14 +244,16 @@ pip install -e .
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # Linux/macOS
+./scripts/build_and_install_libraries.sh
 pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 ### Projektstruktur
 
-- **dflowp/core** – Events, Engine, Processes
-- **dflowp/infrastructure** – Datenbankrepositories (MongoDB)
-- **dflowp/utils** – Logger und Hilfsfunktionen
+- **packages/dflowp-core** – Database, Event-Interfaces, Utilities
+- **packages/dflowp-processruntime** – Runtime/Engine, Dataflow, Prozesse, Subprozesse, Plugins
+- **dflowp/** – API- und Worker-Services
 
 ### Tests
 

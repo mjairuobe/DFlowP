@@ -20,31 +20,31 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pymongo.errors import DuplicateKeyError
 
-from dflowp.core.dataflow.dataflow import DataFlow, DataflowEdge, DataflowNodeDef
-from dflowp.core.dataflow.dataflow_node import DataflowNodeState
-from dflowp.core.dataflow.dataflow_parser import parse_dataflow
-from dflowp.core.dataflow.dataflow_state import DataflowState
-from dflowp.core.datastructures.data import Data
-from dflowp.core.engine.process_engine import ProcessEngine
-from dflowp.core.events.event_bus import EventBus
-from dflowp.core.events.event_service import EventService
-from dflowp.core.processes.process_configuration import ProcessConfiguration
-from dflowp.core.processes.process_state import ProcessState
-from dflowp.core.subprocesses.io_transformation_state import (
+from dflowp_processruntime.dataflow.dataflow import DataFlow, DataflowEdge, DataflowNodeDef
+from dflowp_processruntime.dataflow.dataflow_node import DataflowNodeState
+from dflowp_processruntime.dataflow.dataflow_parser import parse_dataflow
+from dflowp_processruntime.dataflow.dataflow_state import DataflowState
+from dflowp_processruntime.datastructures.data import Data
+from dflowp_processruntime.engine.process_engine import ProcessEngine
+from dflowp_core.eventinterfaces.event_bus import EventBus
+from dflowp_core.eventinterfaces.event_service import EventService
+from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
+from dflowp_processruntime.processes.process_state import ProcessState
+from dflowp_processruntime.subprocesses.io_transformation_state import (
     IOTransformationState,
     TransformationStatus,
 )
-from dflowp.core.subprocesses.subprocess import BaseSubprocess
-from dflowp.core.subprocesses.subprocess_context import SubprocessContext
-from dflowp.infrastructure.plugins.plugin_loader import (
+from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
+from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.plugins.plugin_loader import (
     get_subprocess,
     load_builtin_plugins,
     register_subprocess,
 )
-from dflowp.plugins.embedding.embed_data import EmbedData
-from dflowp.plugins.fetch_feed_items.fetch_feed_items import FetchFeedItems
-from dflowp.utils.document_naming import build_human_readable_document_id
-from dflowp.core.processes.software_version import MAJOR_VERSION, MINOR_VERSION
+from dflowp_processruntime.plugins.embedding.embed_data import EmbedData
+from dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items import FetchFeedItems
+from dflowp_core.utils.document_naming import build_human_readable_document_id
+from dflowp_processruntime.processes.software_version import MAJOR_VERSION, MINOR_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -946,7 +946,7 @@ async def test_fetch_feed_items_success_two_articles():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -980,7 +980,7 @@ async def test_fetch_feed_items_source_included_in_output():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1009,7 +1009,7 @@ async def test_fetch_feed_items_output_has_article_fields():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1070,7 +1070,7 @@ async def test_fetch_feed_items_http_error_continues_other_feeds():
         return resp
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_client.return_value.__aenter__.return_value.get = mock_get
 
@@ -1096,7 +1096,7 @@ async def test_fetch_feed_items_empty_feed():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = empty_rss
@@ -1128,7 +1128,7 @@ async def test_fetch_feed_items_multiple_feeds():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1227,7 +1227,7 @@ async def test_fetch_feed_items_duplicate_key_retries_with_new_id():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML

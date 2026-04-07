@@ -31,6 +31,8 @@ pip install --upgrade pip
 # Python-Abhängigkeiten installieren
 echo "Installiere Python-Abhängigkeiten..."
 pip install -r requirements.txt
+pip install ./packages/dflowp-core ./packages/dflowp-processruntime
+pip install -e ".[dev]"
 
 # Optional: MongoDB installieren (wenn --with-mongodb übergeben)
 if [ "$1" = "--with-mongodb" ]; then
