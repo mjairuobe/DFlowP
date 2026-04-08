@@ -138,6 +138,7 @@ class _IsolatedEventService(EventService):
     """EventService mit dediziertem EventBus für isolierte Tests."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._bus = EventBus()
 
 

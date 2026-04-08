@@ -50,8 +50,9 @@ class EventService:
         if payload:
             event["payload"] = payload
 
-        if self._event_repository:
-            await self._event_repository.insert(event)
+        event_repository = getattr(self, "_event_repository", None)
+        if event_repository:
+            await event_repository.insert(event)
             await self._bus.dispatch_local(event)
             return
         await self._bus.publish(event)
