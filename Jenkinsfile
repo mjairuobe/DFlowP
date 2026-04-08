@@ -44,6 +44,17 @@
                 }
             }
 
+            stage('Fetch git tags') {
+                steps {
+                    sh '''
+                        set -e
+                        # Tags vom Remote (bei shallow/multibranch oft nicht im Workspace)
+                        git remote get-url origin >/dev/null 2>&1 && git fetch origin --tags --force || git fetch --tags --force || true
+                        git tag -l 'v*' | tail -5 || true
+                    '''
+                }
+            }
+
             stage('Resolve software version & tree tags') {
                 steps {
                     sh '''

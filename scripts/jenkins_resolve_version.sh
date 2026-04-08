@@ -11,6 +11,16 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "${ROOT}"
 
+# Jenkins: shallow clone / Checkout ohne Tag-Refs → Tags existieren auf GitHub, lokal fehlen sie.
+# Tags sind repo-weit; Branch des Tags ist irrelevant, solange der Tag auf origin liegt.
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  if git remote get-url origin >/dev/null 2>&1; then
+    git fetch origin --tags --force 2>/dev/null || true
+  else
+    git fetch --tags --force 2>/dev/null || true
+  fi
+fi
+
 tree_short_5() {
   local path="$1"
   local full
