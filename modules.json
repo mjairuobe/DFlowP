@@ -10,7 +10,8 @@
       "dflowp/eventsystem",
       "dflowp/event_broker",
       "dflowp/plugin_fetchfeeditems",
-      "dflowp/plugin_embeddata"
+      "dflowp/plugin_embeddata",
+      "dflowp/plugin_clustering_dbscan"
     ]
   },
   "required_stack_services": ["mongo"],
@@ -22,7 +23,8 @@
       "dflowp/eventsystem": "dflowp-eventsystem",
       "dflowp/event_broker": "dflowp-event-broker",
       "dflowp/plugin_fetchfeeditems": "dflowp-plugin-fetchfeeditems",
-      "dflowp/plugin_embeddata": "dflowp-plugin-embeddata"
+      "dflowp/plugin_embeddata": "dflowp-plugin-embeddata",
+      "dflowp/plugin_clustering_dbscan": "dflowp-plugin-clustering-dbscan"
     },
     "containers": {
       "dflowp/api": "dflowp-api",
@@ -30,7 +32,8 @@
       "dflowp/eventsystem": "dflowp-eventsystem",
       "dflowp/event_broker": "dflowp-event-broker",
       "dflowp/plugin_fetchfeeditems": "dflowp-plugin-fetchfeeditems",
-      "dflowp/plugin_embeddata": "dflowp-plugin-embeddata"
+      "dflowp/plugin_embeddata": "dflowp-plugin-embeddata",
+      "dflowp/plugin_clustering_dbscan": "dflowp-plugin-clustering-dbscan"
     },
     "stage_targets": {
       "dflowp/api": "api",
@@ -38,7 +41,8 @@
       "dflowp/eventsystem": "eventsystem",
       "dflowp/event_broker": "event-broker",
       "dflowp/plugin_fetchfeeditems": "plugin-fetchfeeditems",
-      "dflowp/plugin_embeddata": "plugin-embeddata"
+      "dflowp/plugin_embeddata": "plugin-embeddata",
+      "dflowp/plugin_clustering_dbscan": "plugin-clustering-dbscan"
     },
     "build_plan_flags": {
       "dflowp/api": "BUILD_API",
@@ -46,7 +50,8 @@
       "dflowp/eventsystem": "BUILD_EVENTSYSTEM",
       "dflowp/event_broker": "BUILD_EVENT_BROKER",
       "dflowp/plugin_fetchfeeditems": "BUILD_PLUGIN_FETCHFEEDITEMS",
-      "dflowp/plugin_embeddata": "BUILD_PLUGIN_EMBEDDATA"
+      "dflowp/plugin_embeddata": "BUILD_PLUGIN_EMBEDDATA",
+      "dflowp/plugin_clustering_dbscan": "BUILD_PLUGIN_CLUSTERING_DBSCAN"
     }
   },
   "compose": {
@@ -55,7 +60,8 @@
     "eventsystem": "dflowp/eventsystem",
     "event-broker": "dflowp/event_broker",
     "plugin-fetchfeeditems": "dflowp/plugin_fetchfeeditems",
-    "plugin-embeddata": "dflowp/plugin_embeddata"
+    "plugin-embeddata": "dflowp/plugin_embeddata",
+    "plugin-clustering-dbscan": "dflowp/plugin_clustering_dbscan"
   },
   "compose_env": {
     "api": "DOCKER_IMAGE_API",
@@ -63,6 +69,7 @@
     "eventsystem": "DOCKER_IMAGE_EVENTSYSTEM",
     "event-broker": "DOCKER_IMAGE_EVENT_BROKER",
     "plugin-fetchfeeditems": "DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS",
-    "plugin-embeddata": "DOCKER_IMAGE_PLUGIN_EMBEDDATA"
+    "plugin-embeddata": "DOCKER_IMAGE_PLUGIN_EMBEDDATA",
+    "plugin-clustering-dbscan": "DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN"
   }
 }

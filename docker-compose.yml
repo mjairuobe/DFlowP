@@ -74,7 +74,7 @@ services:
       DFLOWP_EVENTSYSTEM_URL: ${DFLOWP_EVENTSYSTEM_URL:-http://eventsystem:8001}
       DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES: ${DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES:-30}
       DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP: ${DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP:-1.0}
-      DFLOWP_PLUGIN_ENDPOINTS: ${DFLOWP_PLUGIN_ENDPOINTS:-FetchFeedItems=http://plugin-fetchfeeditems:8101,EmbedData=http://plugin-embeddata:8102}
+      DFLOWP_PLUGIN_ENDPOINTS: ${DFLOWP_PLUGIN_ENDPOINTS:-FetchFeedItems=http://plugin-fetchfeeditems:8101,EmbedData=http://plugin-embeddata:8102,Clustering_DBSCAN=http://plugin-clustering-dbscan:8103}
       DFLOWP_PLUGIN_REMOTE_RETRIES: ${DFLOWP_PLUGIN_REMOTE_RETRIES:-3}
       DFLOWP_PLUGIN_REMOTE_RETRY_DELAY_SECONDS: ${DFLOWP_PLUGIN_REMOTE_RETRY_DELAY_SECONDS:-5}
       DFLOWP_PLUGIN_REMOTE_HTTP_TIMEOUT: ${DFLOWP_PLUGIN_REMOTE_HTTP_TIMEOUT:-120}
@@ -160,4 +160,23 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
     command: ["uvicorn", "dflowp.plugin_embeddata.app:app", "--host", "0.0.0.0", "--port", "8102"]
+
+  plugin-clustering-dbscan:
+    container_name: dflowp-plugin-clustering-dbscan
+    build:
+      context: .
+      target: plugin-clustering-dbscan
+    image: ${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN:-dflowp-plugin-clustering-dbscan:local}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_HOST: mongo
+      MONGO_PORT: "27017"
+      MONGODB_USERNAME: ${MONGODB_USERNAME:-dflowp}
+      MONGODB_PASSWORD: ${MONGODB_PASSWORD:-dflowp_password}
+      MONGODB_AUTH_SOURCE: admin
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
+      SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
+    command: ["uvicorn", "dflowp.plugin_clustering_dbscan.app:app", "--host", "0.0.0.0", "--port", "8103"]
 

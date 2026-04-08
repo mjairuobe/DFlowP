@@ -3,6 +3,8 @@
 import asyncio
 from typing import Any, Callable, Optional
 
+from dflowp_processruntime.datastructures.data import Data
+
 from dflowp_processruntime.dataflow.dataflow_state import DataflowState
 from dflowp_core.eventinterfaces.event_types import EVENT_COMPLETED, EVENT_FAILED, EVENT_STARTED
 from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
@@ -298,8 +300,6 @@ class ProcessEngine:
             for did in data_ids:
                 d = await self._data_repo.find_by_id(did)
                 if d:
-                    from dflowp_processruntime.datastructures.data import Data
-
                     input_data.append(
                         Data(data_id=d["data_id"], content=d.get("content", {}), type=d.get("type", "input"))
                     )
@@ -324,15 +324,7 @@ class ProcessEngine:
                         all_output_ids.extend(s.get("output_data_ids", []))
                     break
 
-        input_data = []
-        for did in all_output_ids:
-            d = await self._data_repo.find_by_id(did)
-            if d:
-                from dflowp_processruntime.datastructures.data import Data
-
-                input_data.append(
-                    Data(data_id=d["data_id"], content=d.get("content", {}), type=d.get("type", "output"))
-                )
+        input_data = await self._resolve_predecessor_outputs_to_data(all_output_ids)
 
         return SubprocessContext(
             process_id=process_id,
@@ -341,6 +333,38 @@ class ProcessEngine:
             config=config,
             input_data=input_data,
         )
+
+    async def _resolve_predecessor_outputs_to_data(self, output_ids: list[str]) -> list[Data]:
+        """
+        Vorgänger liefern output_data_ids: einzelne Data-IDs oder Dataset-IDs.
+        Dataset-IDs werden zu den referenzierten Data-Dokumenten aufgelöst (z. B. gesammelte Embeddings).
+        """
+        input_data: list[Data] = []
+        for oid in output_ids:
+            d = await self._data_repo.find_by_id(oid)
+            if not d:
+                continue
+            if d.get("doc_type") == "dataset":
+                for cid in d.get("data_ids", []):
+                    child = await self._data_repo.find_by_id(cid)
+                    if child and child.get("content") is not None:
+                        input_data.append(
+                            Data(
+                                data_id=child["data_id"],
+                                content=child.get("content", {}),
+                                type=child.get("type", "output"),
+                            )
+                        )
+                continue
+            if d.get("content") is not None:
+                input_data.append(
+                    Data(
+                        data_id=d["data_id"],
+                        content=d.get("content", {}),
+                        type=d.get("type", "output"),
+                    )
+                )
+        return input_data
 
     async def _on_subprocess_completed(self, event: dict) -> None:
         """Handler für EVENT_COMPLETED - startet Nachfolger-Subprozesse."""
