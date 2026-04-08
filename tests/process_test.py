@@ -479,6 +479,16 @@ def test_process_configuration_apply_software_version_from_env(monkeypatch):
     assert pc.software_version == f"{MAJOR_VERSION}.{MINOR_VERSION}.12"
 
 
+def test_process_configuration_apply_software_version_v_prefix(monkeypatch):
+    """SOFTWARE_VERSION vX.Y.Z (Jenkins) wird ohne führendes v übernommen."""
+    pc = _make_process_config(process_id="test_softver_v")
+    monkeypatch.setenv("SOFTWARE_VERSION", "v1.2.42")
+
+    pc.apply_software_version_from_env()
+
+    assert pc.software_version == "1.2.42"
+
+
 def test_process_state_to_dict():
     """ProcessState.to_dict enthält alle Felder."""
     ps = ProcessState(process_id="proc_xyz", status="running")

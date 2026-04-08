@@ -1,22 +1,15 @@
     // DFlowP – CI/CD-Pipeline
     //
-    // SOFTWARE_VERSION / Docker-Image-Tag: scripts/jenkins_resolve_version.sh
-    //   MAJOR aus software_version.py, MINOR = Anzahl Git-Refs (heads+remotes),
-    //   Patch = erste 4 Hex-Zeichen des Short-SHA als Dezimalzahl. Kein Docker-Hub-Lookup.
+    // Version & Tags: scripts/jenkins_resolve_version.sh
+    //   SOFTWARE_VERSION = vMAJOR.MINOR.BUILD (höchster vX.Y.Z-Tag + rev-list seit Tag; ohne Tag: v0.1.<count>)
+    //   Pro Subdir: 5-Hex Tree-Short (sichtbares Image-Tag für „aktuell“)
     //
-    // Voraussetzungen auf dem Jenkins-Agenten:
-    //   - Docker (zum Starten von MongoDB)
-    //   - Python 3.11+ (python3.11, venv)
-    //   - build-Modul für Wheel-Builds (wird in der Pipeline installiert)
+    // Build-Plan: scripts/jenkins_build_plan.sh
+    //   Skip wenn alle Container den erwarteten Tree-Tag zeigen + Libraries unverändert
+    //   LIB_FORCE: dflowp-packages Tree geändert → alle Images neu
+    //   Sonst nur geänderte Images; Compose nutzt scripts/jenkins_compose_env.sh (alte Tags beibehalten)
     //
-    // Optional – Stage „Projekt ausführen (main.py)“:
-    //   - OPENAI_API_KEY als Umgebungsvariable oder Jenkins „Secret text“ einbinden
-    //     (Pipeline: „Bind credentials“ → Variable OPENAI_API_KEY)
-    //   - Oder Parameter RUN_MAIN=true setzen und OPENAI_API_KEY bereitstellen
-    // Ohne Key: Pipeline führt nur Tests aus; main.py wird übersprungen.
-    //
-    // Skip: Nach „Resolve software version“ prüft scripts/jenkins_check_skip_deploy.sh
-    // laufende Container; bei allen crawlabase/dflowp-*:IMAGE_TAG + Mongo → Pipeline erfolgreich beenden.
+    // Docker: scripts/jenkins_docker_build.sh / jenkins_docker_push.sh (Tree-Tag + SOFTWARE_VERSION-Tag)
 
     pipeline {
         agent any
@@ -27,7 +20,6 @@
         }
 
         environment {
-        // Docker Hub Targets
         DOCKER_IMAGE_REPO_API = 'docker.io/crawlabase/dflowp-api'
         DOCKER_IMAGE_REPO_RUNTIME = 'docker.io/crawlabase/dflowp-runtime'
         DOCKER_IMAGE_REPO_EVENTSYSTEM = 'docker.io/crawlabase/dflowp-eventsystem'
@@ -35,14 +27,12 @@
         DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS = 'docker.io/crawlabase/dflowp-plugin-fetchfeeditems'
         DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA = 'docker.io/crawlabase/dflowp-plugin-embeddata'
 
-        // Jenkins Credential IDs (bitte in Jenkins anpassen)
         DOCKERHUB_CREDS_ID = 'dockerhub-creds'
         OPENAI_KEY_ID      = 'openai-api-key'
         DFLOWP_API_KEY_ID  = 'DFlowP_API_Key'
         GITHUB_PAT_ID      = 'github-pat'
         MONGODB_CREDS_ID   = 'mongodb-creds'
 
-        // Compose / App Settings
         MONGODB_DATABASE = 'dflowp'
         MONGODB_TEST_DB  = 'dflowp_test'
         }
@@ -54,24 +44,25 @@
                 }
             }
 
-            stage('Resolve software version') {
+            stage('Resolve software version & tree tags') {
                 steps {
                     sh '''
                         set -e
+                        chmod +x scripts/jenkins_resolve_version.sh
                         bash scripts/jenkins_resolve_version.sh
                         . ./.jenkins_runtime.env
-                        echo "IMAGE_TAG=${IMAGE_TAG}"
+                        echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}"
                     '''
                 }
             }
 
-            stage('Check skip if stack already current') {
+            stage('Build plan (skip / partial / full)') {
                 steps {
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_check_skip_deploy.sh
-                        bash scripts/jenkins_check_skip_deploy.sh
-                        cat .jenkins_skip_pipeline
+                        chmod +x scripts/jenkins_build_plan.sh
+                        bash scripts/jenkins_build_plan.sh
+                        cat .jenkins_skip_pipeline || true
                     '''
                 }
             }
@@ -85,14 +76,13 @@
                 steps {
                     sh '''
                         set -e
-                        # Stoppt und entfernt nur Container, Volumes bleiben erhalten.
                         docker container stop $(docker container ls -aq) 2>/dev/null || true
                         docker container rm $(docker container ls -aq) 2>/dev/null || true
                     '''
                 }
             }
 
-        stage('Build and install libraries') {
+            stage('Build Docker images (selective)') {
                 when {
                     expression {
                         return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
@@ -101,41 +91,13 @@
                 steps {
                     sh '''
                         set -e
-                        python3.11 -m ensurepip --upgrade
-                        ./scripts/build_and_install_libraries.sh
+                        chmod +x scripts/jenkins_docker_build.sh
+                        bash scripts/jenkins_docker_build.sh
                     '''
                 }
             }
 
-        stage('Build Docker Images') {
-                when {
-                    expression {
-                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
-                    }
-                }
-                steps {
-                    sh '''
-                        set -e
-                        . ./.jenkins_runtime.env
-                    docker --version
-                    # Build libraries and install from wheels before image build.
-                    python3.11 -m ensurepip --upgrade
-                    python3.11 -m pip install --upgrade pip build
-                    python3.11 -m build dflowp-packages/dflowp-core
-                    python3.11 -m build dflowp-packages/dflowp-processruntime
-                    python3.11 -m pip install --force-reinstall dflowp-packages/dflowp-core/dist/*.whl
-                    python3.11 -m pip install --force-reinstall --no-deps dflowp-packages/dflowp-processruntime/dist/*.whl
-                    docker build --target api -t "${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}" .
-                    docker build --target runtime -t "${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}" .
-                    docker build --target eventsystem -t "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}" .
-                    docker build --target event-broker -t "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}" .
-                    docker build --target plugin-fetchfeeditems -t "${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}" .
-                    docker build --target plugin-embeddata -t "${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}" .
-                    '''
-                }
-            }
-
-        stage('Compose up (MongoDB + App)') {
+            stage('Compose up (MongoDB + App)') {
                 when {
                     expression {
                         return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
@@ -151,16 +113,12 @@
 
                     sh '''
                         set -e
+                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
-                        export SOFTWARE_VERSION
-                        # Kein --build: Image wurde in der Stage „Build Docker Image“ gebaut.
-                        # Neuere docker-compose Versionen verlangen sonst Buildx >= 0.17.0 (Bake).
+                        set -a
+                        . ./.jenkins_build_plan.env
+                        . scripts/jenkins_compose_env.sh
+                        set +a
                         docker-compose up -d
                         docker-compose ps
                     '''
@@ -182,15 +140,12 @@
                 ]) {
                     sh '''
                         set -e
+                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
-                        export SOFTWARE_VERSION
-                        # API-Tests laufen im API-Container und nutzen Compose-Mongo via Service-Name "mongo"
+                        set -a
+                        . ./.jenkins_build_plan.env
+                        . scripts/jenkins_compose_env.sh
+                        set +a
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           api pytest tests/api_test.py -v --tb=short
@@ -213,15 +168,12 @@
                 ]) {
                     sh '''
                         set -e
+                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
-                        export SOFTWARE_VERSION
-                        # Runtime-/Core-Tests laufen im Worker-Container.
+                        set -a
+                        . ./.jenkins_build_plan.env
+                        . scripts/jenkins_compose_env.sh
+                        set +a
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           worker pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
@@ -244,14 +196,12 @@
                 ]) {
                     sh '''
                         set -e
+                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
-                        export SOFTWARE_VERSION
+                        set -a
+                        . ./.jenkins_build_plan.env
+                        . scripts/jenkins_compose_env.sh
+                        set +a
                         docker-compose run --rm \
                           plugin-fetchfeeditems pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
                         docker-compose run --rm \
@@ -275,14 +225,12 @@
                 ]) {
                     sh '''
                         set -e
+                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
-                        export SOFTWARE_VERSION
+                        set -a
+                        . ./.jenkins_build_plan.env
+                        . scripts/jenkins_compose_env.sh
+                        set +a
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           event-broker pytest tests/event_broker_test.py -v --tb=short
@@ -294,7 +242,7 @@
                 }
             }
 
-        stage('Docker Hub Login & Push Images') {
+            stage('Docker Hub Login & Push Images') {
                 when {
                     expression {
                         return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
@@ -307,13 +255,10 @@
                     sh '''
                         set -e
                         . ./.jenkins_runtime.env
+                        . ./.jenkins_build_plan.env
                         echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
-                        docker push "${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
-                        docker push "${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
-                        docker push "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
-                        docker push "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
-                        docker push "${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
-                        docker push "${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
+                        chmod +x scripts/jenkins_docker_push.sh
+                        bash scripts/jenkins_docker_push.sh
                         docker logout || true
                     '''
                 }
@@ -324,15 +269,13 @@
         post {
             failure {
                 echo 'Pipeline fehlgeschlagen – Logs prüfen.'
-                echo 'Deleting containers, volumes and networks...'
-
             }
             success {
                 script {
                     if (fileExists('.jenkins_skip_pipeline') && readFile('.jenkins_skip_pipeline').trim() == 'true') {
-                        echo '=== Pipeline erfolgreich beendet (SKIP): Alle DFlowP-Container laufen bereits mit der ermittelten SOFTWARE_VERSION / IMAGE_TAG. Build, Tests und Push wurden übersprungen. ==='
+                        echo '=== SKIP: Stack entspricht bereits allen erwarteten Tree-Tags; Libraries unverändert. ==='
                     } else {
-                        echo 'Pipeline erfolgreich abgeschlossen (vollständiger Lauf).'
+                        echo 'Pipeline erfolgreich (Build/Tests/Push nach Plan).'
                     }
                 }
             }

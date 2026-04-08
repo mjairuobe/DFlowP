@@ -30,6 +30,8 @@ htmlcov/
 .env.local
 .jenkins_runtime.env
 .jenkins_skip_pipeline
+.jenkins_build_plan.env
+.jenkins_last_trees
 
 # Persistent local Docker data
 volumes/

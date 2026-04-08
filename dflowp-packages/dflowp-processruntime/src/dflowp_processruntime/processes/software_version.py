@@ -16,6 +16,8 @@ def build_semantic_software_version(raw_version: str | int) -> str:
     raw = str(raw_version).strip()
     if re.fullmatch(r"\d+\.\d+\.\d+", raw):
         return raw
+    if re.fullmatch(r"v\d+\.\d+\.\d+", raw, re.IGNORECASE):
+        return raw[1:]
     return f"{MAJOR_VERSION}.{MINOR_VERSION}.{raw}"
 
 

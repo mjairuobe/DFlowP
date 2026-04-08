@@ -1,35 +1,75 @@
 #!/usr/bin/env bash
-# Jenkins: SOFTWARE_VERSION und Docker-Tag aus Git, ohne Docker Hub.
+# Jenkins: SOFTWARE_VERSION (vMAJOR.MINOR.BUILD), Tree-Short-Hashes (5 Hex) pro Subdir.
 #
-# Formel: MAJOR.<Branch-Anzahl>.<erste 4 Hex-Zeichen des Short-SHA als Dezimalzahl>
-# MAJOR wird aus dflowp-packages/.../software_version.py (MAJOR_VERSION) gelesen.
+# SOFTWARE_VERSION: höchster vX.Y.Z Tag → vX.Y.<BUILDNUM>, BUILDNUM = git rev-list seit Tag (branch-unabhängig).
+# Ohne Tag: v0.1.<BUILDNUM> mit BUILDNUM = rev-list --all --count.
 #
-# Schreibt .jenkins_runtime.env mit SOFTWARE_VERSION und IMAGE_TAG (gleicher Wert).
+# Schreibt .jenkins_runtime.env
 
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "${ROOT}"
 
-SHORT_SHA="$(git rev-parse --short HEAD)"
-# Erste 4 Hex-Zeichen des Short-SHA (Git liefert typ. 7+ Zeichen, nur [0-9a-f])
-HEX4="${SHORT_SHA:0:4}"
-DECIMAL="$((16#${HEX4}))"
+tree_short_5() {
+  local path="$1"
+  local full
+  if ! full="$(git rev-parse "HEAD:${path}" 2>/dev/null)"; then
+    echo "00000"
+    return
+  fi
+  # 40-stelliger Hex-String → erste 5 Zeichen (klein, wie docker tags)
+  echo "${full:0:5}" | tr '[:upper:]' '[:lower:]'
+}
 
-BRANCH_COUNT="$(git for-each-ref refs/heads refs/remotes | wc -l | tr -d ' ')"
+LATEST_TAG="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null | sort -V | tail -1)"
 
-SV_FILE="dflowp-packages/dflowp-processruntime/src/dflowp_processruntime/processes/software_version.py"
-MAJOR="$(grep -E '^MAJOR_VERSION[[:space:]]*=' "${SV_FILE}" | head -1 | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/')"
-MAJOR="${MAJOR:-0}"
+if [[ -n "${LATEST_TAG}" ]]; then
+  if [[ "${LATEST_TAG}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    VMAJOR="${BASH_REMATCH[1]}"
+    VMINOR="${BASH_REMATCH[2]}"
+  else
+    VMAJOR="0"
+    VMINOR="1"
+  fi
+  BUILD_NUM="$(git rev-list --count --all "${LATEST_TAG}..HEAD" 2>/dev/null || echo "0")"
+else
+  VMAJOR="0"
+  VMINOR="1"
+  BUILD_NUM="$(git rev-list --all --count 2>/dev/null || echo "0")"
+fi
 
-SOFTWARE_VERSION="${MAJOR}.${BRANCH_COUNT}.${DECIMAL}"
+SOFTWARE_VERSION="v${VMAJOR}.${VMINOR}.${BUILD_NUM}"
+
+# Pro Image/Package (Pfade relativ zum Repo-Root)
+TREE_API="$(tree_short_5 "dflowp/api")"
+TREE_WORKER="$(tree_short_5 "dflowp/worker")"
+TREE_EVENT_BROKER="$(tree_short_5 "dflowp/event_broker")"
+TREE_EVENTSYSTEM="$(tree_short_5 "dflowp/eventsystem")"
+TREE_PLUGIN_EMBEDDATA="$(tree_short_5 "dflowp/plugin_embeddata")"
+TREE_PLUGIN_FETCHFEEDITEMS="$(tree_short_5 "dflowp/plugin_fetchfeeditems")"
+TREE_DFLOWP_CORE="$(tree_short_5 "dflowp-packages/dflowp-core")"
+TREE_DFLOWP_PROCESSRUNTIME="$(tree_short_5 "dflowp-packages/dflowp-processruntime")"
+
+# Kanonisches Image-Tag für „sichtbar“ / Vergleich = Tree-Hash (pro Service unterschiedlich).
+# IMAGE_TAG bleibt für Abwärtskompatibilität = SOFTWARE_VERSION (z. B. für Logs).
 IMAGE_TAG="${SOFTWARE_VERSION}"
 
-echo "Git short SHA: ${SHORT_SHA} → HEX4=${HEX4} → decimal=${DECIMAL}"
-echo "Branch refs (heads+remotes): ${BRANCH_COUNT}"
-echo "Resolved SOFTWARE_VERSION=${SOFTWARE_VERSION} (IMAGE_TAG=${IMAGE_TAG})"
+echo "LATEST_TAG=${LATEST_TAG:-<keiner>}"
+echo "SOFTWARE_VERSION=${SOFTWARE_VERSION} (BUILD_NUM=${BUILD_NUM})"
+echo "Tree shorts: api=${TREE_API} worker=${TREE_WORKER} eventsystem=${TREE_EVENTSYSTEM} event_broker=${TREE_EVENT_BROKER} plugin_fetch=${TREE_PLUGIN_FETCHFEEDITEMS} plugin_embed=${TREE_PLUGIN_EMBEDDATA} core=${TREE_DFLOWP_CORE} pr=${TREE_DFLOWP_PROCESSRUNTIME}"
 
 {
   printf 'SOFTWARE_VERSION=%s\n' "${SOFTWARE_VERSION}"
+  printf 'BUILD_NUM=%s\n' "${BUILD_NUM}"
+  printf 'LATEST_TAG=%s\n' "${LATEST_TAG:-}"
   printf 'IMAGE_TAG=%s\n' "${IMAGE_TAG}"
+  printf 'TREE_API=%s\n' "${TREE_API}"
+  printf 'TREE_WORKER=%s\n' "${TREE_WORKER}"
+  printf 'TREE_EVENT_BROKER=%s\n' "${TREE_EVENT_BROKER}"
+  printf 'TREE_EVENTSYSTEM=%s\n' "${TREE_EVENTSYSTEM}"
+  printf 'TREE_PLUGIN_EMBEDDATA=%s\n' "${TREE_PLUGIN_EMBEDDATA}"
+  printf 'TREE_PLUGIN_FETCHFEEDITEMS=%s\n' "${TREE_PLUGIN_FETCHFEEDITEMS}"
+  printf 'TREE_DFLOWP_CORE=%s\n' "${TREE_DFLOWP_CORE}"
+  printf 'TREE_DFLOWP_PROCESSRUNTIME=%s\n' "${TREE_DFLOWP_PROCESSRUNTIME}"
 } > .jenkins_runtime.env
