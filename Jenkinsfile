@@ -78,10 +78,8 @@
                     python3.11 -m pip install --upgrade pip build
                     python3.11 -m build packages/dflowp-core
                     python3.11 -m build packages/dflowp-processruntime
-                    python3.11 -m build .
                     python3.11 -m pip install --force-reinstall packages/dflowp-core/dist/*.whl
                     python3.11 -m pip install --force-reinstall --no-deps packages/dflowp-processruntime/dist/*.whl
-                    python3.11 -m pip install --force-reinstall dist/dflowp-*.whl
                     docker build --target api -t "${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}" .
                     docker build --target runtime -t "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}" .
                     docker build --target eventsystem -t "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}" .
