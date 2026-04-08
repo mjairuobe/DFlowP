@@ -69,10 +69,9 @@ def main() -> int:
         ]
         subprocess.run(cmd, cwd=build_cwd, check=True)
 
-    # LAST_TREE_* für alle Pfade in modules.json (Packages + Services)
+    pkgs, svcs2 = all_paths(modules)
     lines = []
-    pkgs, svcs = all_paths(modules)
-    for p in pkgs + svcs:
+    for p in pkgs + svcs2:
         tk = path_to_env_key(p, "TREE")
         lines.append(f"LAST_{tk}={rt.get(tk, '')}")
     (root / ".jenkins_last_trees").write_text("\n".join(lines) + "\n", encoding="utf-8")

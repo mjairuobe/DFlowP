@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schreibt .jenkins_skip_pipeline und .jenkins_build_plan.env (ohne LIB_FORCE)."""
+"""Schreibt .jenkins_skip_pipeline und .jenkins_build_plan.env (DFlowP: BUILD_* + BUILDSVC_*)."""
 
 from __future__ import annotations
 
@@ -89,6 +89,7 @@ def main() -> int:
     os.chdir(root)
     modules = load_modules()
     pkgs, svcs = all_paths(modules)
+    flag_map = modules.get("docker", {}).get("build_plan_flags", {})
 
     env_path = root / ".jenkins_runtime.env"
     env = load_env(env_path)
@@ -96,9 +97,12 @@ def main() -> int:
         lines = []
         for svc in svcs:
             lines.append(f"{path_to_env_key(svc, 'BUILDSVC')}=1")
+            bk = flag_map.get(svc)
+            if bk:
+                lines.append(f"{bk}=1")
         (root / ".jenkins_skip_pipeline").write_text("false\n", encoding="utf-8")
         (root / ".jenkins_build_plan.env").write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print("ci_build_plan: keine .jenkins_runtime.env → alle BUILDSVC=1")
+        print("ci_build_plan: keine .jenkins_runtime.env → alle Builds=1")
         return 0
 
     last_path = root / ".jenkins_last_trees"
@@ -129,8 +133,7 @@ def main() -> int:
         for m in stack_missing:
             print(f"Stack: fehlt {m}")
 
-    lines: list[str] = []
-    any_build = False
+    build_flags: dict[str, int] = {}
     for svc in svcs:
         key = path_to_env_key(svc, "BUILDSVC")
         tk = tree_key_for_path(svc)
@@ -149,9 +152,12 @@ def main() -> int:
         elif dep_hit:
             need = 1
 
-        lines.append(f"{key}={need}")
+        build_flags[key] = need
+        bk = flag_map.get(svc)
+        if bk:
+            build_flags[bk] = need
+
         if need:
-            any_build = True
             reason = []
             if first_run:
                 reason.append("erster Lauf")
@@ -159,10 +165,11 @@ def main() -> int:
                 reason.append("Service-Baum geändert")
             if dep_hit:
                 reason.append(
-                    "lokale Libs betroffen: "
-                    + ", ".join(sorted(deps & affected_packages))
+                    "lokale Libs: " + ", ".join(sorted(deps & affected_packages))
                 )
-            print(f"BUILDSVC {svc}: 1 ({'; '.join(reason)})")
+            print(f"Build {svc}: 1 ({'; '.join(reason)})")
+
+    any_build = any(v == 1 for k, v in build_flags.items() if k.startswith("BUILDSVC_"))
 
     all_images_current = 1
     if not stack_ok:
@@ -180,7 +187,15 @@ def main() -> int:
     skip = bool(not any_build and all_images_current == 1 and stack_ok)
     (root / ".jenkins_skip_pipeline").write_text(("true" if skip else "false") + "\n", encoding="utf-8")
 
-    (root / ".jenkins_build_plan.env").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    lines_out: list[str] = []
+    for svc in svcs:
+        key = path_to_env_key(svc, "BUILDSVC")
+        lines_out.append(f"{key}={build_flags.get(key, 0)}")
+        bk = flag_map.get(svc)
+        if bk:
+            lines_out.append(f"{bk}={build_flags.get(bk, 0)}")
+
+    (root / ".jenkins_build_plan.env").write_text("\n".join(lines_out) + "\n", encoding="utf-8")
     print("=== .jenkins_build_plan.env ===")
     print((root / ".jenkins_build_plan.env").read_text(encoding="utf-8"))
     print("=== .jenkins_skip_pipeline ===")

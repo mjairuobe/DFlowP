@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exportiert DOCKER_IMAGE_<SLUG> für docker-compose (Shell: eval oder source via sh)."""
+"""Exportiert DOCKER_IMAGE_* für docker-compose (DFlowP)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ci_lib import all_paths, container_for_service, image_for_service, load_modules, path_to_env_key, repo_root
+from ci_lib import (
+    image_for_service,
+    load_modules,
+    path_to_env_key,
+    repo_root,
+)
 
 
 def load_env_file(path: Path) -> dict[str, str]:
@@ -43,34 +48,36 @@ def tag_from_container(name: str, fallback: str) -> str:
     return img.split(":", 1)[-1]
 
 
-def env_var_for_service(svc_path: str) -> str:
-    slug = Path(svc_path).name.replace("-", "_").upper()
-    return f"DOCKER_IMAGE_{slug}"
-
-
 def main() -> int:
     root = repo_root()
     modules = load_modules()
-    _, svcs = all_paths(modules)
+    compose_map = modules.get("compose", {})
+    env_names = modules.get("compose_env", {})
     rt = load_env_file(root / ".jenkins_runtime.env")
     plan = load_env_file(root / ".jenkins_build_plan.env")
     sv = rt.get("SOFTWARE_VERSION", "v0.0.0")
 
     out: dict[str, str] = {"SOFTWARE_VERSION": sv}
-    for svc in svcs:
-        var = env_var_for_service(svc)
-        repo = image_for_service(modules, svc)
-        tk = path_to_env_key(svc, "TREE")
+
+    for compose_key, module_path in compose_map.items():
+        var = env_names.get(compose_key)
+        if not var:
+            continue
+        repo = image_for_service(modules, module_path)
+        tk = path_to_env_key(module_path, "TREE")
         exp = rt.get(tk, "00000").lower()
-        key = path_to_env_key(svc, "BUILDSVC")
-        cname = container_for_service(modules, svc)
-        if plan.get(key) == "1":
+        builds_key = path_to_env_key(module_path, "BUILDSVC")
+        # Fallback: Jenkinsfile nutzt BUILD_* (ohne BUILDSVC_)
+        flag_map = modules.get("docker", {}).get("build_plan_flags", {})
+        legacy = flag_map.get(module_path)
+        cname = modules["docker"]["containers"][module_path]
+
+        if plan.get(builds_key) == "1" or (legacy and plan.get(legacy) == "1"):
             tag = exp
         else:
             tag = tag_from_container(cname, exp)
         out[var] = f"{repo}:{tag}"
 
-    # Ausgabe als export-Zeilen für sh
     for k, v in sorted(out.items()):
         print(f"export {k}={shlex.quote(v)}")
     return 0

@@ -1,2 +1,0 @@
--e ../../example-packages/alpha-lib
-httpx>=0.26.0

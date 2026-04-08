@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schreibt .jenkins_runtime.env: SOFTWARE_VERSION + TREE_* pro Pfad aus modules.json."""
+"""Schreibt .jenkins_runtime.env: SOFTWARE_VERSION + TREE_* (modules.json)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ci_lib import all_paths, git_path_for_tree, load_modules, path_to_env_key, repo_root

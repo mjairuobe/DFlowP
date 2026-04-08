@@ -1,0 +1,2 @@
+# CI: Abhängigkeit zum lokalen Core (für partiellen Build)
+-e ../dflowp-core

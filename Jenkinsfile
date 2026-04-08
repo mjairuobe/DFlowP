@@ -1,15 +1,9 @@
-    // DFlowP – CI/CD-Pipeline
+    // DFlowP – CI/CD-Pipeline (modular-ci: modules.json + scripts/ci_*.py)
     //
-    // Version & Tags: scripts/jenkins_resolve_version.sh
-    //   SOFTWARE_VERSION = vMAJOR.MINOR.BUILD (höchster vX.Y.Z-Tag + rev-list seit Tag; ohne Tag: v0.1.<count>)
-    //   Pro Subdir: 5-Hex Tree-Short (sichtbares Image-Tag für „aktuell“)
-    //
-    // Build-Plan: scripts/jenkins_build_plan.sh
-    //   Skip wenn alle Container den erwarteten Tree-Tag zeigen + Libraries unverändert
-    //   LIB_FORCE: dflowp-packages Tree geändert → alle Images neu
-    //   Sonst nur geänderte Images; Compose nutzt scripts/jenkins_compose_env.sh (alte Tags beibehalten)
-    //
-    // Docker: scripts/jenkins_docker_build.sh / jenkins_docker_push.sh (Tree-Tag + SOFTWARE_VERSION-Tag)
+    // Version & Tags: scripts/ci_resolve_version.py → .jenkins_runtime.env
+    // Build-Plan: scripts/ci_build_plan.py (abhängigkeitsbasiert, kein LIB_FORCE)
+    // Compose-Images: eval "$(python3.11 scripts/ci_compose_env.py)"
+    // Docker: scripts/ci_docker_build.py / ci_docker_push.py
 
     pipeline {
         agent any
@@ -59,8 +53,7 @@
                 steps {
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_resolve_version.sh
-                        bash scripts/jenkins_resolve_version.sh
+                        python3.11 scripts/ci_resolve_version.py
                         . ./.jenkins_runtime.env
                         echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}"
                     '''
@@ -71,8 +64,7 @@
                 steps {
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_build_plan.sh
-                        bash scripts/jenkins_build_plan.sh
+                        python3.11 scripts/ci_build_plan.py
                         cat .jenkins_skip_pipeline || true
                     '''
                 }
@@ -102,8 +94,7 @@
                 steps {
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_docker_build.sh
-                        bash scripts/jenkins_docker_build.sh
+                        python3.11 scripts/ci_docker_build.py
                     '''
                 }
             }
@@ -124,14 +115,13 @@
 
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
                         set -a
                         . ./.jenkins_build_plan.env
-                        . scripts/jenkins_compose_env.sh
+                        eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker-compose up -d
-                        docker-compose ps
+                        docker compose up -d
+                        docker compose ps
                     '''
                 }
                 }
@@ -151,13 +141,12 @@
                 ]) {
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
                         set -a
                         . ./.jenkins_build_plan.env
-                        . scripts/jenkins_compose_env.sh
+                        eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker-compose run --rm \
+                        docker compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           api pytest tests/api_test.py -v --tb=short
                     '''
@@ -179,13 +168,12 @@
                 ]) {
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
                         set -a
                         . ./.jenkins_build_plan.env
-                        . scripts/jenkins_compose_env.sh
+                        eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker-compose run --rm \
+                        docker compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           worker pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
                     '''
@@ -207,15 +195,14 @@
                 ]) {
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
                         set -a
                         . ./.jenkins_build_plan.env
-                        . scripts/jenkins_compose_env.sh
+                        eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker-compose run --rm \
+                        docker compose run --rm \
                           plugin-fetchfeeditems pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
-                        docker-compose run --rm \
+                        docker compose run --rm \
                           plugin-embeddata pytest tests/plugin_services_test.py::test_embed_plugin_info_and_health -v --tb=short
                     '''
                 }
@@ -236,16 +223,15 @@
                 ]) {
                     sh '''
                         set -e
-                        chmod +x scripts/jenkins_compose_env.sh
                         . ./.jenkins_runtime.env
                         set -a
                         . ./.jenkins_build_plan.env
-                        . scripts/jenkins_compose_env.sh
+                        eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker-compose run --rm \
+                        docker compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           event-broker pytest tests/event_broker_test.py -v --tb=short
-                        docker-compose run --rm \
+                        docker compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           eventsystem pytest tests/eventsystem_test.py -k "not with_persistence" -v --tb=short
                     '''
@@ -268,8 +254,7 @@
                         . ./.jenkins_runtime.env
                         . ./.jenkins_build_plan.env
                         echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
-                        chmod +x scripts/jenkins_docker_push.sh
-                        bash scripts/jenkins_docker_push.sh
+                        python3.11 scripts/ci_docker_push.py
                         docker logout || true
                     '''
                 }
@@ -284,7 +269,7 @@
             success {
                 script {
                     if (fileExists('.jenkins_skip_pipeline') && readFile('.jenkins_skip_pipeline').trim() == 'true') {
-                        echo '=== SKIP: Stack entspricht bereits allen erwarteten Tree-Tags; Libraries unverändert. ==='
+                        echo '=== SKIP: Stack entspricht bereits den erwarteten Images (modules.json / Build-Plan). ==='
                     } else {
                         echo 'Pipeline erfolgreich (Build/Tests/Push nach Plan).'
                     }
