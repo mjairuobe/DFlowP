@@ -20,7 +20,7 @@ MONGODB_URI="${MONGODB_URI:-mongodb://localhost:27017}"
 DATABASE="dflowp"
 COLLECTION="data_items"
 
-# Standard Text-Template (sollte mit embed_data.py DEFAULT_TEXT_TEMPLATE übereinstimmen)
+# Standard Text-Template (sollte mit dflowp/plugin_embeddata/embed_data.py DEFAULT_TEXT_TEMPLATE übereinstimmen)
 DEFAULT_TEXT_TEMPLATE="{title} {summary}"
 
 echo "=========================================="

@@ -1,1 +1,0 @@
-"""Embedding Plugin - EmbedData Subprozess."""

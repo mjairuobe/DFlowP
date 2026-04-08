@@ -16,7 +16,7 @@ from dflowp_core.database.mongo import (
     connect_to_mongodb,
     resolve_mongodb_uri,
 )
-from dflowp_processruntime.plugins.embedding.embed_data import EmbedData
+from dflowp.plugin_embeddata.embed_data import EmbedData
 from dflowp_processruntime.subprocesses.io_transformation_state import IOTransformationState
 from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
 

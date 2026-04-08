@@ -37,12 +37,13 @@ from dflowp_processruntime.subprocesses.io_transformation_state import (
 from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
 from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
 from dflowp_processruntime.plugins.plugin_loader import (
+    clear_registry,
     get_subprocess,
-    load_builtin_plugins,
+    load_remote_plugin_services,
     register_subprocess,
 )
-from dflowp_processruntime.plugins.embedding.embed_data import EmbedData
-from dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items import FetchFeedItems
+from dflowp.plugin_embeddata.embed_data import EmbedData
+from dflowp.plugin_fetchfeeditems.fetch_feed_items import FetchFeedItems
 from dflowp_core.utils.document_naming import build_human_readable_document_id
 from dflowp_processruntime.processes.software_version import MAJOR_VERSION, MINOR_VERSION
 
@@ -524,17 +525,30 @@ def test_get_subprocess_unknown_type():
     assert get_subprocess("NonExistentType_xyz") is None
 
 
-def test_load_builtin_plugins():
-    """Eingebaute Plugins werden korrekt geladen."""
-    load_builtin_plugins()
+def test_load_remote_plugin_services_registers_http_clients():
+    """DFLOWP_PLUGIN_ENDPOINTS registriert RemotePluginSubprocess pro SubprocessType."""
+    from dflowp_processruntime.plugins.remote_plugin import RemotePluginSubprocess
 
-    fetch = get_subprocess("FetchFeedItems")
-    embed = get_subprocess("EmbedData")
-
-    assert fetch is not None
-    assert embed is not None
-    assert isinstance(fetch, FetchFeedItems)
-    assert isinstance(embed, EmbedData)
+    clear_registry()
+    old = os.environ.get("DFLOWP_PLUGIN_ENDPOINTS")
+    os.environ["DFLOWP_PLUGIN_ENDPOINTS"] = (
+        "FetchFeedItems=http://plugin-fetchfeeditems:8101,"
+        "EmbedData=http://plugin-embeddata:8102"
+    )
+    try:
+        load_remote_plugin_services()
+        fetch = get_subprocess("FetchFeedItems")
+        embed = get_subprocess("EmbedData")
+        assert fetch is not None
+        assert embed is not None
+        assert isinstance(fetch, RemotePluginSubprocess)
+        assert isinstance(embed, RemotePluginSubprocess)
+    finally:
+        if old is None:
+            os.environ.pop("DFLOWP_PLUGIN_ENDPOINTS", None)
+        else:
+            os.environ["DFLOWP_PLUGIN_ENDPOINTS"] = old
+        clear_registry()
 
 
 # ===========================================================================
@@ -1066,7 +1080,7 @@ async def test_fetch_feed_items_success_two_articles():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1100,7 +1114,7 @@ async def test_fetch_feed_items_source_included_in_output():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1129,7 +1143,7 @@ async def test_fetch_feed_items_output_has_article_fields():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1190,7 +1204,7 @@ async def test_fetch_feed_items_http_error_continues_other_feeds():
         return resp
 
     with patch(
-        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_client.return_value.__aenter__.return_value.get = mock_get
 
@@ -1216,7 +1230,7 @@ async def test_fetch_feed_items_empty_feed():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = empty_rss
@@ -1248,7 +1262,7 @@ async def test_fetch_feed_items_multiple_feeds():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1347,7 +1361,7 @@ async def test_fetch_feed_items_duplicate_key_retries_with_new_id():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML

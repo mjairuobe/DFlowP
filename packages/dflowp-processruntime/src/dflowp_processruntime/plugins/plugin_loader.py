@@ -1,4 +1,4 @@
-"""Lädt Subprozess-Plugins zur Laufzeit."""
+"""Lädt Subprozess-Plugins zur Laufzeit (Registry + Remote-HTTP-Clients)."""
 
 import os
 from typing import Optional
@@ -20,40 +20,29 @@ def get_subprocess(subprocess_type: str) -> Optional[BaseSubprocess]:
     return _REGISTRY.get(subprocess_type)
 
 
-def load_builtin_plugins() -> None:
-    """Lädt lokale Fallback-Plugins (FetchFeedItems, EmbedData)."""
-    from dflowp_processruntime.plugins.fetch_feed_items.fetch_feed_items import FetchFeedItems
-    from dflowp_processruntime.plugins.embedding.embed_data import EmbedData
-
-    register_subprocess("FetchFeedItems", FetchFeedItems())
-    register_subprocess("EmbedData", EmbedData())
-
-
 def load_remote_plugin_services() -> None:
     """
-    Registriert Remote-Plugin-Implementierungen über Docker-DNS.
+    Registriert Remote-Plugin-Implementierungen über HTTP (Docker-DNS o.ä.).
 
-    Hinweis: Docker Embedded DNS bietet kein Wildcard-/Listing-API.
-    Deshalb wird eine konfigurierbare Kandidatenliste geprüft.
+    Umgebungsvariable DFLOWP_PLUGIN_ENDPOINTS:
+      FetchFeedItems=http://plugin-fetchfeeditems:8101,EmbedData=http://plugin-embeddata:8102
+
+    Jeder Eintrag ist ``SubprocessType=base_url``. Der Hostname in der URL muss
+    ``plugin`` enthalten (Sicherheitsregel im Remote-Client).
     """
     endpoints_raw = os.environ.get(
         "DFLOWP_PLUGIN_ENDPOINTS",
-        "plugin-fetchfeeditems=http://plugin-fetchfeeditems:8101,"
-        "plugin-embeddata=http://plugin-embeddata:8102",
+        "FetchFeedItems=http://plugin-fetchfeeditems:8101,"
+        "EmbedData=http://plugin-embeddata:8102",
     )
-    plugin_map = {
-        "plugin-fetchfeeditems": "FetchFeedItems",
-        "plugin-embeddata": "EmbedData",
-    }
-    remote_enabled: set[str] = set()
     for entry in [x.strip() for x in endpoints_raw.split(",") if x.strip()]:
         if "=" not in entry:
             continue
-        key, base_url = [x.strip() for x in entry.split("=", 1)]
-        if "plugin" not in key:
+        subprocess_type, base_url = [x.strip() for x in entry.split("=", 1)]
+        if not subprocess_type or not base_url:
             continue
-        subprocess_type = plugin_map.get(key)
-        if not subprocess_type:
+        host_part = base_url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        if "plugin" not in host_part:
             continue
         register_subprocess(
             subprocess_type,
@@ -62,7 +51,8 @@ def load_remote_plugin_services() -> None:
                 base_url=base_url,
             ),
         )
-        remote_enabled.add(subprocess_type)
 
-    for enabled in sorted(remote_enabled):
-        print(f"[PluginLoader] Remote plugin aktiv: {enabled}")
+
+def clear_registry() -> None:
+    """Leert die Registry (v. a. für Tests)."""
+    _REGISTRY.clear()
