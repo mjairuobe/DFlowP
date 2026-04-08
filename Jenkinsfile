@@ -92,10 +92,10 @@
                     # Build libraries and install from wheels before image build.
                     python3.11 -m ensurepip --upgrade
                     python3.11 -m pip install --upgrade pip build
-                    python3.11 -m build packages/dflowp-core
-                    python3.11 -m build packages/dflowp-processruntime
-                    python3.11 -m pip install --force-reinstall packages/dflowp-core/dist/*.whl
-                    python3.11 -m pip install --force-reinstall --no-deps packages/dflowp-processruntime/dist/*.whl
+                    python3.11 -m build dflowp-packages/dflowp-core
+                    python3.11 -m build dflowp-packages/dflowp-processruntime
+                    python3.11 -m pip install --force-reinstall dflowp-packages/dflowp-core/dist/*.whl
+                    python3.11 -m pip install --force-reinstall --no-deps dflowp-packages/dflowp-processruntime/dist/*.whl
                     docker build --target api -t "${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}" .
                     docker build --target runtime -t "${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}" .
                     docker build --target eventsystem -t "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}" .

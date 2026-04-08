@@ -219,5 +219,5 @@ Nach ein oder zwei Releases können die alten Wrapper-Klassen entfernt werden:
 ## Zusätzliche Ressourcen
 
 - **CLAUDE.md**: Architektur-Dokumentation
-- **`packages/dflowp-core/src/dflowp_core/database/migrations.py`**: Migrations-Implementierung
+- **`dflowp-packages/dflowp-core/src/dflowp_core/database/migrations.py`**: Migrations-Implementierung
 - **tests/database_test.py**: Tests für beide Repositories

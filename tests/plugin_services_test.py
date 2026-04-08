@@ -18,14 +18,14 @@ def _load_module(module_name: str, rel_path: str):
 
 def test_plugin_directories_exist() -> None:
     root = pathlib.Path(__file__).resolve().parents[1] / "dflowp"
-    assert (root / "plugin-fetchfeeditems").is_dir()
-    assert (root / "plugin-embeddata").is_dir()
+    assert (root / "plugin_fetchfeeditems").is_dir()
+    assert (root / "plugin_embeddata").is_dir()
 
 
 def test_fetch_plugin_info_and_health() -> None:
     module = _load_module(
         "plugin_fetchfeeditems_app",
-        "dflowp/plugin-fetchfeeditems/app.py",
+        "dflowp/plugin_fetchfeeditems/app.py",
     )
     client = TestClient(module.app)
     health = client.get("/health")
@@ -42,7 +42,7 @@ def test_fetch_plugin_info_and_health() -> None:
 def test_embed_plugin_info_and_health() -> None:
     module = _load_module(
         "plugin_embeddata_app",
-        "dflowp/plugin-embeddata/app.py",
+        "dflowp/plugin_embeddata/app.py",
     )
     client = TestClient(module.app)
     health = client.get("/health")

@@ -1,2 +1,2 @@
-"""Alias package for plugin-fetchfeeditems service."""
+"""FetchFeedItems plugin service package."""
 

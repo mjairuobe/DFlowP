@@ -2,7 +2,7 @@
 # Jenkins: SOFTWARE_VERSION und Docker-Tag aus Git, ohne Docker Hub.
 #
 # Formel: MAJOR.<Branch-Anzahl>.<erste 4 Hex-Zeichen des Short-SHA als Dezimalzahl>
-# MAJOR wird aus packages/.../software_version.py (MAJOR_VERSION) gelesen.
+# MAJOR wird aus dflowp-packages/.../software_version.py (MAJOR_VERSION) gelesen.
 #
 # Schreibt .jenkins_runtime.env mit SOFTWARE_VERSION und IMAGE_TAG (gleicher Wert).
 
@@ -18,7 +18,7 @@ DECIMAL="$((16#${HEX4}))"
 
 BRANCH_COUNT="$(git for-each-ref refs/heads refs/remotes | wc -l | tr -d ' ')"
 
-SV_FILE="packages/dflowp-processruntime/src/dflowp_processruntime/processes/software_version.py"
+SV_FILE="dflowp-packages/dflowp-processruntime/src/dflowp_processruntime/processes/software_version.py"
 MAJOR="$(grep -E '^MAJOR_VERSION[[:space:]]*=' "${SV_FILE}" | head -1 | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/')"
 MAJOR="${MAJOR:-0}"
 

@@ -244,8 +244,8 @@ pip install -e ".[dev]"
 
 ### Projektstruktur
 
-- **packages/dflowp-core** – Database, Event-Interfaces, Utilities
-- **packages/dflowp-processruntime** – Runtime/Engine, Dataflow, Prozesse, Subprozesse, Plugins
+- **dflowp-packages/dflowp-core** – Database, Event-Interfaces, Utilities
+- **dflowp-packages/dflowp-processruntime** – Runtime/Engine, Dataflow, Prozesse, Subprozesse, Plugins
 - **dflowp/** – API- und Worker-Services
 
 ### Tests

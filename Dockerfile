@@ -5,12 +5,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /build
 
-COPY packages /build/packages
+COPY dflowp-packages /build/dflowp-packages
 
 RUN python -m ensurepip --upgrade \
     && python -m pip install --upgrade pip setuptools wheel build \
-    && python -m build /build/packages/dflowp-core \
-    && python -m build /build/packages/dflowp-processruntime
+    && python -m build /build/dflowp-packages/dflowp-core \
+    && python -m build /build/dflowp-packages/dflowp-processruntime
 
 
 FROM python:3.11-slim-bookworm AS api
@@ -20,7 +20,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=wheel-builder /build/packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
 COPY dflowp /app/dflowp
 COPY examples /app/examples
 COPY tests /app/tests
@@ -46,7 +46,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=wheel-builder /build/packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
 COPY dflowp /app/dflowp
 COPY tests /app/tests
 
@@ -71,8 +71,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=wheel-builder /build/packages/dflowp-core/dist /tmp/wheels/dflowp-core
-COPY --from=wheel-builder /build/packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
 COPY dflowp /app/dflowp
 COPY examples /app/examples
 COPY tests /app/tests
@@ -103,7 +103,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=wheel-builder /build/packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
 COPY dflowp /app/dflowp
 COPY tests /app/tests
 
@@ -126,8 +126,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=wheel-builder /build/packages/dflowp-core/dist /tmp/wheels/dflowp-core
-COPY --from=wheel-builder /build/packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
 COPY dflowp /app/dflowp
 COPY tests /app/tests
 
@@ -146,7 +146,7 @@ RUN python -m ensurepip --upgrade \
       "pytest-asyncio>=0.23.0" \
       "pytest-cov>=4.1.0"
 
-CMD ["python", "-m", "dflowp.plugin-fetchfeeditems.app"]
+CMD ["python", "-m", "dflowp.plugin_fetchfeeditems.app"]
 
 
 FROM python:3.11-slim-bookworm AS plugin-embeddata
@@ -156,8 +156,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=wheel-builder /build/packages/dflowp-core/dist /tmp/wheels/dflowp-core
-COPY --from=wheel-builder /build/packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
 COPY dflowp /app/dflowp
 COPY tests /app/tests
 
@@ -176,5 +176,5 @@ RUN python -m ensurepip --upgrade \
       "pytest-asyncio>=0.23.0" \
       "pytest-cov>=4.1.0"
 
-CMD ["python", "-m", "dflowp.plugin-embeddata.app"]
+CMD ["python", "-m", "dflowp.plugin_embeddata.app"]
 

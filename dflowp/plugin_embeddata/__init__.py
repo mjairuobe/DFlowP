@@ -1,2 +1,2 @@
-"""Alias package for plugin-embeddata service entrypoint."""
+"""EmbedData plugin service package."""
 
