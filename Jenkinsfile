@@ -20,8 +20,9 @@
         }
 
         environment {
-        // Docker Hub Target
-        DOCKER_IMAGE_REPO = 'docker.io/crawlabase/dflowp'
+        // Docker Hub Targets
+        DOCKER_IMAGE_REPO_API = 'docker.io/crawlabase/dflowp-api'
+        DOCKER_IMAGE_REPO_RUNTIME = 'docker.io/crawlabase/dflowp-runtime'
 
         // Jenkins Credential IDs (bitte in Jenkins anpassen)
         DOCKERHUB_CREDS_ID = 'dockerhub-creds'
@@ -63,7 +64,7 @@
                 }
             }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Images') {
                 steps {
                     sh '''
                         set -e
@@ -75,7 +76,8 @@
                     python3.11 -m build packages/dflowp-processruntime
                     python3.11 -m pip install --force-reinstall packages/dflowp-core/dist/*.whl
                     python3.11 -m pip install --force-reinstall --no-deps packages/dflowp-processruntime/dist/*.whl
-                    docker build -t "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}" .
+                    docker build --target api -t "${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}" .
+                    docker build --target runtime -t "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}" .
                     '''
                 }
             }
@@ -91,7 +93,7 @@
                     echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin index.docker.io
 
                     # Nutzt docker-browse (authentifiziertes Docker-Setup) via npx zum Tag-Auslesen.
-                    TAGS_RAW="$(npx docker-browse tags crawlabase/dflowp || true)"
+                    TAGS_RAW="$(npx docker-browse tags crawlabase/dflowp-api || true)"
                     PREV_VERSION="$(printf "%s\n" "${TAGS_RAW}" \
                       | python3.11 -c 'import re,sys; tags=[line.strip() for line in sys.stdin if line.strip()]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
                     export PREV_VERSION
@@ -134,7 +136,8 @@ PY
 
                     sh '''
                         set -e
-                        export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
                         # Kein --build: Image wurde in der Stage „Build Docker Image“ gebaut.
@@ -146,7 +149,7 @@ PY
                 }
             }
 
-            stage('Tests (pytest)') {
+            stage('Tests API (pytest)') {
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
@@ -155,19 +158,42 @@ PY
                 ]) {
                     sh '''
                         set -e
-                        export DOCKER_IMAGE="${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
-                        # Tests laufen im App-Container und nutzen Compose-Mongo via Service-Name "mongo"
+                        # API-Tests laufen im API-Container und nutzen Compose-Mongo via Service-Name "mongo"
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
-                          api pytest tests/ -v --tb=short
+                          api pytest tests/api_test.py -v --tb=short
                     '''
                 }
                 }
             }
 
-        stage('Docker Hub Login & Push') {
+            stage('Tests Runtime (pytest)') {
+                steps {
+                withCredentials([
+                    usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: "${DFLOWP_API_KEY_ID}", variable: 'DFlowP_API_Key')
+                ]) {
+                    sh '''
+                        set -e
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
+                        . ./.jenkins_runtime.env
+                        export SOFTWARE_VERSION
+                        # Runtime-/Core-Tests laufen im Worker-Container.
+                        docker-compose run --rm \
+                          -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
+                          worker pytest tests/process_test.py tests/eventsystem_test.py tests/logging_test.py tests/database_test.py -v --tb=short
+                    '''
+                }
+                }
+            }
+
+        stage('Docker Hub Login & Push Images') {
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${DOCKERHUB_CREDS_ID}", usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')
@@ -175,7 +201,8 @@ PY
                     sh '''
                         set -e
                         echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
-                        docker push "${DOCKER_IMAGE_REPO}:${BUILD_NUMBER}"
+                        docker push "${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
+                        docker push "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
                         docker logout || true
                     '''
                 }

@@ -19,7 +19,8 @@ services:
   api:
     build:
       context: .
-    image: ${DOCKER_IMAGE:-dflowp:local}
+      target: api
+    image: ${DOCKER_IMAGE_API:-dflowp-api:local}
     depends_on:
       mongo:
         condition: service_healthy
@@ -44,7 +45,8 @@ services:
   worker:
     build:
       context: .
-    image: ${DOCKER_IMAGE:-dflowp:local}
+      target: runtime
+    image: ${DOCKER_IMAGE_RUNTIME:-dflowp-runtime:local}
     depends_on:
       mongo:
         condition: service_healthy
