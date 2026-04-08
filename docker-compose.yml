@@ -1,3 +1,6 @@
+# Fester Projektname → kurze Container-Namen (z. B. dflowp-api-1 statt Ordnername-Präfix).
+name: dflowp
+
 services:
   mongo:
     image: mongo:7
@@ -17,6 +20,7 @@ services:
       - "127.0.0.1:27017:27017"
 
   api:
+    container_name: dflowp-api
     build:
       context: .
       target: api
@@ -43,6 +47,7 @@ services:
     command: ["uvicorn", "dflowp.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
 
   worker:
+    container_name: dflowp-worker
     build:
       context: .
       target: runtime
@@ -76,6 +81,7 @@ services:
     command: ["python", "-m", "dflowp.worker.runtime_event_listener"]
 
   eventsystem:
+    container_name: dflowp-eventsystem
     build:
       context: .
       target: eventsystem
@@ -93,6 +99,7 @@ services:
     command: ["uvicorn", "dflowp.eventsystem.app:app", "--host", "0.0.0.0", "--port", "8001"]
 
   event-broker:
+    container_name: dflowp-event-broker
     build:
       context: .
       target: event-broker
@@ -116,6 +123,7 @@ services:
     command: ["python", "-m", "dflowp.event_broker.app"]
 
   plugin-fetchfeeditems:
+    container_name: dflowp-plugin-fetchfeeditems
     build:
       context: .
       target: plugin-fetchfeeditems
@@ -134,6 +142,7 @@ services:
     command: ["uvicorn", "dflowp.plugin_fetchfeeditems.app:app", "--host", "0.0.0.0", "--port", "8101"]
 
   plugin-embeddata:
+    container_name: dflowp-plugin-embeddata
     build:
       context: .
       target: plugin-embeddata
