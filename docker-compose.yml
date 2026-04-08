@@ -69,6 +69,10 @@ services:
       DFLOWP_EVENTSYSTEM_URL: ${DFLOWP_EVENTSYSTEM_URL:-http://eventsystem:8001}
       DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES: ${DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES:-30}
       DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP: ${DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP:-1.0}
+      DFLOWP_PLUGIN_ENDPOINTS: ${DFLOWP_PLUGIN_ENDPOINTS:-plugin-fetchfeeditems=http://plugin-fetchfeeditems:8101,plugin-embeddata=http://plugin-embeddata:8102}
+      DFLOWP_PLUGIN_REMOTE_RETRIES: ${DFLOWP_PLUGIN_REMOTE_RETRIES:-3}
+      DFLOWP_PLUGIN_REMOTE_RETRY_DELAY_SECONDS: ${DFLOWP_PLUGIN_REMOTE_RETRY_DELAY_SECONDS:-5}
+      DFLOWP_PLUGIN_REMOTE_HTTP_TIMEOUT: ${DFLOWP_PLUGIN_REMOTE_HTTP_TIMEOUT:-120}
     command: ["python", "-m", "dflowp.worker.runtime_event_listener"]
 
   eventsystem:
@@ -110,4 +114,41 @@ services:
       DFLOWP_EVENT_BROKER_BATCH_SIZE: ${DFLOWP_EVENT_BROKER_BATCH_SIZE:-100}
       DFLOWP_EVENT_BROKER_HTTP_TIMEOUT: ${DFLOWP_EVENT_BROKER_HTTP_TIMEOUT:-10.0}
     command: ["python", "-m", "dflowp.event_broker.app"]
+
+  plugin-fetchfeeditems:
+    build:
+      context: .
+      target: plugin-fetchfeeditems
+    image: ${DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS:-dflowp-plugin-fetchfeeditems:local}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_HOST: mongo
+      MONGO_PORT: "27017"
+      MONGODB_USERNAME: ${MONGODB_USERNAME:-dflowp}
+      MONGODB_PASSWORD: ${MONGODB_PASSWORD:-dflowp_password}
+      MONGODB_AUTH_SOURCE: admin
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
+      SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
+    command: ["uvicorn", "dflowp.plugin_fetchfeeditems.app:app", "--host", "0.0.0.0", "--port", "8101"]
+
+  plugin-embeddata:
+    build:
+      context: .
+      target: plugin-embeddata
+    image: ${DOCKER_IMAGE_PLUGIN_EMBEDDATA:-dflowp-plugin-embeddata:local}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_HOST: mongo
+      MONGO_PORT: "27017"
+      MONGODB_USERNAME: ${MONGODB_USERNAME:-dflowp}
+      MONGODB_PASSWORD: ${MONGODB_PASSWORD:-dflowp_password}
+      MONGODB_AUTH_SOURCE: admin
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
+    command: ["uvicorn", "dflowp.plugin_embeddata.app:app", "--host", "0.0.0.0", "--port", "8102"]
 

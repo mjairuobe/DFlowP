@@ -29,6 +29,14 @@ class FetchFeedItems(BaseSubprocess):
         super().__init__("FetchFeedItems")
 
     @staticmethod
+    def identity() -> dict[str, str]:
+        return {
+            "name": "FetchFeedItems",
+            "service": "plugin-fetchfeeditems",
+            "api_version": "v1",
+        }
+
+    @staticmethod
     def _build_output_data_id(context: SubprocessContext) -> str:
         """
         Erzeugt robuste Output-ID mit Kontext + Zufallsteil.

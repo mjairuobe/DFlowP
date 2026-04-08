@@ -1,0 +1,1 @@
+"""Service für EmbedData Plugin."""

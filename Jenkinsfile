@@ -25,6 +25,8 @@
         DOCKER_IMAGE_REPO_RUNTIME = 'docker.io/crawlabase/dflowp-runtime'
         DOCKER_IMAGE_REPO_EVENTSYSTEM = 'docker.io/crawlabase/dflowp-eventsystem'
         DOCKER_IMAGE_REPO_EVENT_BROKER = 'docker.io/crawlabase/dflowp-event-broker'
+        DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS = 'docker.io/crawlabase/dflowp-plugin-fetchfeeditems'
+        DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA = 'docker.io/crawlabase/dflowp-plugin-embeddata'
 
         // Jenkins Credential IDs (bitte in Jenkins anpassen)
         DOCKERHUB_CREDS_ID = 'dockerhub-creds'
@@ -82,6 +84,8 @@
                     docker build --target runtime -t "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}" .
                     docker build --target eventsystem -t "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}" .
                     docker build --target event-broker -t "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}" .
+                    docker build --target plugin-fetchfeeditems -t "${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}" .
+                    docker build --target plugin-embeddata -t "${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}" .
                     '''
                 }
             }
@@ -144,6 +148,8 @@ PY
                         export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
                         # Kein --build: Image wurde in der Stage „Build Docker Image“ gebaut.
@@ -168,6 +174,8 @@ PY
                         export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
                         # API-Tests laufen im API-Container und nutzen Compose-Mongo via Service-Name "mongo"
@@ -192,12 +200,40 @@ PY
                         export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
                         # Runtime-/Core-Tests laufen im Worker-Container.
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           worker pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
+                    '''
+                }
+                }
+            }
+
+            stage('Tests Plugin Services (pytest)') {
+                steps {
+                withCredentials([
+                    usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: "${DFLOWP_API_KEY_ID}", variable: 'DFlowP_API_Key')
+                ]) {
+                    sh '''
+                        set -e
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
+                        . ./.jenkins_runtime.env
+                        export SOFTWARE_VERSION
+                        docker-compose run --rm \
+                          plugin-fetchfeeditems pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
+                        docker-compose run --rm \
+                          plugin-embeddata pytest tests/plugin_services_test.py::test_embed_plugin_info_and_health -v --tb=short
                     '''
                 }
                 }
@@ -216,6 +252,8 @@ PY
                         export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
                         docker-compose run --rm \
@@ -241,6 +279,8 @@ PY
                         docker push "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
                         docker push "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
                         docker push "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
+                        docker push "${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
+                        docker push "${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         docker logout || true
                     '''
                 }

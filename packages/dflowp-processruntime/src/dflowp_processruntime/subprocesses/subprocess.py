@@ -4,10 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
-from dflowp_processruntime.subprocesses.io_transformation_state import (
-    IOTransformationState,
-    TransformationStatus,
-)
+from dflowp_processruntime.subprocesses.io_transformation_state import IOTransformationState
 
 
 class BaseSubprocess(ABC):

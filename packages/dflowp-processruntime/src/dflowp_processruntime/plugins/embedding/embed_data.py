@@ -177,3 +177,12 @@ class EmbedData(BaseSubprocess):
             model=model,
         )
         return r.data[0].embedding
+
+    @staticmethod
+    def get_plugin_info() -> dict[str, Any]:
+        return {
+            "name": "EmbedData",
+            "plugin_type": "embedding",
+            "version": "1.0.0",
+            "status": "ready",
+        }

@@ -22,7 +22,11 @@ from dflowp_core.database.dataset_repository import DatasetRepository
 from dflowp_core.database.event_repository import EventRepository
 from dflowp_core.database.mongo import connect_to_mongodb, close_mongodb_connection, resolve_mongodb_uri
 from dflowp_core.database.process_repository import ProcessRepository
-from dflowp_processruntime.plugins.plugin_loader import get_subprocess, load_builtin_plugins
+from dflowp_processruntime.plugins.plugin_loader import (
+    get_subprocess,
+    load_builtin_plugins,
+    load_remote_plugin_services,
+)
 from dflowp_core.utils.document_naming import build_human_readable_document_id
 from dflowp_core.utils.logger import get_logger
 
@@ -69,7 +73,8 @@ class Runtime:
         logger.info("MongoDB verbunden: %s / %s", self._mongodb_uri, self._mongodb_database)
 
         load_builtin_plugins()
-        logger.info("Plugins geladen: FetchFeedItems, EmbedData")
+        load_remote_plugin_services()
+        logger.info("Plugins geladen (lokal/remote): FetchFeedItems, EmbedData")
 
         process_repo = ProcessRepository()
         dataflow_state_repo = DataflowStateRepository()
