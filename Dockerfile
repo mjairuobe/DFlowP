@@ -58,6 +58,9 @@ RUN python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir /tmp/wheels/dflowp-core/dflowp_core-*.whl \
     && python -m pip install --no-cache-dir --no-deps /tmp/wheels/dflowp-processruntime/dflowp_processruntime-*.whl \
     && python -m pip install --no-cache-dir \
+      "feedparser>=6.0.11" \
+      "openai>=1.12.0" \
+      "typing-extensions>=4.8.0" \
       "httpx>=0.26.0" \
       "pytest>=7.4.0" \
       "pytest-asyncio>=0.23.0" \
