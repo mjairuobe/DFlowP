@@ -101,7 +101,8 @@ class RemotePluginSubprocess(BaseSubprocess):
     ) -> None:
         """Prüft, ob der Hostname per DNS auflösbar ist (vor dem HTTP-Call)."""
         try:
-            await asyncio.getaddrinfo(
+            loop = asyncio.get_running_loop()
+            await loop.getaddrinfo(
                 host, port if port is not None else 0, type=socket.SOCK_STREAM
             )
         except OSError as exc:
