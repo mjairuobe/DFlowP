@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, status
@@ -17,6 +18,45 @@ app = FastAPI(title="DFlowP EventSystem", version="1.0.0")
 _SUBSCRIBERS: dict[str, str] = {}
 
 
+def _event_time_human(event: dict[str, Any]) -> str:
+    raw = event.get("event_time")
+    if isinstance(raw, datetime):
+        dt = raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+        return dt.strftime("%Y-%m-%d %H:%M:%S %Z").replace("UTC", "UTC")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    ts_ms = event.get("timestamp_ms")
+    if ts_ms is not None:
+        try:
+            dt = datetime.fromtimestamp(float(ts_ms) / 1000.0, tz=timezone.utc)
+            return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        except (TypeError, ValueError, OSError):
+            pass
+    return "?"
+
+
+def _subprocess_type(event: dict[str, Any]) -> str:
+    payload = event.get("payload")
+    if isinstance(payload, dict):
+        st = payload.get("subprocess_type")
+        if st is not None:
+            return str(st)
+    return "-"
+
+
+def _event_context_line(prefix: str, event: dict[str, Any], *, event_id: Optional[Any] = None) -> str:
+    eid = event_id if event_id is not None else event.get("event_id", "?")
+    return (
+        f"{prefix} "
+        f"process_id={event.get('process_id')!r} "
+        f"subprocess_id={event.get('subprocess_id')!r} "
+        f"subprocess_type={_subprocess_type(event)!r} "
+        f"event_type={event.get('event_type')!r} "
+        f"event_time={_event_time_human(event)!r} "
+        f"event_id={eid!r}"
+    )
+
+
 class SubscriberRegistration(BaseModel):
     subscriber_id: str = Field(..., description="Stabile Subscriber-ID (z. B. runtime-1)")
     callback_url: AnyHttpUrl = Field(..., description="Callback-URL für Event-Notifications")
@@ -26,7 +66,12 @@ class SubscriberRegistration(BaseModel):
 async def register_subscriber(registration: SubscriberRegistration) -> dict[str, Any]:
     callback_url = str(registration.callback_url).rstrip("/")
     _SUBSCRIBERS[registration.subscriber_id] = callback_url
-    logger.info("Subscriber registriert: %s -> %s", registration.subscriber_id, callback_url)
+    logger.info(
+        "Subscribed subscriber_id=%r callback_url=%r (total=%d)",
+        registration.subscriber_id,
+        callback_url,
+        len(_SUBSCRIBERS),
+    )
     return {"status": "registered", "subscriber_count": len(_SUBSCRIBERS)}
 
 
@@ -44,7 +89,8 @@ async def receive_event(event: dict) -> None:
     """
     Nimmt vom Event-Broker weitergeleitete Events entgegen und broadcastet sie.
     """
-    logger.info("Event empfangen: %s", event.get("event_type"))
+    logger.info(_event_context_line("Published", event))
+
     if not _SUBSCRIBERS:
         return None
 
@@ -54,12 +100,27 @@ async def receive_event(event: dict) -> None:
             try:
                 response = await client.post(callback_url, json=event)
                 if 200 <= response.status_code < 300:
+                    logger.info(
+                        "%s | subscriber_id=%r callback_url=%r http_status=%s",
+                        _event_context_line("Notified", event),
+                        subscriber_id,
+                        callback_url,
+                        response.status_code,
+                    )
                     continue
                 logger.warning(
-                    "Notify an %s fehlgeschlagen mit HTTP %s",
+                    "%s | subscriber_id=%r callback_url=%r http_status=%s",
+                    _event_context_line("Notify failed", event),
                     subscriber_id,
+                    callback_url,
                     response.status_code,
                 )
             except Exception as exc:
-                logger.warning("Notify an %s fehlgeschlagen: %s", subscriber_id, exc)
+                logger.warning(
+                    "%s | subscriber_id=%r callback_url=%r error=%s",
+                    _event_context_line("Notify failed", event),
+                    subscriber_id,
+                    callback_url,
+                    exc,
+                )
     return None

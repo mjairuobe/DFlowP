@@ -3,6 +3,8 @@
 import asyncio
 import os
 from datetime import datetime, timezone
+from typing import Any, Optional
+
 import httpx
 
 from dflowp_core.database.event_repository import EventRepository
@@ -14,6 +16,46 @@ from dflowp_core.database.mongo import (
 from dflowp_core.utils.logger import get_component_logger
 
 logger = get_component_logger("EventBroker")
+
+
+def _event_time_human(event: dict) -> str:
+    """Lesbarer Zeitstempel aus event_time oder timestamp_ms."""
+    raw = event.get("event_time")
+    if isinstance(raw, datetime):
+        dt = raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+        return dt.strftime("%Y-%m-%d %H:%M:%S %Z").replace("UTC", "UTC")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    ts_ms = event.get("timestamp_ms")
+    if ts_ms is not None:
+        try:
+            dt = datetime.fromtimestamp(float(ts_ms) / 1000.0, tz=timezone.utc)
+            return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        except (TypeError, ValueError, OSError):
+            pass
+    return "?"
+
+
+def _subprocess_type(event: dict) -> str:
+    payload = event.get("payload")
+    if isinstance(payload, dict):
+        st = payload.get("subprocess_type")
+        if st is not None:
+            return str(st)
+    return "-"
+
+
+def _event_context_line(prefix: str, event: dict, *, event_id: Optional[Any] = None) -> str:
+    eid = event_id if event_id is not None else event.get("_id", "?")
+    return (
+        f"{prefix} "
+        f"process_id={event.get('process_id')!r} "
+        f"subprocess_id={event.get('subprocess_id')!r} "
+        f"subprocess_type={_subprocess_type(event)!r} "
+        f"event_type={event.get('event_type')!r} "
+        f"event_time={_event_time_human(event)!r} "
+        f"event_id={eid!r}"
+    )
 
 
 class EventBroker:
@@ -81,6 +123,8 @@ class EventBroker:
                 if not event_id:
                     continue
 
+                logger.info(_event_context_line("Got", event, event_id=event_id))
+
                 payload = {
                     "event_id": event_id,
                     "process_id": event.get("process_id"),
@@ -100,17 +144,28 @@ class EventBroker:
                     if 200 <= response.status_code < 300:
                         await self._event_repo.mark_delivered(event_id)
                         delivered_count += 1
+                        logger.info(_event_context_line("Delivered", event, event_id=event_id))
                         continue
 
                     await self._event_repo.mark_delivery_failed(
                         event_id,
                         f"HTTP {response.status_code}: {response.text[:300]}",
                     )
+                    logger.warning(
+                        "%s | http_status=%s",
+                        _event_context_line("Deliver failed", event, event_id=event_id),
+                        response.status_code,
+                    )
                 except Exception as exc:
                     await self._event_repo.mark_delivery_failed(event_id, str(exc))
+                    logger.warning(
+                        "%s | error=%s",
+                        _event_context_line("Deliver failed", event, event_id=event_id),
+                        exc,
+                    )
 
         if delivered_count:
-            logger.info("EventBroker ausgeliefert: %d Events", delivered_count)
+            logger.info("Delivered batch summary: %d event(s) in this poll cycle", delivered_count)
         return delivered_count
 
 
