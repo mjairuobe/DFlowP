@@ -1,5 +1,5 @@
 """FastAPI-Schnittstelle für Repository-Read-Zugriffe."""
-# Test
+# Test rebuilding behaviour
 from contextlib import asynccontextmanager
 import os
 from typing import AsyncGenerator
