@@ -31,6 +31,7 @@ RUN python -m ensurepip --upgrade \
       /tmp/wheels/dflowp-core/dflowp_core-*.whl \
       "fastapi>=0.109.0" \
       "uvicorn[standard]>=0.27.0" \
+      "httpx>=0.26.0" \
       "pytest>=7.4.0" \
       "pytest-asyncio>=0.23.0" \
       "pytest-cov>=4.1.0"
@@ -57,6 +58,7 @@ RUN python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir /tmp/wheels/dflowp-core/dflowp_core-*.whl \
     && python -m pip install --no-cache-dir --no-deps /tmp/wheels/dflowp-processruntime/dflowp_processruntime-*.whl \
     && python -m pip install --no-cache-dir \
+      "httpx>=0.26.0" \
       "pytest>=7.4.0" \
       "pytest-asyncio>=0.23.0" \
       "pytest-cov>=4.1.0"
