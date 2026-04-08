@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schreibt .jenkins_skip_pipeline und .jenkins_build_plan.env."""
+"""Schreibt .jenkins_skip_pipeline und .jenkins_build_plan.env (ohne LIB_FORCE)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ci_lib import all_paths, image_for_service, load_modules, path_to_env_key, repo_root
+from ci_lib import (
+    all_paths,
+    image_for_service,
+    load_modules,
+    package_local_dependency_graph,
+    path_to_env_key,
+    repo_root,
+    required_stack_ok,
+    service_local_dependencies,
+    transitive_package_dependents,
+)
 
 
 def docker_ps_images() -> list[str]:
@@ -37,16 +47,6 @@ def normalize_img(s: str) -> str:
 def has_running(want: str, images: list[str]) -> bool:
     w = normalize_img(want)
     return any(normalize_img(i) == w for i in images)
-
-
-def has_mongo(images: list[str]) -> bool:
-    for i in images:
-        n = normalize_img(i)
-        if n.startswith("mongo:") or "mongo:" in n:
-            return True
-        if n.startswith("library/mongo:"):
-            return True
-    return False
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -81,7 +81,6 @@ def tree_key_for_path(path: str) -> str:
 
 
 def last_key_for_path(path: str) -> str:
-    # z. B. LAST_TREE_EXAMPLE_PACKAGES_ALPHA_LIB
     return "LAST_" + path_to_env_key(path, "TREE")
 
 
@@ -90,23 +89,28 @@ def main() -> int:
     os.chdir(root)
     modules = load_modules()
     pkgs, svcs = all_paths(modules)
-    require_mongo = bool(modules.get("require_mongo", False))
 
     env_path = root / ".jenkins_runtime.env"
     env = load_env(env_path)
     if not env:
+        lines = []
+        for svc in svcs:
+            lines.append(f"{path_to_env_key(svc, 'BUILDSVC')}=1")
         (root / ".jenkins_skip_pipeline").write_text("false\n", encoding="utf-8")
-        (root / ".jenkins_build_plan.env").write_text("LIB_FORCE=1\n", encoding="utf-8")
-        print("ci_build_plan: keine .jenkins_runtime.env")
+        (root / ".jenkins_build_plan.env").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print("ci_build_plan: keine .jenkins_runtime.env → alle BUILDSVC=1")
         return 0
 
     last_path = root / ".jenkins_last_trees"
     last = load_last_trees(last_path)
+    first_run = not last_path.is_file() or not last
 
-    lib_force = 0
-    if not last:
-        lib_force = 1
-        print("LIB_FORCE=1 (kein .jenkins_last_trees)")
+    pkg_graph = package_local_dependency_graph(root, pkgs)
+
+    changed_packages: set[str] = set()
+    if first_run:
+        changed_packages = set(pkgs)
+        print("Erster Lauf / leeres .jenkins_last_trees → alle lokalen Packages als geändert")
     else:
         for p in pkgs:
             tk = tree_key_for_path(p)
@@ -114,15 +118,55 @@ def main() -> int:
             cur = env.get(tk, "")
             prev = last.get(lk, "")
             if cur != prev:
-                lib_force = 1
-                print(f"LIB_FORCE=1 (package {p}: {prev!r} -> {cur!r})")
-                break
+                changed_packages.add(p)
+                print(f"Package geändert: {p} ({prev!r} -> {cur!r})")
+
+    affected_packages = transitive_package_dependents(changed_packages, pkg_graph)
 
     images = docker_ps_images()
-    all_current = 1
-    if require_mongo and not has_mongo(images):
-        all_current = 0
-        print("Mongo fehlt (require_mongo=true)")
+    stack_ok, stack_missing = required_stack_ok(modules, images)
+    if not stack_ok:
+        for m in stack_missing:
+            print(f"Stack: fehlt {m}")
+
+    lines: list[str] = []
+    any_build = False
+    for svc in svcs:
+        key = path_to_env_key(svc, "BUILDSVC")
+        tk = tree_key_for_path(svc)
+        lk = last_key_for_path(svc)
+        cur_tree = env.get(tk, "00000").lower()
+        prev_tree = last.get(lk, "")
+
+        deps = service_local_dependencies(root, svc, pkgs)
+        dep_hit = bool(deps & affected_packages)
+
+        need = 0
+        if first_run:
+            need = 1
+        elif cur_tree != prev_tree:
+            need = 1
+        elif dep_hit:
+            need = 1
+
+        lines.append(f"{key}={need}")
+        if need:
+            any_build = True
+            reason = []
+            if first_run:
+                reason.append("erster Lauf")
+            if cur_tree != prev_tree:
+                reason.append("Service-Baum geändert")
+            if dep_hit:
+                reason.append(
+                    "lokale Libs betroffen: "
+                    + ", ".join(sorted(deps & affected_packages))
+                )
+            print(f"BUILDSVC {svc}: 1 ({'; '.join(reason)})")
+
+    all_images_current = 1
+    if not stack_ok:
+        all_images_current = 0
 
     for svc in svcs:
         repo = image_for_service(modules, svc)
@@ -130,23 +174,11 @@ def main() -> int:
         tag = env.get(tk, "00000").lower()
         full = f"{repo}:{tag}"
         if not has_running(full, images):
-            all_current = 0
-            print(f"Nicht aktuell: {full}")
+            all_images_current = 0
+            print(f"Nicht aktuell (läuft nicht): {full}")
 
-    skip = lib_force == 0 and all_current == 1
+    skip = bool(not any_build and all_images_current == 1 and stack_ok)
     (root / ".jenkins_skip_pipeline").write_text(("true" if skip else "false") + "\n", encoding="utf-8")
-
-    lines = [f"LIB_FORCE={lib_force}"]
-    for svc in svcs:
-        key = path_to_env_key(svc, "BUILDSVC")
-        if lib_force:
-            lines.append(f"{key}=1")
-        else:
-            repo = image_for_service(modules, svc)
-            tk = tree_key_for_path(svc)
-            tag = env.get(tk, "00000").lower()
-            need = 0 if has_running(f"{repo}:{tag}", images) else 1
-            lines.append(f"{key}={need}")
 
     (root / ".jenkins_build_plan.env").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("=== .jenkins_build_plan.env ===")

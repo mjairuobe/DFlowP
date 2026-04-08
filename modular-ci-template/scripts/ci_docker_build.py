@@ -10,7 +10,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ci_lib import all_paths, image_for_service, load_modules, path_to_env_key, repo_root
+from ci_lib import (
+    all_paths,
+    docker_build_invocation,
+    image_for_service,
+    load_modules,
+    path_to_env_key,
+    repo_root,
+)
 
 
 def load_env_file(path: Path) -> dict[str, str]:
@@ -28,7 +35,7 @@ def load_env_file(path: Path) -> dict[str, str]:
 
 def main() -> int:
     root = repo_root()
-    os.chdir(root)
+    build_cwd, dockerfile_args = docker_build_invocation()
     modules = load_modules()
     _, svcs = all_paths(modules)
     rt = load_env_file(root / ".jenkins_runtime.env")
@@ -46,28 +53,26 @@ def main() -> int:
         tree = rt.get(tk, "00000").lower()
         target = modules["docker"]["stage_targets"][svc]
         print(f"docker build --target {target} {repo}:{tree} + {sv}")
-        subprocess.run(
-            [
-                "docker",
-                "build",
-                "--target",
-                target,
-                "-t",
-                f"{repo}:{tree}",
-                "-t",
-                f"{repo}:{sv}",
-                "--label",
-                label,
-                ".",
-            ],
-            cwd=root,
-            check=True,
-        )
+        cmd = [
+            "docker",
+            "build",
+            *dockerfile_args,
+            "--target",
+            target,
+            "-t",
+            f"{repo}:{tree}",
+            "-t",
+            f"{repo}:{sv}",
+            "--label",
+            label,
+            ".",
+        ]
+        subprocess.run(cmd, cwd=build_cwd, check=True)
 
-    # LAST_TREE_* für Packages
+    # LAST_TREE_* für alle Pfade in modules.json (Packages + Services)
     lines = []
-    pkgs, _ = all_paths(modules)
-    for p in pkgs:
+    pkgs, svcs = all_paths(modules)
+    for p in pkgs + svcs:
         tk = path_to_env_key(p, "TREE")
         lines.append(f"LAST_{tk}={rt.get(tk, '')}")
     (root / ".jenkins_last_trees").write_text("\n".join(lines) + "\n", encoding="utf-8")

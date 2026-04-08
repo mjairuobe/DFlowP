@@ -24,6 +24,8 @@
                 steps {
                     sh '''
                         set -e
+                        cd "${WORKSPACE}"
+                        if [ -d modular-ci-template ]; then cd modular-ci-template; fi
                         git remote get-url origin >/dev/null 2>&1 && git fetch origin --tags --force || git fetch --tags --force || true
                         git tag -l 'v*' | tail -5 || true
                     '''
@@ -34,6 +36,8 @@
                 steps {
                     sh '''
                         set -e
+                        cd "${WORKSPACE}"
+                        if [ -d modular-ci-template ]; then cd modular-ci-template; fi
                         # Python 3.11+ (wie DFlowP)
                         python3.11 scripts/ci_resolve_version.py
                         . ./.jenkins_runtime.env
@@ -46,6 +50,8 @@
                 steps {
                     sh '''
                         set -e
+                        cd "${WORKSPACE}"
+                        if [ -d modular-ci-template ]; then cd modular-ci-template; fi
                         python3.11 scripts/ci_build_plan.py
                         cat .jenkins_skip_pipeline || true
                     '''
@@ -55,7 +61,8 @@
             stage('Cleanup containers') {
                 when {
                     expression {
-                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                        def p = fileExists('modular-ci-template/.jenkins_skip_pipeline') ? 'modular-ci-template/.jenkins_skip_pipeline' : '.jenkins_skip_pipeline'
+                        return !fileExists(p) || readFile(p).trim() != 'true'
                     }
                 }
                 steps {
@@ -69,12 +76,15 @@
             stage('Generate Dockerfile') {
                 when {
                     expression {
-                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                        def p = fileExists('modular-ci-template/.jenkins_skip_pipeline') ? 'modular-ci-template/.jenkins_skip_pipeline' : '.jenkins_skip_pipeline'
+                        return !fileExists(p) || readFile(p).trim() != 'true'
                     }
                 }
                 steps {
                     sh '''
                         set -e
+                        cd "${WORKSPACE}"
+                        if [ -d modular-ci-template ]; then cd modular-ci-template; fi
                         python3.11 scripts/ci_generate_dockerfile.py
                     '''
                 }
@@ -83,12 +93,15 @@
             stage('Docker build (selective)') {
                 when {
                     expression {
-                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                        def p = fileExists('modular-ci-template/.jenkins_skip_pipeline') ? 'modular-ci-template/.jenkins_skip_pipeline' : '.jenkins_skip_pipeline'
+                        return !fileExists(p) || readFile(p).trim() != 'true'
                     }
                 }
                 steps {
                     sh '''
                         set -e
+                        cd "${WORKSPACE}"
+                        if [ -d modular-ci-template ]; then cd modular-ci-template; fi
                         python3.11 scripts/ci_docker_build.py
                     '''
                 }
@@ -97,19 +110,22 @@
             stage('Compose up') {
                 when {
                     expression {
-                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                        def p = fileExists('modular-ci-template/.jenkins_skip_pipeline') ? 'modular-ci-template/.jenkins_skip_pipeline' : '.jenkins_skip_pipeline'
+                        return !fileExists(p) || readFile(p).trim() != 'true'
                     }
                 }
                 steps {
                     sh '''
                         set -e
+                        cd "${WORKSPACE}"
+                        if [ -d modular-ci-template ]; then cd modular-ci-template; fi
                         . ./.jenkins_runtime.env
                         set -a
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker-compose up -d
-                        docker-compose ps
+                        docker compose up -d
+                        docker compose ps
                     '''
                 }
             }
@@ -117,13 +133,16 @@
             stage('Verify stack') {
                 when {
                     expression {
-                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                        def p = fileExists('modular-ci-template/.jenkins_skip_pipeline') ? 'modular-ci-template/.jenkins_skip_pipeline' : '.jenkins_skip_pipeline'
+                        return !fileExists(p) || readFile(p).trim() != 'true'
                     }
                 }
                 steps {
                     sh '''
                         set -e
-                        docker-compose ps
+                        cd "${WORKSPACE}"
+                        if [ -d modular-ci-template ]; then cd modular-ci-template; fi
+                        docker compose ps
                     '''
                 }
             }
@@ -131,7 +150,8 @@
             stage('Docker Hub push') {
                 when {
                     expression {
-                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                        def p = fileExists('modular-ci-template/.jenkins_skip_pipeline') ? 'modular-ci-template/.jenkins_skip_pipeline' : '.jenkins_skip_pipeline'
+                        return !fileExists(p) || readFile(p).trim() != 'true'
                     }
                 }
                 steps {
@@ -140,6 +160,8 @@
                     ]) {
                         sh '''
                             set -e
+                            cd "${WORKSPACE}"
+                            if [ -d modular-ci-template ]; then cd modular-ci-template; fi
                             . ./.jenkins_runtime.env
                             . ./.jenkins_build_plan.env
                             echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
@@ -154,7 +176,8 @@
         post {
             success {
                 script {
-                    if (fileExists('.jenkins_skip_pipeline') && readFile('.jenkins_skip_pipeline').trim() == 'true') {
+                    def p = fileExists('modular-ci-template/.jenkins_skip_pipeline') ? 'modular-ci-template/.jenkins_skip_pipeline' : '.jenkins_skip_pipeline'
+                    if (fileExists(p) && readFile(p).trim() == 'true') {
                         echo '=== SKIP: Stack entspricht bereits den erwarteten Tree-Tags. ==='
                     }
                 }

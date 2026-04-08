@@ -2,6 +2,12 @@
 name: modular-demo
 
 services:
+  mongo:
+    image: mongo:7
+    container_name: demo-mongo
+    ports:
+      - "127.0.0.1:27017:27017"
+
   http-api:
     image: ${DOCKER_IMAGE_HTTP_API:-example-org/http-api:local}
     container_name: demo-http-api

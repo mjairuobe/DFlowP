@@ -9,7 +9,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ci_lib import all_paths, load_modules, repo_root
+from ci_lib import (
+    all_paths,
+    git_path_for_tree,
+    load_modules,
+    local_package_paths_in_requirements,
+    repo_root,
+    runtime_requirements_lines,
+)
 
 
 def sh_cmd(cmd: list[str]) -> str:
@@ -31,11 +38,13 @@ def main() -> int:
         "    && python -m pip install --upgrade pip setuptools wheel build",
     ]
 
-    whl_names: list[str] = []
+    def wheel_slug(pkg_path: str) -> str:
+        return Path(pkg_path).name.replace("-", "_")
+
     for p in pkgs:
-        slug = Path(p).name.replace("-", "_")
-        whl_names.append(slug)
-        lines.append(f"COPY {p} /src/{slug}")
+        slug = wheel_slug(p)
+        gp = git_path_for_tree(p)
+        lines.append(f"COPY {gp} /src/{slug}")
         lines.append(
             f"RUN python -m pip install -r /src/{slug}/requirements.txt \\"
         )
@@ -49,21 +58,36 @@ def main() -> int:
     for svc in svcs:
         target = modules["docker"]["stage_targets"][svc]
         cmd = modules["docker"]["cmd"][svc]
-        slug_svc = Path(svc).name.replace("-", "_")
+        req_path = root / svc / "requirements.txt"
+        used = sorted(local_package_paths_in_requirements(req_path, root, pkgs))
+        slugs = [wheel_slug(p) for p in used]
+        svc_slug = Path(svc).name
+        gen_req = root / f".docker-reqs-{svc_slug}.txt"
+        runtime_lines = runtime_requirements_lines(req_path, root, pkgs)
+        gen_req.write_text(
+            "\n".join(runtime_lines) + ("\n" if runtime_lines else ""),
+            encoding="utf-8",
+        )
         lines.append("")
         lines.append(f"FROM {py_img} AS {target}")
         lines.append("WORKDIR /app")
-        lines.append(f"COPY {svc} /app")
-        for slug in whl_names:
+        lines.append(f"COPY {git_path_for_tree(svc)} /app")
+        lines.append(f"COPY .docker-reqs-{svc_slug}.txt /app/requirements.docker.txt")
+        for slug in slugs:
             lines.append(f"COPY --from=wheel-builder /build/{slug}.whl /tmp/{slug}.whl")
         install_wheels = " && ".join(
-            f"python -m pip install --no-cache-dir /tmp/{s}.whl" for s in whl_names
+            f"python -m pip install --no-cache-dir /tmp/{s}.whl" for s in slugs
         )
-        req = (root / svc / "requirements.txt").exists()
-        lines.append(
-            "RUN python -m ensurepip --upgrade && python -m pip install --upgrade pip \\"
-        )
-        lines.append(f"    && {install_wheels}" + (f" \\\n    && python -m pip install --no-cache-dir -r /app/requirements.txt" if req else ""))
+        req = bool(runtime_lines)
+        parts: list[str] = [
+            "python -m ensurepip --upgrade && python -m pip install --upgrade pip"
+        ]
+        if install_wheels:
+            parts.append(install_wheels)
+        if req:
+            parts.append("python -m pip install --no-cache-dir -r /app/requirements.docker.txt")
+        run_body = " \\\n    && ".join(parts)
+        lines.append(f"RUN {run_body}")
         lines.append(f"CMD {sh_cmd(cmd)}")
 
     out = root / "Dockerfile"

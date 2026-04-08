@@ -11,7 +11,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ci_lib import all_paths, load_modules, path_to_env_key, repo_root
+from ci_lib import all_paths, git_path_for_tree, load_modules, path_to_env_key, repo_root
 
 
 def run_git(args: list[str]) -> str:
@@ -40,8 +40,8 @@ def fetch_tags() -> None:
     )
 
 
-def tree_short_5(rel_path: str) -> str:
-    full = run_git(["rev-parse", f"HEAD:{rel_path}"])
+def tree_short_5(git_rel_path: str) -> str:
+    full = run_git(["rev-parse", f"HEAD:{git_rel_path}"])
     if not full or len(full) < 5:
         return "00000"
     return full[:5].lower()
@@ -84,7 +84,7 @@ def main() -> int:
 
     for p in pkgs + svcs:
         key = path_to_env_key(p, "TREE")
-        lines.append(f"{key}={tree_short_5(p)}")
+        lines.append(f"{key}={tree_short_5(git_path_for_tree(p))}")
 
     out = repo_root() / ".jenkins_runtime.env"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")

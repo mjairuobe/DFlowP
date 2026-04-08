@@ -28,5 +28,5 @@
       "example-services/worker": ["python", "/app/main.py"]
     }
   },
-  "require_mongo": false
+  "required_stack_services": ["mongo"]
 }
