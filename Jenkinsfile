@@ -14,6 +14,9 @@
     //     (Pipeline: „Bind credentials“ → Variable OPENAI_API_KEY)
     //   - Oder Parameter RUN_MAIN=true setzen und OPENAI_API_KEY bereitstellen
     // Ohne Key: Pipeline führt nur Tests aus; main.py wird übersprungen.
+    //
+    // Skip: Nach „Resolve software version“ prüft scripts/jenkins_check_skip_deploy.sh
+    // laufende Container; bei allen crawlabase/dflowp-*:IMAGE_TAG + Mongo → Pipeline erfolgreich beenden.
 
     pipeline {
         agent any
@@ -45,17 +48,6 @@
         }
 
         stages {
-            stage('Cleanup old containers') {
-                steps {
-                    sh '''
-                        set -e
-                        # Stoppt und entfernt nur Container, Volumes bleiben erhalten.
-                        docker container stop $(docker container ls -aq) 2>/dev/null || true
-                        docker container rm $(docker container ls -aq) 2>/dev/null || true
-                    '''
-                }
-            }
-
             stage('Checkout') {
                 steps {
                     checkout scm
@@ -73,7 +65,39 @@
                 }
             }
 
+            stage('Check skip if stack already current') {
+                steps {
+                    sh '''
+                        set -e
+                        chmod +x scripts/jenkins_check_skip_deploy.sh
+                        bash scripts/jenkins_check_skip_deploy.sh
+                        cat .jenkins_skip_pipeline
+                    '''
+                }
+            }
+
+            stage('Cleanup old containers') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
+                steps {
+                    sh '''
+                        set -e
+                        # Stoppt und entfernt nur Container, Volumes bleiben erhalten.
+                        docker container stop $(docker container ls -aq) 2>/dev/null || true
+                        docker container rm $(docker container ls -aq) 2>/dev/null || true
+                    '''
+                }
+            }
+
         stage('Build and install libraries') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
                 steps {
                     sh '''
                         set -e
@@ -84,6 +108,11 @@
             }
 
         stage('Build Docker Images') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
                 steps {
                     sh '''
                         set -e
@@ -107,6 +136,11 @@
             }
 
         stage('Compose up (MongoDB + App)') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
@@ -135,6 +169,11 @@
             }
 
             stage('Tests API (pytest)') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
@@ -161,6 +200,11 @@
             }
 
             stage('Tests Runtime (pytest)') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
@@ -187,6 +231,11 @@
             }
 
             stage('Tests Plugin Services (pytest)') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
@@ -213,6 +262,11 @@
             }
 
             stage('Tests Event Services (pytest)') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
@@ -241,6 +295,11 @@
             }
 
         stage('Docker Hub Login & Push Images') {
+                when {
+                    expression {
+                        return !fileExists('.jenkins_skip_pipeline') || readFile('.jenkins_skip_pipeline').trim() != 'true'
+                    }
+                }
                 steps {
                 withCredentials([
                     usernamePassword(credentialsId: "${DOCKERHUB_CREDS_ID}", usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')
@@ -269,7 +328,13 @@
 
             }
             success {
-                echo 'Pipeline erfolgreich abgeschlossen.'
+                script {
+                    if (fileExists('.jenkins_skip_pipeline') && readFile('.jenkins_skip_pipeline').trim() == 'true') {
+                        echo '=== Pipeline erfolgreich beendet (SKIP): Alle DFlowP-Container laufen bereits mit der ermittelten SOFTWARE_VERSION / IMAGE_TAG. Build, Tests und Push wurden übersprungen. ==='
+                    } else {
+                        echo 'Pipeline erfolgreich abgeschlossen (vollständiger Lauf).'
+                    }
+                }
             }
         }
     }
