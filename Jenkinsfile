@@ -120,8 +120,8 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker compose up -d
-                        docker compose ps
+                        docker-compose up -d
+                        docker-compose ps
                     '''
                 }
                 }
@@ -146,7 +146,7 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker compose run --rm \
+                        docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           api pytest tests/api_test.py -v --tb=short
                     '''
@@ -173,7 +173,7 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker compose run --rm \
+                        docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           worker pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
                     '''
@@ -200,9 +200,9 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker compose run --rm \
+                        docker-compose run --rm \
                           plugin-fetchfeeditems pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
-                        docker compose run --rm \
+                        docker-compose run --rm \
                           plugin-embeddata pytest tests/plugin_services_test.py::test_embed_plugin_info_and_health -v --tb=short
                     '''
                 }
@@ -228,10 +228,10 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
-                        docker compose run --rm \
+                        docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           event-broker pytest tests/event_broker_test.py -v --tb=short
-                        docker compose run --rm \
+                        docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           eventsystem pytest tests/eventsystem_test.py -k "not with_persistence" -v --tb=short
                     '''
