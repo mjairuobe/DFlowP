@@ -1,0 +1,2 @@
+"""EmbedData plugin service package."""
+

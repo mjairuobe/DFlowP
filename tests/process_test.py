@@ -20,31 +20,32 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pymongo.errors import DuplicateKeyError
 
-from dflowp.core.dataflow.dataflow import DataFlow, DataflowEdge, DataflowNodeDef
-from dflowp.core.dataflow.dataflow_node import DataflowNodeState
-from dflowp.core.dataflow.dataflow_parser import parse_dataflow
-from dflowp.core.dataflow.dataflow_state import DataflowState
-from dflowp.core.datastructures.data import Data
-from dflowp.core.engine.process_engine import ProcessEngine
-from dflowp.core.events.event_bus import EventBus
-from dflowp.core.events.event_service import EventService
-from dflowp.core.processes.process_configuration import ProcessConfiguration
-from dflowp.core.processes.process_state import ProcessState
-from dflowp.core.subprocesses.io_transformation_state import (
+from dflowp_processruntime.dataflow.dataflow import DataFlow, DataflowEdge, DataflowNodeDef
+from dflowp_processruntime.dataflow.dataflow_node import DataflowNodeState
+from dflowp_processruntime.dataflow.dataflow_parser import parse_dataflow
+from dflowp_processruntime.dataflow.dataflow_state import DataflowState
+from dflowp_processruntime.datastructures.data import Data
+from dflowp_processruntime.engine.process_engine import ProcessEngine
+from dflowp_core.eventinterfaces.event_bus import EventBus
+from dflowp_core.eventinterfaces.event_service import EventService
+from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
+from dflowp_processruntime.processes.process_state import ProcessState
+from dflowp_processruntime.subprocesses.io_transformation_state import (
     IOTransformationState,
     TransformationStatus,
 )
-from dflowp.core.subprocesses.subprocess import BaseSubprocess
-from dflowp.core.subprocesses.subprocess_context import SubprocessContext
-from dflowp.infrastructure.plugins.plugin_loader import (
+from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
+from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.plugins.plugin_loader import (
+    clear_registry,
     get_subprocess,
-    load_builtin_plugins,
+    load_remote_plugin_services,
     register_subprocess,
 )
-from dflowp.plugins.embedding.embed_data import EmbedData
-from dflowp.plugins.fetch_feed_items.fetch_feed_items import FetchFeedItems
-from dflowp.utils.document_naming import build_human_readable_document_id
-from dflowp.core.processes.software_version import MAJOR_VERSION, MINOR_VERSION
+from dflowp.plugin_embeddata.embed_data import EmbedData
+from dflowp.plugin_fetchfeeditems.fetch_feed_items import FetchFeedItems
+from dflowp_core.utils.document_naming import build_human_readable_document_id
+from dflowp_processruntime.processes.software_version import MAJOR_VERSION, MINOR_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +139,7 @@ class _IsolatedEventService(EventService):
     """EventService mit dediziertem EventBus für isolierte Tests."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._bus = EventBus()
 
 
@@ -523,17 +525,30 @@ def test_get_subprocess_unknown_type():
     assert get_subprocess("NonExistentType_xyz") is None
 
 
-def test_load_builtin_plugins():
-    """Eingebaute Plugins werden korrekt geladen."""
-    load_builtin_plugins()
+def test_load_remote_plugin_services_registers_http_clients():
+    """DFLOWP_PLUGIN_ENDPOINTS registriert RemotePluginSubprocess pro SubprocessType."""
+    from dflowp_processruntime.plugins.remote_plugin import RemotePluginSubprocess
 
-    fetch = get_subprocess("FetchFeedItems")
-    embed = get_subprocess("EmbedData")
-
-    assert fetch is not None
-    assert embed is not None
-    assert isinstance(fetch, FetchFeedItems)
-    assert isinstance(embed, EmbedData)
+    clear_registry()
+    old = os.environ.get("DFLOWP_PLUGIN_ENDPOINTS")
+    os.environ["DFLOWP_PLUGIN_ENDPOINTS"] = (
+        "FetchFeedItems=http://plugin-fetchfeeditems:8101,"
+        "EmbedData=http://plugin-embeddata:8102"
+    )
+    try:
+        load_remote_plugin_services()
+        fetch = get_subprocess("FetchFeedItems")
+        embed = get_subprocess("EmbedData")
+        assert fetch is not None
+        assert embed is not None
+        assert isinstance(fetch, RemotePluginSubprocess)
+        assert isinstance(embed, RemotePluginSubprocess)
+    finally:
+        if old is None:
+            os.environ.pop("DFLOWP_PLUGIN_ENDPOINTS", None)
+        else:
+            os.environ["DFLOWP_PLUGIN_ENDPOINTS"] = old
+        clear_registry()
 
 
 # ===========================================================================
@@ -929,6 +944,125 @@ async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reex
     assert "FetchFeedItems1" not in started
 
 
+@pytest.mark.asyncio
+async def test_process_engine_external_event_notifications_without_local_subscriptions(
+    isolated_event_service,
+):
+    """
+    Wenn lokale Event-Subscriptions deaktiviert sind, kann die Engine
+    Follow-up-Aktionen über handle_event_notification auslösen.
+    """
+    chain_config = ProcessConfiguration.from_dict(
+        {
+            "process_id": "proc_external_notify",
+            "software_version": "1.0.0",
+            "input_dataset_id": "ds_chain",
+            "dataflow": {
+                "nodes": [
+                    {"subprocess_id": "Step1", "subprocess_type": "TypeA"},
+                    {"subprocess_id": "Step2", "subprocess_type": "TypeB"},
+                ],
+                "edges": [{"from": "Step1", "to": "Step2"}],
+            },
+            "subprocess_config": {},
+        }
+    )
+
+    process_repo = AsyncMock()
+    process_repo.insert = AsyncMock(return_value="id")
+    process_repo.update = AsyncMock(return_value=True)
+    process_repo.find_by_id = AsyncMock(
+        return_value={
+            "process_id": "proc_external_notify",
+            "configuration": chain_config.to_dict(),
+        }
+    )
+
+    dataflow_state_repo = AsyncMock()
+    dataflow_state_repo.update_node_state = AsyncMock(return_value=True)
+    dataflow_state_repo.get_dataflow_state = AsyncMock(
+        return_value={
+            "nodes": [
+                {
+                    "subprocess_id": "Step1",
+                    "subprocess_type": "TypeA",
+                    "event_status": "EVENT_COMPLETED",
+                    "io_transformation_states": [
+                        {
+                            "input_data_id": "d1",
+                            "output_data_ids": ["out_step1"],
+                            "status": "Finished",
+                            "quality": 1.0,
+                        }
+                    ],
+                },
+                {
+                    "subprocess_id": "Step2",
+                    "subprocess_type": "TypeB",
+                    "event_status": "Not Started",
+                    "io_transformation_states": [],
+                },
+            ],
+            "edges": [{"from": "Step1", "to": "Step2"}],
+        }
+    )
+
+    async def mock_find_data(data_id: str):
+        return {"data_id": data_id, "content": {"text": data_id}, "type": "output"}
+
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+    data_repo.find_by_id = mock_find_data
+
+    dataset_repo = AsyncMock()
+    dataset_repo.find_by_id = AsyncMock(
+        return_value={"dataset_id": "ds_chain", "data_ids": ["d1"]}
+    )
+
+    started: list[str] = []
+
+    async def mock_run(context, **kwargs):
+        started.append(context.subprocess_id)
+        return [
+            IOTransformationState(
+                input_data_id=context.input_data[0].data_id
+                if context.input_data
+                else "none",
+                output_data_ids=["out_" + context.subprocess_id],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+
+    dummy = AsyncMock()
+    dummy.run = mock_run
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy,
+        enable_local_event_subscriptions=False,
+    )
+    engine.start()
+
+    await engine.start_process(chain_config)
+    await asyncio.sleep(0.2)
+    started.clear()
+
+    await engine.handle_event_notification(
+        {
+            "process_id": "proc_external_notify",
+            "subprocess_id": "Step1",
+            "event_type": "EVENT_COMPLETED",
+        }
+    )
+    await asyncio.sleep(0.2)
+
+    assert "Step2" in started
+
+
 # ===========================================================================
 # Abschnitt 6: FetchFeedItems Plugin Tests
 # ===========================================================================
@@ -946,7 +1080,7 @@ async def test_fetch_feed_items_success_two_articles():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -980,7 +1114,7 @@ async def test_fetch_feed_items_source_included_in_output():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1009,7 +1143,7 @@ async def test_fetch_feed_items_output_has_article_fields():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1070,7 +1204,7 @@ async def test_fetch_feed_items_http_error_continues_other_feeds():
         return resp
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_client.return_value.__aenter__.return_value.get = mock_get
 
@@ -1096,7 +1230,7 @@ async def test_fetch_feed_items_empty_feed():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = empty_rss
@@ -1128,7 +1262,7 @@ async def test_fetch_feed_items_multiple_feeds():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML
@@ -1227,7 +1361,7 @@ async def test_fetch_feed_items_duplicate_key_retries_with_new_id():
     plugin = FetchFeedItems()
 
     with patch(
-        "dflowp.plugins.fetch_feed_items.fetch_feed_items.httpx.AsyncClient"
+        "dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient"
     ) as mock_client:
         mock_resp = MagicMock()
         mock_resp.text = SAMPLE_RSS_XML

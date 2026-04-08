@@ -5,13 +5,24 @@ from datetime import datetime, timezone
 
 import pytest
 
-from dflowp.core.events.event_bus import EventBus
-from dflowp.core.events.event_service import EventService, get_event_service
-from dflowp.core.events.event_types import (
+from dflowp_core.eventinterfaces.event_bus import EventBus
+from dflowp_core.eventinterfaces.event_service import EventService, get_event_service
+from dflowp_core.eventinterfaces.event_types import (
     EVENT_COMPLETED,
     EVENT_FAILED,
     EVENT_STARTED,
 )
+from dflowp.eventsystem.app import app as eventsystem_app
+from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
+
+
+@pytest.fixture(autouse=True)
+def clear_eventsystem_subscribers() -> None:
+    """Stellt sicher, dass Subscriber-State zwischen Tests nicht leakt."""
+    from dflowp.eventsystem import app as eventsystem_module
+
+    eventsystem_module._SUBSCRIBERS.clear()
 
 
 @pytest.mark.asyncio
@@ -151,7 +162,7 @@ async def test_event_service_emit_failed():
 @pytest.mark.asyncio
 async def test_event_bus_with_persistence(mongodb_connection):
     """Testet Event-Bus mit persistenter Speicherung in MongoDB."""
-    from dflowp.infrastructure.database.event_repository import EventRepository
+    from dflowp_core.database.event_repository import EventRepository
 
     bus = EventBus()  # Frischer Bus für isolierten Test
     repo = EventRepository()
@@ -179,3 +190,84 @@ async def test_event_bus_with_persistence(mongodb_connection):
         events_from_db.append(e)
     assert len(events_from_db) >= 1
     assert events_from_db[0]["event_type"] == EVENT_STARTED
+
+
+def test_eventsystem_subscription_and_ingest_endpoints() -> None:
+    """Eventsystem-Endpoint nimmt Events an und bestätigt Empfang."""
+    client = TestClient(eventsystem_app)
+    eventsystem_app.dependency_overrides = {}
+    # Isoliert Testzustand zwischen Testfällen.
+    import dflowp.eventsystem.app as eventsystem_module
+    eventsystem_module._SUBSCRIBERS.clear()
+    subscribe_response = client.post(
+        "/internal/subscriptions",
+        json={
+            "subscriber_id": "runtime-1",
+            "callback_url": "http://runtime-1:8002",
+        },
+    )
+    assert subscribe_response.status_code == 201
+    subscribe_payload = subscribe_response.json()
+    assert subscribe_payload["status"] == "registered"
+
+    list_response = client.get("/internal/subscriptions")
+    assert list_response.status_code == 200
+    list_payload = list_response.json()
+    assert list_payload["subscriber_count"] >= 1
+
+    response = client.post(
+        "/internal/events",
+        json={
+            "process_id": "proc_evt",
+            "subprocess_id": "sub_evt",
+            "event_type": EVENT_STARTED,
+            "event_time": "2026-04-08T10:00:00Z",
+            "subprocess_instance_id": 1,
+        },
+    )
+    assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_eventsystem_uses_callback_url_without_double_suffix(monkeypatch) -> None:
+    """Eventsystem darf /internal/events nicht doppelt an Callback anhängen."""
+    from dflowp.eventsystem import app as eventsystem_module
+
+    eventsystem_module._SUBSCRIBERS["runtime-1"] = "http://worker:8002/internal/events"
+
+    post_mock = AsyncMock()
+    fake_client = AsyncMock()
+    fake_client.__aenter__.return_value.post = post_mock
+    fake_client.__aexit__.return_value = None
+    monkeypatch.setattr(eventsystem_module.httpx, "AsyncClient", lambda timeout: fake_client)
+
+    await eventsystem_module.receive_event({"event_type": EVENT_COMPLETED})
+
+    assert post_mock.await_count == 1
+    args, kwargs = post_mock.await_args
+    assert args[0] == "http://worker:8002/internal/events"
+
+
+@pytest.mark.asyncio
+async def test_event_service_db_first_emits_to_repo_and_local_subscribers() -> None:
+    """DB-first Emit speichert zuerst und triggert lokale Handler."""
+
+    class _FakeRepo:
+        def __init__(self) -> None:
+            self.inserted: list[dict] = []
+
+        async def insert(self, event: dict) -> str:
+            self.inserted.append(event)
+            return "evt_1"
+
+    svc = EventService()
+    repo = _FakeRepo()
+    svc.set_event_repository(repo)
+    received: list[dict] = []
+    svc.subscribe(EVENT_STARTED, lambda e: received.append(e))
+
+    await svc.emit_started(process_id="proc_db_first", subprocess_id="sub_db_first")
+
+    assert len(repo.inserted) == 1
+    assert repo.inserted[0]["event_type"] == EVENT_STARTED
+    assert len(received) >= 1

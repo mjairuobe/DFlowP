@@ -1,6 +1,7 @@
-"""Legacy-Einstiegspunkt: delegiert an den Engine-Worker."""
+def main() -> None:
+    from dflowp_processruntime.engine.engine_worker import main as worker_main
 
-from dflowp.worker.engine_worker import main
+    worker_main()
 
 
 if __name__ == "__main__":

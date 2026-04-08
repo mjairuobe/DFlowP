@@ -8,14 +8,14 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 
 from dflowp.api.auth import require_api_key
 from dflowp.api.schemas import ProcessCloneRequest
-from dflowp.infrastructure.database.data_item_repository import DataItemRepository
-from dflowp.infrastructure.database.event_repository import EventRepository
-from dflowp.infrastructure.database.mongo import (
+from dflowp_core.database.data_item_repository import DataItemRepository
+from dflowp_core.database.event_repository import EventRepository
+from dflowp_core.database.mongo import (
     close_mongodb_connection,
     connect_to_mongodb,
     resolve_mongodb_uri,
 )
-from dflowp.infrastructure.database.process_repository import ProcessRepository
+from dflowp_core.database.process_repository import ProcessRepository
 
 
 @asynccontextmanager

@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import logging
 
-from dflowp.utils.logger import (
+from dflowp_core.utils.logger import (
     _ColorFormatter,
     get_component_logger,
     get_process_subprocess_logger,

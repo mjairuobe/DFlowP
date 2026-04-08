@@ -1,0 +1,2 @@
+"""FetchFeedItems plugin service package."""
+
