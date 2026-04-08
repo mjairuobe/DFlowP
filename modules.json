@@ -1,0 +1,68 @@
+{
+  "dir": {
+    "packages": [
+      "dflowp-packages/dflowp-core",
+      "dflowp-packages/dflowp-processruntime"
+    ],
+    "services": [
+      "dflowp/api",
+      "dflowp/worker",
+      "dflowp/eventsystem",
+      "dflowp/event_broker",
+      "dflowp/plugin_fetchfeeditems",
+      "dflowp/plugin_embeddata"
+    ]
+  },
+  "required_stack_services": ["mongo"],
+  "docker": {
+    "registry": "docker.io/crawlabase",
+    "images": {
+      "dflowp/api": "dflowp-api",
+      "dflowp/worker": "dflowp-runtime",
+      "dflowp/eventsystem": "dflowp-eventsystem",
+      "dflowp/event_broker": "dflowp-event-broker",
+      "dflowp/plugin_fetchfeeditems": "dflowp-plugin-fetchfeeditems",
+      "dflowp/plugin_embeddata": "dflowp-plugin-embeddata"
+    },
+    "containers": {
+      "dflowp/api": "dflowp-api",
+      "dflowp/worker": "dflowp-worker",
+      "dflowp/eventsystem": "dflowp-eventsystem",
+      "dflowp/event_broker": "dflowp-event-broker",
+      "dflowp/plugin_fetchfeeditems": "dflowp-plugin-fetchfeeditems",
+      "dflowp/plugin_embeddata": "dflowp-plugin-embeddata"
+    },
+    "stage_targets": {
+      "dflowp/api": "api",
+      "dflowp/worker": "runtime",
+      "dflowp/eventsystem": "eventsystem",
+      "dflowp/event_broker": "event-broker",
+      "dflowp/plugin_fetchfeeditems": "plugin-fetchfeeditems",
+      "dflowp/plugin_embeddata": "plugin-embeddata"
+    },
+    "build_plan_flags": {
+      "dflowp/api": "BUILD_API",
+      "dflowp/worker": "BUILD_WORKER",
+      "dflowp/eventsystem": "BUILD_EVENTSYSTEM",
+      "dflowp/event_broker": "BUILD_EVENT_BROKER",
+      "dflowp/plugin_fetchfeeditems": "BUILD_PLUGIN_FETCHFEEDITEMS",
+      "dflowp/plugin_embeddata": "BUILD_PLUGIN_EMBEDDATA"
+    }
+  },
+  "compose": {
+    "api": "dflowp/api",
+    "worker": "dflowp/worker",
+    "eventsystem": "dflowp/eventsystem",
+    "event-broker": "dflowp/event_broker",
+    "plugin-fetchfeeditems": "dflowp/plugin_fetchfeeditems",
+    "plugin-embeddata": "dflowp/plugin_embeddata"
+  },
+  "compose_env": {
+    "api": "DOCKER_IMAGE_API",
+    "worker": "DOCKER_IMAGE_RUNTIME",
+    "eventsystem": "DOCKER_IMAGE_EVENTSYSTEM",
+    "event-broker": "DOCKER_IMAGE_EVENT_BROKER",
+    "plugin-fetchfeeditems": "DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS",
+    "plugin-embeddata": "DOCKER_IMAGE_PLUGIN_EMBEDDATA"
+  }
+}

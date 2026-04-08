@@ -1,0 +1,2 @@
+-e ../../dflowp-packages/dflowp-core
+-e ../../dflowp-packages/dflowp-processruntime
