@@ -52,7 +52,7 @@ async def receive_event(event: dict) -> None:
     async with httpx.AsyncClient(timeout=timeout) as client:
         for subscriber_id, callback_url in list(_SUBSCRIBERS.items()):
             try:
-                response = await client.post(f"{callback_url}/internal/events", json=event)
+                response = await client.post(callback_url, json=event)
                 if 200 <= response.status_code < 300:
                     continue
                 logger.warning(

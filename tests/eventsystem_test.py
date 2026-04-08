@@ -14,6 +14,7 @@ from dflowp_core.eventinterfaces.event_types import (
 )
 from dflowp.eventsystem.app import app as eventsystem_app
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
 
 
 @pytest.fixture(autouse=True)
@@ -225,6 +226,26 @@ def test_eventsystem_subscription_and_ingest_endpoints() -> None:
         },
     )
     assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_eventsystem_uses_callback_url_without_double_suffix(monkeypatch) -> None:
+    """Eventsystem darf /internal/events nicht doppelt an Callback anhängen."""
+    from dflowp.eventsystem import app as eventsystem_module
+
+    eventsystem_module._SUBSCRIBERS["runtime-1"] = "http://worker:8002/internal/events"
+
+    post_mock = AsyncMock()
+    fake_client = AsyncMock()
+    fake_client.__aenter__.return_value.post = post_mock
+    fake_client.__aexit__.return_value = None
+    monkeypatch.setattr(eventsystem_module.httpx, "AsyncClient", lambda timeout: fake_client)
+
+    await eventsystem_module.receive_event({"event_type": EVENT_COMPLETED})
+
+    assert post_mock.await_count == 1
+    args, kwargs = post_mock.await_args
+    assert args[0] == "http://worker:8002/internal/events"
 
 
 @pytest.mark.asyncio
