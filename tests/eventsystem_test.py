@@ -16,6 +16,14 @@ from dflowp.eventsystem.app import app as eventsystem_app
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture(autouse=True)
+def clear_eventsystem_subscribers() -> None:
+    """Stellt sicher, dass Subscriber-State zwischen Tests nicht leakt."""
+    from dflowp.eventsystem import app as eventsystem_module
+
+    eventsystem_module._SUBSCRIBERS.clear()
+
+
 @pytest.mark.asyncio
 async def test_event_bus_publish_subscribe(event_bus_fresh):
     """Testet Publish und Subscribe ohne Persistenz."""
@@ -183,9 +191,29 @@ async def test_event_bus_with_persistence(mongodb_connection):
     assert events_from_db[0]["event_type"] == EVENT_STARTED
 
 
-def test_eventsystem_ingest_endpoint_accepts_event() -> None:
+def test_eventsystem_subscription_and_ingest_endpoints() -> None:
     """Eventsystem-Endpoint nimmt Events an und bestätigt Empfang."""
     client = TestClient(eventsystem_app)
+    eventsystem_app.dependency_overrides = {}
+    # Isoliert Testzustand zwischen Testfällen.
+    import dflowp.eventsystem.app as eventsystem_module
+    eventsystem_module._SUBSCRIBERS.clear()
+    subscribe_response = client.post(
+        "/internal/subscriptions",
+        json={
+            "subscriber_id": "runtime-1",
+            "callback_url": "http://runtime-1:8002",
+        },
+    )
+    assert subscribe_response.status_code == 201
+    subscribe_payload = subscribe_response.json()
+    assert subscribe_payload["status"] == "registered"
+
+    list_response = client.get("/internal/subscriptions")
+    assert list_response.status_code == 200
+    list_payload = list_response.json()
+    assert list_payload["subscriber_count"] >= 1
+
     response = client.post(
         "/internal/events",
         json={

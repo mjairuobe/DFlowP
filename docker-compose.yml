@@ -62,7 +62,14 @@ services:
       PROCESS_CONFIG: ${PROCESS_CONFIG:-examples/processconfig_example.json}
       INPUT_DATA: ${INPUT_DATA:-examples/inputdata_set.json}
       DFLOWP_POLL_INTERVAL: ${DFLOWP_POLL_INTERVAL:-5}
-    command: ["python", "-m", "dflowp_processruntime.engine.engine_worker"]
+      DFLOWP_RUNTIME_ENABLE_LOCAL_EVENT_SUBS: "0"
+      DFLOWP_RUNTIME_EVENT_PORT: ${DFLOWP_RUNTIME_EVENT_PORT:-8002}
+      DFLOWP_RUNTIME_PUBLIC_URL: ${DFLOWP_RUNTIME_PUBLIC_URL:-http://worker:8002}
+      DFLOWP_RUNTIME_SUBSCRIBER_ID: ${DFLOWP_RUNTIME_SUBSCRIBER_ID:-dflowp-runtime}
+      DFLOWP_EVENTSYSTEM_URL: ${DFLOWP_EVENTSYSTEM_URL:-http://eventsystem:8001}
+      DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES: ${DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES:-30}
+      DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP: ${DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP:-1.0}
+    command: ["python", "-m", "dflowp.worker.runtime_event_listener"]
 
   eventsystem:
     build:

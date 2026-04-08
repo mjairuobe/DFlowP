@@ -29,6 +29,7 @@ class ProcessEngine:
         data_repository: Any,
         dataset_repository: Any,
         get_subprocess: Callable[[str], Any],
+        enable_local_event_subscriptions: bool = True,
     ) -> None:
         self._event_service = event_service
         self._process_repo = process_repository
@@ -38,6 +39,7 @@ class ProcessEngine:
         self._get_subprocess = get_subprocess
         self._running: dict[str, asyncio.Task] = {}
         self._active_subprocess_count: int = 0
+        self._enable_local_event_subscriptions = enable_local_event_subscriptions
 
     @staticmethod
     def _source(process_id: str, subprocess_id: str) -> str:
@@ -45,9 +47,22 @@ class ProcessEngine:
 
     def start(self) -> None:
         """Registriert Event-Handler."""
-        self._event_service.subscribe(EVENT_COMPLETED, self._on_subprocess_completed)
-        self._event_service.subscribe(EVENT_FAILED, self._on_subprocess_failed)
-        logger.info("[ProcessEngine] gestartet, Events subscribed")
+        if self._enable_local_event_subscriptions:
+            self._event_service.subscribe(EVENT_COMPLETED, self._on_subprocess_completed)
+            self._event_service.subscribe(EVENT_FAILED, self._on_subprocess_failed)
+            logger.info("[ProcessEngine] gestartet, lokale Events subscribed")
+            return
+        logger.info("[ProcessEngine] gestartet, erwartet externe Event-Notifications")
+
+    async def handle_event_notification(self, event: dict[str, Any]) -> None:
+        """
+        Verarbeitet ein extern zugestelltes Event (z. B. vom EventSystem via HTTP).
+        """
+        event_type = event.get("event_type")
+        if event_type == EVENT_COMPLETED:
+            await self._on_subprocess_completed(event)
+        elif event_type == EVENT_FAILED:
+            await self._on_subprocess_failed(event)
 
     async def wait_until_idle(
         self,

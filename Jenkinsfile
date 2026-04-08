@@ -197,7 +197,7 @@ PY
                         # Runtime-/Core-Tests laufen im Worker-Container.
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
-                          worker pytest tests/process_test.py tests/logging_test.py tests/database_test.py -v --tb=short
+                          worker pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
                     '''
                 }
                 }

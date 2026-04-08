@@ -3,7 +3,6 @@
 import asyncio
 import os
 from datetime import datetime, timezone
-
 import httpx
 
 from dflowp_core.database.event_repository import EventRepository

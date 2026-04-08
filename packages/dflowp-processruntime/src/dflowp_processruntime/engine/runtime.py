@@ -9,6 +9,7 @@ Verantwortlichkeiten:
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +28,10 @@ from dflowp_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+DFLOWP_RUNTIME_ENABLE_LOCAL_EVENT_SUBS = (
+    os.environ.get("DFLOWP_RUNTIME_ENABLE_LOCAL_EVENT_SUBS", "1") != "0"
+)
+
 
 class Runtime:
     """
@@ -38,9 +43,15 @@ class Runtime:
         self,
         mongodb_uri: str = resolve_mongodb_uri(),
         mongodb_database: str = "dflowp",
+        enable_local_event_subscriptions: Optional[bool] = None,
     ) -> None:
         self._mongodb_uri = mongodb_uri
         self._mongodb_database = mongodb_database
+        if enable_local_event_subscriptions is None:
+            enable_local_event_subscriptions = (
+                os.environ.get("DFLOWP_RUNTIME_ENABLE_LOCAL_EVENT_SUBS", "1") != "0"
+            )
+        self._enable_local_event_subscriptions = enable_local_event_subscriptions
         self._engine: Optional[ProcessEngine] = None
         self._process_repo: Optional[ProcessRepository] = None
 
@@ -81,6 +92,7 @@ class Runtime:
             data_repository=data_repo,
             dataset_repository=dataset_repo,
             get_subprocess=get_subprocess,
+            enable_local_event_subscriptions=self._enable_local_event_subscriptions,
         )
         self._engine.start()
 

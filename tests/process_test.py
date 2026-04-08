@@ -930,6 +930,125 @@ async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reex
     assert "FetchFeedItems1" not in started
 
 
+@pytest.mark.asyncio
+async def test_process_engine_external_event_notifications_without_local_subscriptions(
+    isolated_event_service,
+):
+    """
+    Wenn lokale Event-Subscriptions deaktiviert sind, kann die Engine
+    Follow-up-Aktionen über handle_event_notification auslösen.
+    """
+    chain_config = ProcessConfiguration.from_dict(
+        {
+            "process_id": "proc_external_notify",
+            "software_version": "1.0.0",
+            "input_dataset_id": "ds_chain",
+            "dataflow": {
+                "nodes": [
+                    {"subprocess_id": "Step1", "subprocess_type": "TypeA"},
+                    {"subprocess_id": "Step2", "subprocess_type": "TypeB"},
+                ],
+                "edges": [{"from": "Step1", "to": "Step2"}],
+            },
+            "subprocess_config": {},
+        }
+    )
+
+    process_repo = AsyncMock()
+    process_repo.insert = AsyncMock(return_value="id")
+    process_repo.update = AsyncMock(return_value=True)
+    process_repo.find_by_id = AsyncMock(
+        return_value={
+            "process_id": "proc_external_notify",
+            "configuration": chain_config.to_dict(),
+        }
+    )
+
+    dataflow_state_repo = AsyncMock()
+    dataflow_state_repo.update_node_state = AsyncMock(return_value=True)
+    dataflow_state_repo.get_dataflow_state = AsyncMock(
+        return_value={
+            "nodes": [
+                {
+                    "subprocess_id": "Step1",
+                    "subprocess_type": "TypeA",
+                    "event_status": "EVENT_COMPLETED",
+                    "io_transformation_states": [
+                        {
+                            "input_data_id": "d1",
+                            "output_data_ids": ["out_step1"],
+                            "status": "Finished",
+                            "quality": 1.0,
+                        }
+                    ],
+                },
+                {
+                    "subprocess_id": "Step2",
+                    "subprocess_type": "TypeB",
+                    "event_status": "Not Started",
+                    "io_transformation_states": [],
+                },
+            ],
+            "edges": [{"from": "Step1", "to": "Step2"}],
+        }
+    )
+
+    async def mock_find_data(data_id: str):
+        return {"data_id": data_id, "content": {"text": data_id}, "type": "output"}
+
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+    data_repo.find_by_id = mock_find_data
+
+    dataset_repo = AsyncMock()
+    dataset_repo.find_by_id = AsyncMock(
+        return_value={"dataset_id": "ds_chain", "data_ids": ["d1"]}
+    )
+
+    started: list[str] = []
+
+    async def mock_run(context, **kwargs):
+        started.append(context.subprocess_id)
+        return [
+            IOTransformationState(
+                input_data_id=context.input_data[0].data_id
+                if context.input_data
+                else "none",
+                output_data_ids=["out_" + context.subprocess_id],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+
+    dummy = AsyncMock()
+    dummy.run = mock_run
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy,
+        enable_local_event_subscriptions=False,
+    )
+    engine.start()
+
+    await engine.start_process(chain_config)
+    await asyncio.sleep(0.2)
+    started.clear()
+
+    await engine.handle_event_notification(
+        {
+            "process_id": "proc_external_notify",
+            "subprocess_id": "Step1",
+            "event_type": "EVENT_COMPLETED",
+        }
+    )
+    await asyncio.sleep(0.2)
+
+    assert "Step2" in started
+
+
 # ===========================================================================
 # Abschnitt 6: FetchFeedItems Plugin Tests
 # ===========================================================================
