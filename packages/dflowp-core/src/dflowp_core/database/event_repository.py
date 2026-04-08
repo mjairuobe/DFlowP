@@ -22,9 +22,11 @@ class EventRepository:
         await self._collection.create_index("subprocess_id")
         await self._collection.create_index("event_time")
         await self._collection.create_index("timestamp_ms")
+        await self._collection.create_index("delivered_at")
         await self._collection.create_index([("process_id", 1), ("timestamp_ms", -1)])
         await self._collection.create_index([("process_id", 1), ("event_time", 1)])
         await self._collection.create_index([("event_type", 1), ("event_time", 1)])
+        await self._collection.create_index([("delivered_at", 1), ("timestamp_ms", 1)])
 
     async def insert(self, event: dict[str, Any]) -> str:
         """
@@ -40,6 +42,60 @@ class EventRepository:
         enriched_event["event_time"] = enriched_event.get("event_time") or datetime.now(timezone.utc)
         result = await self._collection.insert_one(enriched_event)
         return str(result.inserted_id)
+
+    async def list_undelivered_events(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """
+        Liefert Events, die noch nicht an das externe Eventsystem ausgeliefert wurden.
+
+        Ein Event gilt als ausgeliefert, wenn das Feld ``delivered_at`` gesetzt ist.
+        """
+        docs = (
+            await self._collection.find(
+                {"$or": [{"delivered_at": {"$exists": False}}, {"delivered_at": None}]}
+            )
+            .sort("timestamp_ms", 1)
+            .limit(limit)
+            .to_list(length=limit)
+        )
+        items: list[dict[str, Any]] = []
+        for doc in docs:
+            doc["_id"] = str(doc["_id"])
+            items.append(doc)
+        return items
+
+    async def mark_delivered(self, event_id: str) -> bool:
+        """
+        Markiert ein Event als ausgeliefert.
+        """
+        from bson import ObjectId
+
+        if not ObjectId.is_valid(event_id):
+            return False
+        result = await self._collection.update_one(
+            {"_id": ObjectId(event_id)},
+            {
+                "$set": {"delivered_at": datetime.now(timezone.utc), "last_delivery_error": None},
+                "$inc": {"delivery_attempts": 1},
+            },
+        )
+        return result.modified_count > 0
+
+    async def mark_delivery_failed(self, event_id: str, error: str) -> bool:
+        """
+        Aktualisiert Metadaten für einen fehlgeschlagenen Delivery-Versuch.
+        """
+        from bson import ObjectId
+
+        if not ObjectId.is_valid(event_id):
+            return False
+        result = await self._collection.update_one(
+            {"_id": ObjectId(event_id)},
+            {
+                "$set": {"last_delivery_error": error},
+                "$inc": {"delivery_attempts": 1},
+            },
+        )
+        return result.modified_count > 0
 
     async def list_events(
         self,

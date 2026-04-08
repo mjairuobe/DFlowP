@@ -1,9 +1,8 @@
 """Event-Service - Emit und Subscribe für das Event-System."""
-
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
-from dflowp_core.eventinterfaces.event_bus import get_event_bus
+from dflowp_core.eventinterfaces.event_bus import EventBus, get_event_bus
 from dflowp_core.eventinterfaces.event_types import (
     EVENT_COMPLETED,
     EVENT_FAILED,
@@ -19,6 +18,7 @@ class EventService:
 
     def __init__(self) -> None:
         self._bus = get_event_bus()
+        self._event_repository: Optional[Any] = None
 
     async def emit(
         self,
@@ -50,6 +50,10 @@ class EventService:
         if payload:
             event["payload"] = payload
 
+        if self._event_repository:
+            await self._event_repository.insert(event)
+            await self._bus.dispatch_local(event)
+            return
         await self._bus.publish(event)
 
     async def emit_started(
@@ -119,9 +123,8 @@ class EventService:
         self._bus.subscribe(event_type, handler)
 
     def set_event_repository(self, repository: Any) -> None:
-        """Aktiviert die persistente Speicherung von Events."""
-        self._bus.set_event_repository(repository)
-
+        """Aktiviert DB-first Event-Publish über das Event-Repository."""
+        self._event_repository = repository
 
 def get_event_service() -> EventService:
     """Gibt eine Event-Service-Instanz zurück."""

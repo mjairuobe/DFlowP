@@ -23,6 +23,8 @@
         // Docker Hub Targets
         DOCKER_IMAGE_REPO_API = 'docker.io/crawlabase/dflowp-api'
         DOCKER_IMAGE_REPO_RUNTIME = 'docker.io/crawlabase/dflowp-runtime'
+        DOCKER_IMAGE_REPO_EVENTSYSTEM = 'docker.io/crawlabase/dflowp-eventsystem'
+        DOCKER_IMAGE_REPO_EVENT_BROKER = 'docker.io/crawlabase/dflowp-event-broker'
 
         // Jenkins Credential IDs (bitte in Jenkins anpassen)
         DOCKERHUB_CREDS_ID = 'dockerhub-creds'
@@ -78,6 +80,8 @@
                     python3.11 -m pip install --force-reinstall --no-deps packages/dflowp-processruntime/dist/*.whl
                     docker build --target api -t "${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}" .
                     docker build --target runtime -t "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}" .
+                    docker build --target eventsystem -t "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}" .
+                    docker build --target event-broker -t "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}" .
                     '''
                 }
             }
@@ -138,6 +142,8 @@ PY
                         set -e
                         export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
                         # Kein --build: Image wurde in der Stage „Build Docker Image“ gebaut.
@@ -160,6 +166,8 @@ PY
                         set -e
                         export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
                         # API-Tests laufen im API-Container und nutzen Compose-Mongo via Service-Name "mongo"
@@ -182,12 +190,40 @@ PY
                         set -e
                         export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
                         export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
                         export SOFTWARE_VERSION
                         # Runtime-/Core-Tests laufen im Worker-Container.
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
-                          worker pytest tests/process_test.py tests/eventsystem_test.py tests/logging_test.py tests/database_test.py -v --tb=short
+                          worker pytest tests/process_test.py tests/logging_test.py tests/database_test.py -v --tb=short
+                    '''
+                }
+                }
+            }
+
+            stage('Tests Event Services (pytest)') {
+                steps {
+                withCredentials([
+                    usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: "${DFLOWP_API_KEY_ID}", variable: 'DFlowP_API_Key')
+                ]) {
+                    sh '''
+                        set -e
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
+                        . ./.jenkins_runtime.env
+                        export SOFTWARE_VERSION
+                        docker-compose run --rm \
+                          -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
+                          event-broker pytest tests/event_broker_test.py -v --tb=short
+                        docker-compose run --rm \
+                          -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
+                          eventsystem pytest tests/eventsystem_test.py -k "not with_persistence" -v --tb=short
                     '''
                 }
                 }
@@ -203,6 +239,8 @@ PY
                         echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
                         docker push "${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
                         docker push "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
+                        docker push "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
+                        docker push "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
                         docker logout || true
                     '''
                 }

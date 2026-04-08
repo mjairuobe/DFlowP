@@ -12,6 +12,8 @@ from dflowp_core.eventinterfaces.event_types import (
     EVENT_FAILED,
     EVENT_STARTED,
 )
+from dflowp.eventsystem.app import app as eventsystem_app
+from fastapi.testclient import TestClient
 
 
 @pytest.mark.asyncio
@@ -179,3 +181,44 @@ async def test_event_bus_with_persistence(mongodb_connection):
         events_from_db.append(e)
     assert len(events_from_db) >= 1
     assert events_from_db[0]["event_type"] == EVENT_STARTED
+
+
+def test_eventsystem_ingest_endpoint_accepts_event() -> None:
+    """Eventsystem-Endpoint nimmt Events an und bestätigt Empfang."""
+    client = TestClient(eventsystem_app)
+    response = client.post(
+        "/internal/events",
+        json={
+            "process_id": "proc_evt",
+            "subprocess_id": "sub_evt",
+            "event_type": EVENT_STARTED,
+            "event_time": "2026-04-08T10:00:00Z",
+            "subprocess_instance_id": 1,
+        },
+    )
+    assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_event_service_db_first_emits_to_repo_and_local_subscribers() -> None:
+    """DB-first Emit speichert zuerst und triggert lokale Handler."""
+
+    class _FakeRepo:
+        def __init__(self) -> None:
+            self.inserted: list[dict] = []
+
+        async def insert(self, event: dict) -> str:
+            self.inserted.append(event)
+            return "evt_1"
+
+    svc = EventService()
+    repo = _FakeRepo()
+    svc.set_event_repository(repo)
+    received: list[dict] = []
+    svc.subscribe(EVENT_STARTED, lambda e: received.append(e))
+
+    await svc.emit_started(process_id="proc_db_first", subprocess_id="sub_db_first")
+
+    assert len(repo.inserted) == 1
+    assert repo.inserted[0]["event_type"] == EVENT_STARTED
+    assert len(received) >= 1

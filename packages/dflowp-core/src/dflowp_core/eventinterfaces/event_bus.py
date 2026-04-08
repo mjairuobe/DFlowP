@@ -77,7 +77,19 @@ class EventBus:
                 except Exception as e:
                     logger.exception("Fehler beim Speichern des Events: %s", e)
 
-        # In-Memory Publish
+        await self.dispatch_local(event)
+
+    async def dispatch_local(self, event: dict[str, Any]) -> None:
+        """
+        Verteilt ein Event nur an lokale In-Memory-Subscriber.
+
+        Diese Methode persistiert bewusst nicht und ist für DB-first Flows gedacht,
+        in denen das Event bereits gespeichert wurde.
+        """
+        event_type = event.get("event_type")
+        if not event_type:
+            return
+
         handlers = self._subscribers.get(event_type, []) + self._subscribers.get("*", [])
         for handler in handlers:
             try:
