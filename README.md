@@ -232,13 +232,6 @@ dflowp/
 pip install -e ".[dev]"
 ```
 
-#### Mit dem Install-Skript (Ubuntu)
-
-```bash
-./install.sh
-# Optional mit MongoDB: ./install.sh --with-mongodb
-```
-
 #### Manuell
 
 ```bash

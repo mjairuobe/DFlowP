@@ -2,12 +2,12 @@
 """
 Migrationsscript für DataRepository → DataItemRepository Consolidation.
 
-Verwendung:
+Verwendung (aus dem Repository-Root):
     # Dry-run (zeigt was gelöscht werden würde):
-    python migrate_repositories.py
+    python migrations/migrate_repositories.py
 
     # Tatsächliche Migration (kopiert Daten + löscht alte Collections):
-    python migrate_repositories.py --force
+    python migrations/migrate_repositories.py --force
 """
 
 import asyncio

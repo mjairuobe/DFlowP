@@ -1,5 +1,7 @@
 # DataRepository Consolidation - Migrationsleitfaden
 
+Skripte und dieses Dokument liegen im Ordner **`migrations/`** (Repository-Root).
+
 Diese Datei dokumentiert die Migration von zwei separaten Repositories (`DataRepository` und `DatasetRepository`) zu einem einheitlichen `DataItemRepository`.
 
 ## Überblick
@@ -36,7 +38,7 @@ mongodump --uri="mongodb://localhost:27017/dflowp" --out=./backup_before_migrati
 
 ```bash
 # Zeigt, was migriert werden würde, ohne Daten zu löschen
-python migrate_repositories.py
+python migrations/migrate_repositories.py
 ```
 
 Dies zeigt:
@@ -49,7 +51,7 @@ Dies zeigt:
 
 ```bash
 # Migriert Daten und löscht alte Collections
-python migrate_repositories.py --force
+python migrations/migrate_repositories.py --force
 ```
 
 **Vorsicht:** Dieser Befehl löscht die alten `data` und `datasets` Collections nach erfolgreicher Migration!
@@ -217,5 +219,5 @@ Nach ein oder zwei Releases können die alten Wrapper-Klassen entfernt werden:
 ## Zusätzliche Ressourcen
 
 - **CLAUDE.md**: Architektur-Dokumentation
-- **dflowp/infrastructure/database/migrations.py**: Migrations-Implementierung
+- **`packages/dflowp-core/src/dflowp_core/database/migrations.py`**: Migrations-Implementierung
 - **tests/database_test.py**: Tests für beide Repositories

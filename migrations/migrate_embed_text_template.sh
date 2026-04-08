@@ -7,11 +7,11 @@
 # Vorher: "text": "AI Trends in 2024. Machine Learning advances..."
 # Nachher: "text": "{title} {summary}", "text_template": "{title} {summary}"
 #
-# Verwendung:
-#   chmod +x migrate_embed_text_template.sh
-#   ./migrate_embed_text_template.sh
+# Verwendung (aus dem Repository-Root):
+#   chmod +x migrations/migrate_embed_text_template.sh
+#   ./migrations/migrate_embed_text_template.sh
 #   oder mit custom MongoDB URI:
-#   MONGODB_URI="mongodb://user:pass@host:27017" ./migrate_embed_text_template.sh
+#   MONGODB_URI="mongodb://user:pass@host:27017" ./migrations/migrate_embed_text_template.sh
 
 set -e
 
@@ -37,7 +37,7 @@ echo "Teste MongoDB-Verbindung..."
 mongosh "$MONGODB_URI/$DATABASE" --eval "db.adminCommand('ping')" > /dev/null 2>&1 || {
     echo "ERROR: Kann nicht zu MongoDB verbinden!"
     echo "Stelle sicher, dass MongoDB läuft und die URI korrekt ist:"
-    echo "  MONGODB_URI='$MONGODB_URI' ./migrate_embed_text_template.sh"
+    echo "  MONGODB_URI='$MONGODB_URI' ./migrations/migrate_embed_text_template.sh"
     exit 1
 }
 echo "✓ MongoDB-Verbindung erfolgreich"
