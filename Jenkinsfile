@@ -1,5 +1,9 @@
     // DFlowP – CI/CD-Pipeline
     //
+    // SOFTWARE_VERSION / Docker-Image-Tag: scripts/jenkins_resolve_version.sh
+    //   MAJOR aus software_version.py, MINOR = Anzahl Git-Refs (heads+remotes),
+    //   Patch = erste 4 Hex-Zeichen des Short-SHA als Dezimalzahl. Kein Docker-Hub-Lookup.
+    //
     // Voraussetzungen auf dem Jenkins-Agenten:
     //   - Docker (zum Starten von MongoDB)
     //   - Python 3.11+ (python3.11, venv)
@@ -58,6 +62,17 @@
                 }
             }
 
+            stage('Resolve software version') {
+                steps {
+                    sh '''
+                        set -e
+                        bash scripts/jenkins_resolve_version.sh
+                        . ./.jenkins_runtime.env
+                        echo "IMAGE_TAG=${IMAGE_TAG}"
+                    '''
+                }
+            }
+
         stage('Build and install libraries') {
                 steps {
                     sh '''
@@ -72,6 +87,7 @@
                 steps {
                     sh '''
                         set -e
+                        . ./.jenkins_runtime.env
                     docker --version
                     # Build libraries and install from wheels before image build.
                     python3.11 -m ensurepip --upgrade
@@ -80,56 +96,13 @@
                     python3.11 -m build packages/dflowp-processruntime
                     python3.11 -m pip install --force-reinstall packages/dflowp-core/dist/*.whl
                     python3.11 -m pip install --force-reinstall --no-deps packages/dflowp-processruntime/dist/*.whl
-                    docker build --target api -t "${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}" .
-                    docker build --target runtime -t "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}" .
-                    docker build --target eventsystem -t "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}" .
-                    docker build --target event-broker -t "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}" .
-                    docker build --target plugin-fetchfeeditems -t "${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}" .
-                    docker build --target plugin-embeddata -t "${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}" .
+                    docker build --target api -t "${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}" .
+                    docker build --target runtime -t "${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}" .
+                    docker build --target eventsystem -t "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}" .
+                    docker build --target event-broker -t "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}" .
+                    docker build --target plugin-fetchfeeditems -t "${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}" .
+                    docker build --target plugin-embeddata -t "${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}" .
                     '''
-                }
-            }
-
-        stage('Resolve Software Version') {
-                steps {
-                withCredentials([
-                    usernamePassword(credentialsId: "${DOCKERHUB_CREDS_ID}", usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')
-                ]) {
-                sh '''
-                    set -e
-
-                    echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin index.docker.io
-
-                    # Nutzt docker-browse (authentifiziertes Docker-Setup) via npx zum Tag-Auslesen.
-                    TAGS_RAW="$(npx docker-browse tags crawlabase/dflowp-api || true)"
-                    PREV_VERSION="$(printf "%s\n" "${TAGS_RAW}" \
-                      | python3.11 -c 'import re,sys; tags=[line.strip() for line in sys.stdin if line.strip()]; sem=[t for t in tags if re.match(r"^\\d+\\.\\d+\\.\\d+$", t)]; sem.sort(key=lambda s: tuple(map(int,s.split(".")))); print(sem[-1] if sem else "latest")')"
-                    export PREV_VERSION
-
-                    if [ "$PREV_VERSION" = "latest" ]; then
-                      SOFTWARE_VERSION="${BUILD_NUMBER}"
-                    else
-                      SOFTWARE_VERSION="$(python3.11 - "$PREV_VERSION" <<'PY'
-import sys
-v = sys.argv[1]
-try:
-    parts = v.split(".")
-    if len(parts) == 3 and all(p.isdigit() for p in parts):
-        print(int(parts[2]) + 1)
-    elif v.isdigit():
-        print(int(v) + 1)
-    else:
-        print("1")
-except Exception:
-    print("1")
-PY
-)"
-                    fi
-
-                    echo "Resolved SOFTWARE_VERSION=${SOFTWARE_VERSION}"
-                    printf "SOFTWARE_VERSION=%s\n" "${SOFTWARE_VERSION}" > .jenkins_runtime.env
-                '''
-                }
                 }
             }
 
@@ -144,13 +117,13 @@ PY
 
                     sh '''
                         set -e
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
                         export SOFTWARE_VERSION
                         # Kein --build: Image wurde in der Stage „Build Docker Image“ gebaut.
                         # Neuere docker-compose Versionen verlangen sonst Buildx >= 0.17.0 (Bake).
@@ -170,13 +143,13 @@ PY
                 ]) {
                     sh '''
                         set -e
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
                         export SOFTWARE_VERSION
                         # API-Tests laufen im API-Container und nutzen Compose-Mongo via Service-Name "mongo"
                         docker-compose run --rm \
@@ -196,13 +169,13 @@ PY
                 ]) {
                     sh '''
                         set -e
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
                         export SOFTWARE_VERSION
                         # Runtime-/Core-Tests laufen im Worker-Container.
                         docker-compose run --rm \
@@ -222,13 +195,13 @@ PY
                 ]) {
                     sh '''
                         set -e
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
                         export SOFTWARE_VERSION
                         docker-compose run --rm \
                           plugin-fetchfeeditems pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
@@ -248,13 +221,13 @@ PY
                 ]) {
                     sh '''
                         set -e
-                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
-                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
                         . ./.jenkins_runtime.env
+                        export DOCKER_IMAGE_API="${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_RUNTIME="${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENTSYSTEM="${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_EVENT_BROKER="${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS="${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
+                        export DOCKER_IMAGE_PLUGIN_EMBEDDATA="${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
                         export SOFTWARE_VERSION
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
@@ -274,13 +247,14 @@ PY
                 ]) {
                     sh '''
                         set -e
+                        . ./.jenkins_runtime.env
                         echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
-                        docker push "${DOCKER_IMAGE_REPO_API}:${BUILD_NUMBER}"
-                        docker push "${DOCKER_IMAGE_REPO_RUNTIME}:${BUILD_NUMBER}"
-                        docker push "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${BUILD_NUMBER}"
-                        docker push "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${BUILD_NUMBER}"
-                        docker push "${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${BUILD_NUMBER}"
-                        docker push "${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${BUILD_NUMBER}"
+                        docker push "${DOCKER_IMAGE_REPO_API}:${IMAGE_TAG}"
+                        docker push "${DOCKER_IMAGE_REPO_RUNTIME}:${IMAGE_TAG}"
+                        docker push "${DOCKER_IMAGE_REPO_EVENTSYSTEM}:${IMAGE_TAG}"
+                        docker push "${DOCKER_IMAGE_REPO_EVENT_BROKER}:${IMAGE_TAG}"
+                        docker push "${DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${IMAGE_TAG}"
+                        docker push "${DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA}:${IMAGE_TAG}"
                         docker logout || true
                     '''
                 }
