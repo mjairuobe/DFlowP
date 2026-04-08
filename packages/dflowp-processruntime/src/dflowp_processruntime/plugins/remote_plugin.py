@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import socket
 from typing import Any, Optional
 
 import httpx
@@ -94,6 +95,19 @@ class RemotePluginSubprocess(BaseSubprocess):
         raise RuntimeError(
             f"Remote plugin call für {self.subprocess_type} fehlgeschlagen: {last_error}"
         )
+
+    async def _assert_dns_resolvable(
+        self, host: str, port: int | None = None
+    ) -> None:
+        """Prüft, ob der Hostname per DNS auflösbar ist (vor dem HTTP-Call)."""
+        try:
+            await asyncio.getaddrinfo(
+                host, port if port is not None else 0, type=socket.SOCK_STREAM
+            )
+        except OSError as exc:
+            raise RuntimeError(
+                f"Plugin-Host '{host}' ist per DNS nicht auflösbar: {exc}"
+            ) from exc
 
     async def _resolve_service_url(self, context: SubprocessContext) -> str:
         if self._base_url:
