@@ -87,6 +87,8 @@ RUN python -m ensurepip --upgrade \
       "uvicorn[standard]>=0.27.0" \
       "typing-extensions>=4.8.0" \
       "httpx>=0.26.0" \
+      "feedparser>=6.0.11" \
+      "openai>=1.12.0" \
       "pytest>=7.4.0" \
       "pytest-asyncio>=0.23.0" \
       "pytest-cov>=4.1.0"
