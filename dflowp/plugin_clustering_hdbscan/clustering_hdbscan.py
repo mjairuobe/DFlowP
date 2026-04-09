@@ -50,6 +50,14 @@ class ClusteringHDBSCAN(BaseSubprocess):
         )
         return f"{base}_{context.process_id}_{context.subprocess_id}_{uuid.uuid4().hex[:10]}"
 
+    @staticmethod
+    def _build_cluster_bundle_data_id(context: SubprocessContext) -> str:
+        base = build_human_readable_document_id(
+            domain="cluster",
+            document_type="data",
+        )
+        return f"{base}_{context.process_id}_{context.subprocess_id}_{uuid.uuid4().hex[:10]}"
+
     async def run(
         self,
         context: SubprocessContext,
@@ -58,8 +66,8 @@ class ClusteringHDBSCAN(BaseSubprocess):
         data_repository: Optional[Any] = None,
         dataset_repository: Optional[Any] = None,
     ) -> list[IOTransformationState]:
-        if not dataset_repository:
-            raise ValueError("dataset_repository erforderlich")
+        if not data_repository or not dataset_repository:
+            raise ValueError("data_repository und dataset_repository erforderlich")
 
         src = f"[{context.process_id}][{context.subprocess_id}]"
         logger.info("%s Clustering_HDBSCAN gestartet", src)
@@ -136,17 +144,34 @@ class ClusteringHDBSCAN(BaseSubprocess):
         for did, lab in zip(data_ids, labels.tolist()):
             by_label[int(lab)].append(did)
 
+        # Pro Cluster: Cluster-Bundle-Data + Dataset mit einer Referenz (siehe Clustering_DBSCAN).
         output_dataset_ids: list[str] = []
         for lab in sorted(by_label.keys()):
             member_ids = by_label[lab]
             is_noise = lab == -1
             for attempt in range(1, 6):
                 ds_id = self._build_dataset_id(context)
+                bundle_id = self._build_cluster_bundle_data_id(context)
+                bundle_content = {
+                    "cluster_bundle": True,
+                    "cluster_dataset_id": ds_id,
+                    "embedding_data_ids": member_ids,
+                    "cluster_label": lab,
+                    "is_noise": is_noise,
+                    "algorithm": "HDBSCAN",
+                }
                 try:
+                    await data_repository.insert(
+                        {
+                            "data_id": bundle_id,
+                            "content": bundle_content,
+                            "type": "cluster_bundle",
+                        }
+                    )
                     await dataset_repository.insert(
                         {
                             "dataset_id": ds_id,
-                            "data_ids": member_ids,
+                            "data_ids": [bundle_id],
                             "type": "cluster",
                             "cluster_label": lab,
                             "is_noise": is_noise,
@@ -157,9 +182,8 @@ class ClusteringHDBSCAN(BaseSubprocess):
                     break
                 except DuplicateKeyError:
                     logger.warning(
-                        "%s DuplicateKey Dataset '%s' (%d/5)",
+                        "%s DuplicateKey Cluster bundle/dataset (%d/5)",
                         src,
-                        ds_id,
                         attempt,
                     )
             else:

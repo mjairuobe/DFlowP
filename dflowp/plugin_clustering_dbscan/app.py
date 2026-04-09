@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 import uvicorn
 
+from dflowp_core.database.data_repository import DataRepository
 from dflowp_core.database.dataset_repository import DatasetRepository
 from dflowp_core.database.mongo import (
     close_mongodb_connection,
@@ -73,9 +74,11 @@ async def plugin_info() -> dict[str, Any]:
 async def plugin_run(request: PluginRunRequest) -> PluginRunResponse:
     try:
         context = SubprocessContext.model_validate(request.context)
+        data_repo = DataRepository()
         dataset_repo = DatasetRepository()
         io_states: list[IOTransformationState] = await _plugin.run(
             context=context,
+            data_repository=data_repo,
             dataset_repository=dataset_repo,
         )
         return PluginRunResponse(

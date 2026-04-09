@@ -345,23 +345,6 @@ class ProcessEngine:
             if not d:
                 continue
             if d.get("doc_type") == "dataset":
-                # Cluster-Ausgaben (DBSCAN/HDBSCAN): ein Input-Item pro Cluster-Dataset,
-                # nicht die eingebetteten Embedding-Zeilen einzeln (für Topic-Prompting o. Ä.).
-                if d.get("type") == "cluster":
-                    input_data.append(
-                        Data(
-                            data_id=d["data_id"],
-                            content={
-                                "cluster_dataset_id": d["data_id"],
-                                "cluster_label": d.get("cluster_label"),
-                                "embedding_data_ids": list(d.get("data_ids") or []),
-                                "is_noise": d.get("is_noise", False),
-                                "algorithm": d.get("algorithm"),
-                            },
-                            type="cluster",
-                        )
-                    )
-                    continue
                 for cid in d.get("data_ids", []):
                     child = await self._data_repo.find_by_id(cid)
                     if child and child.get("content") is not None:

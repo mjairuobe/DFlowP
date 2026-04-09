@@ -51,13 +51,14 @@ async def test_topic_prompting_creates_wrapper_and_topic_datasets() -> None:
         config={"model": "gpt-4o-mini"},
         input_data=[
             Data(
-                data_id="cluster_ds_x",
+                data_id="bundle_x",
                 content={
+                    "cluster_bundle": True,
                     "cluster_dataset_id": "cluster_ds_x",
                     "embedding_data_ids": ["emb1"],
                     "cluster_label": 0,
                 },
-                type="cluster",
+                type="cluster_bundle",
             )
         ],
     )
