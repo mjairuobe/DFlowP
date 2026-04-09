@@ -10,15 +10,6 @@ from dflowp_processruntime.subprocesses.subprocess_context import SubprocessCont
 from dflowp_processruntime.subprocesses.io_transformation_state import TransformationStatus
 
 
-class FakeDataRepo:
-    def __init__(self) -> None:
-        self.inserted: list[dict] = []
-
-    async def insert(self, data: dict) -> str:
-        self.inserted.append(data)
-        return "mongo_id"
-
-
 class FakeDatasetRepo:
     def __init__(self) -> None:
         self.inserted: list[dict] = []
@@ -43,29 +34,20 @@ async def test_dbscan_two_clusters() -> None:
             Data(data_id="d", content={"embedding": [10.1, 10.0]}, type="output"),
         ],
     )
-    data_repo = FakeDataRepo()
-    ds_repo = FakeDatasetRepo()
-    states = await plugin.run(
-        context=ctx,
-        data_repository=data_repo,
-        dataset_repository=ds_repo,
-    )
+    repo = FakeDatasetRepo()
+    states = await plugin.run(context=ctx, dataset_repository=repo)
 
     assert len(states) == 1
     assert states[0].status == TransformationStatus.FINISHED
     assert states[0].quality == 1.0
     assert len(states[0].output_data_ids) == 2
-    assert len(ds_repo.inserted) == 2
-    assert len(data_repo.inserted) == 2
-    labels = {d["cluster_label"] for d in ds_repo.inserted}
+    assert len(repo.inserted) == 2
+    labels = {d["cluster_label"] for d in repo.inserted}
     assert labels == {0, 1}
-    for d in ds_repo.inserted:
+    for d in repo.inserted:
         assert d["type"] == "cluster"
         assert d["algorithm"] == "DBSCAN"
-        assert len(d["data_ids"]) == 1
-    for bd in data_repo.inserted:
-        assert bd["content"]["cluster_bundle"] is True
-        assert len(bd["content"]["embedding_data_ids"]) == 2
+        assert len(d["data_ids"]) == 2
 
 
 @pytest.mark.asyncio
@@ -81,17 +63,11 @@ async def test_all_noise_when_min_samples_not_met() -> None:
             Data(data_id="b", content={"embedding": [1.0, 1.0]}, type="output"),
         ],
     )
-    data_repo = FakeDataRepo()
-    ds_repo = FakeDatasetRepo()
-    states = await plugin.run(
-        context=ctx,
-        data_repository=data_repo,
-        dataset_repository=ds_repo,
-    )
+    repo = FakeDatasetRepo()
+    states = await plugin.run(context=ctx, dataset_repository=repo)
 
     assert states[0].quality == 0.1
-    assert len(ds_repo.inserted) == 1
-    assert len(data_repo.inserted) == 1
-    assert ds_repo.inserted[0]["is_noise"] is True
-    assert ds_repo.inserted[0]["cluster_label"] == -1
-    assert set(data_repo.inserted[0]["content"]["embedding_data_ids"]) == {"a", "b"}
+    assert len(repo.inserted) == 1
+    assert repo.inserted[0]["is_noise"] is True
+    assert repo.inserted[0]["cluster_label"] == -1
+    assert set(repo.inserted[0]["data_ids"]) == {"a", "b"}

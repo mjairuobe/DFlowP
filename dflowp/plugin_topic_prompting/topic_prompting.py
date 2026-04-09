@@ -53,13 +53,11 @@ class TopicLLMStructured(BaseModel):
 
 class TopicPrompting(BaseSubprocess):
     """
-    Erwartet pro Cluster ein Input-`Data`-Dokument vom Clustering-Plugin (Cluster-Bundle):
-    `content.cluster_bundle`, `embedding_data_ids`, `cluster_dataset_id`, `cluster_label`.
-
-    Die ProcessEngine expandiert ein Cluster-Dataset zu genau diesem Data-Dokument (kein Engine-Sonderfall).
+    Erwartet pro Input-`Data` ein Cluster-Dataset-Kontext (von ProcessEngine aufbereitet):
+    `content.embedding_data_ids`, `content.cluster_dataset_id`, optional `cluster_label`.
 
     Lädt Embeddings, folgt `source_data_id` zu Feed-Artikeln, ruft OpenAI (strukturierter Output) auf.
-    Output: Topic-Datasets plus ein Wrapper-Dataset `topic_collection`.
+    Output: ein Dataset pro Cluster mit Topic-Metadaten und gefilterten Artikel-IDs.
     """
 
     DEFAULT_MODEL = "gpt-4o-mini"
