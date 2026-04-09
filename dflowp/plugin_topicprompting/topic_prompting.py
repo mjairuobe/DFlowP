@@ -1,9 +1,14 @@
 """
-TopicPrompting – Themenbildung pro Cluster-Dataset mit OpenAI (strukturierter Output).
+TopicPrompting – Themenbildung pro Cluster-Gruppe mit OpenAI (strukturierter Output).
 
-Ohne Änderung an der ProcessEngine: Der Worker liefert weiterhin alle Embedding-Zeilen
-als input_data. Gruppierung erfolgt über das Prozessdokument: Vorgänger-Knoten (Clustering)
-und dessen output_data_ids (Cluster-Datasets).
+Kompatibel mit der aktuellen ProcessEngine (main): Vorgänger-Outputs werden flach
+als Data-IDs übergeben (z. B. nur Embedding-IDs nach EmbedData). Zusätzlich werden
+IDs aus dem Prozessdokument (output_data_ids des Clustering-Knotens) ausgewertet:
+
+- Verweist eine ID auf ein **Dataset** (Cluster): `data_ids` = Embeddings pro Gruppe.
+- Verweist eine ID auf **Data** (Embedding): wird zu einer synthetischen Ein-Gruppe
+  zusammengefasst (mehrere solcher IDs → eine gemeinsame Prompt-Gruppe).
+- Wenn aus dem Prozess nichts Nutzbares kommt: Fallback auf **input_data** (Embeddings).
 """
 
 from __future__ import annotations
@@ -60,7 +65,8 @@ class TopicLLMStructured(BaseModel):
 class TopicPrompting(BaseSubprocess):
     """
     Konfiguration (subprocess_config):
-    - cluster_subprocess_id: ID des Clustering-Knotens (DBSCAN/HDBSCAN), Pflicht wenn mehrere Vorgänger.
+    - cluster_subprocess_id: ID des Clustering-Knotens, Pflicht wenn mehrere Vorgänger.
+      Bei nur EmbedData als Vorgänger entfällt die Clustering-Liste; Gruppierung siehe oben.
     - model: OpenAI-Chatmodell (Standard: gpt-4o-mini)
     - openai_api_key: optional
     - prompt_template: optional, Platzhalter {Input}
@@ -140,6 +146,50 @@ class TopicPrompting(BaseSubprocess):
                         out.append(oid)
         return out
 
+    async def _resolve_cluster_batch(
+        self,
+        *,
+        data_repository: Any,
+        dataset_repository: Any,
+        output_id: str,
+    ) -> tuple[list[str], str | None, Any] | None:
+        """
+        Eine ID aus dem Vorgänger-Output: entweder Cluster-Dataset (mehrere Embeddings)
+        oder einzelnes Embedding-Data.
+        """
+        ds_doc = await dataset_repository.find_by_id(output_id)
+        if ds_doc and ds_doc.get("doc_type") == "dataset":
+            emb_ids = list(ds_doc.get("data_ids") or [])
+            if not emb_ids:
+                return None
+            return (emb_ids, output_id, ds_doc.get("cluster_label"))
+        ddoc = await data_repository.find_by_id(output_id)
+        if ddoc and ddoc.get("doc_type") == "data":
+            content = ddoc.get("content") or {}
+            emb = content.get("embedding")
+            if isinstance(emb, list) and emb:
+                return ([output_id], output_id, None)
+        return None
+
+    async def _batches_from_input_embeddings(
+        self,
+        *,
+        context: SubprocessContext,
+        data_repository: Any,
+    ) -> list[tuple[list[str], str | None, Any]]:
+        """Fallback: alle Embedding-Zeilen aus input_data zu einer Gruppe."""
+        emb_ids: list[str] = []
+        for item in context.input_data:
+            doc = await data_repository.find_by_id(item.data_id)
+            if not doc:
+                continue
+            c = doc.get("content") or {}
+            if isinstance(c.get("embedding"), list) and c.get("embedding"):
+                emb_ids.append(item.data_id)
+        if not emb_ids:
+            return []
+        return [(emb_ids, "input_batch", None)]
+
     async def run(
         self,
         context: SubprocessContext,
@@ -172,35 +222,45 @@ class TopicPrompting(BaseSubprocess):
             current_subprocess_id=context.subprocess_id,
             explicit=explicit_cluster,
         )
-        cluster_ds_ids = await self._cluster_dataset_ids_from_process(
+        cluster_output_ids = await self._cluster_dataset_ids_from_process(
             process_repo=process_repo,
             process_id=context.process_id,
             cluster_subprocess_id=cluster_sid,
         )
+        batches: list[tuple[list[str], str | None, Any]] = []
+        for oid in cluster_output_ids:
+            resolved = await self._resolve_cluster_batch(
+                data_repository=data_repository,
+                dataset_repository=dataset_repository,
+                output_id=oid,
+            )
+            if resolved:
+                batches.append(resolved)
+        if not batches:
+            batches = await self._batches_from_input_embeddings(
+                context=context,
+                data_repository=data_repository,
+            )
+            if batches:
+                logger.info(
+                    "%s TopicPrompting: Fallback input_data (%d Embeddings → 1 Gruppe)",
+                    src,
+                    len(batches[0][0]),
+                )
+
         logger.info(
-            "%s TopicPrompting: %d Cluster-Datasets von Vorgänger %s",
+            "%s TopicPrompting: %d Gruppe(n) aus Vorgänger %s (IDs=%d)",
             src,
-            len(cluster_ds_ids),
+            len(batches),
             cluster_sid,
+            len(cluster_output_ids),
         )
 
         client = self._default_openai_client(api_key)
         topic_dataset_ids: list[str] = []
         inp_ref = context.input_data[0].data_id if context.input_data else "batch"
 
-        for ds_id in cluster_ds_ids:
-            ds_doc = await dataset_repository.find_by_id(ds_id)
-            if not ds_doc:
-                logger.warning("%s Cluster-Dataset %s nicht gefunden", src, ds_id)
-                continue
-            if ds_doc.get("doc_type") != "dataset":
-                continue
-            emb_ids: list[str] = list(ds_doc.get("data_ids") or [])
-            cluster_label = ds_doc.get("cluster_label")
-
-            if not emb_ids:
-                continue
-
+        for emb_ids, ds_id, cluster_label in batches:
             articles: list[dict[str, Any]] = []
             for emb_id in emb_ids:
                 emb = await data_repository.find_by_id(emb_id)
@@ -260,7 +320,7 @@ class TopicPrompting(BaseSubprocess):
                 topic_name = (parsed.topic_name or "").strip()
                 topic_description = (parsed.topic_description or "").strip()
             except Exception as exc:
-                logger.error("%s OpenAI-Fehler für Cluster %s: %s", src, ds_id, exc)
+                logger.error("%s OpenAI-Fehler für Gruppe %s: %s", src, ds_id, exc)
                 continue
 
             filtered_ids: list[str] = []
@@ -299,7 +359,7 @@ class TopicPrompting(BaseSubprocess):
 
             topic_dataset_ids.append(topic_ds_id)
             logger.info(
-                "%s Topic für Cluster-Dataset %s: %s (%d Artikel)",
+                "%s Topic für Gruppe %s: %s (%d Artikel)",
                 src,
                 ds_id,
                 topic_name[:80],
