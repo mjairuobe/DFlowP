@@ -11,7 +11,8 @@
       "dflowp/event_broker",
       "dflowp/plugin_fetchfeeditems",
       "dflowp/plugin_embeddata",
-      "dflowp/plugin_clustering_dbscan"
+      "dflowp/plugin_clustering_dbscan",
+      "dflowp/plugin_clustering_hdbscan"
     ]
   },
   "required_stack_services": ["mongo"],
@@ -24,7 +25,8 @@
       "dflowp/event_broker": "dflowp-event-broker",
       "dflowp/plugin_fetchfeeditems": "dflowp-plugin-fetchfeeditems",
       "dflowp/plugin_embeddata": "dflowp-plugin-embeddata",
-      "dflowp/plugin_clustering_dbscan": "dflowp-plugin-clustering-dbscan"
+      "dflowp/plugin_clustering_dbscan": "dflowp-plugin-clustering-dbscan",
+      "dflowp/plugin_clustering_hdbscan": "dflowp-plugin-clustering-hdbscan"
     },
     "containers": {
       "dflowp/api": "dflowp-api",
@@ -33,7 +35,8 @@
       "dflowp/event_broker": "dflowp-event-broker",
       "dflowp/plugin_fetchfeeditems": "dflowp-plugin-fetchfeeditems",
       "dflowp/plugin_embeddata": "dflowp-plugin-embeddata",
-      "dflowp/plugin_clustering_dbscan": "dflowp-plugin-clustering-dbscan"
+      "dflowp/plugin_clustering_dbscan": "dflowp-plugin-clustering-dbscan",
+      "dflowp/plugin_clustering_hdbscan": "dflowp-plugin-clustering-hdbscan"
     },
     "stage_targets": {
       "dflowp/api": "api",
@@ -42,7 +45,8 @@
       "dflowp/event_broker": "event-broker",
       "dflowp/plugin_fetchfeeditems": "plugin-fetchfeeditems",
       "dflowp/plugin_embeddata": "plugin-embeddata",
-      "dflowp/plugin_clustering_dbscan": "plugin-clustering-dbscan"
+      "dflowp/plugin_clustering_dbscan": "plugin-clustering-dbscan",
+      "dflowp/plugin_clustering_hdbscan": "plugin-clustering-hdbscan"
     },
     "build_plan_flags": {
       "dflowp/api": "BUILD_API",
@@ -51,7 +55,8 @@
       "dflowp/event_broker": "BUILD_EVENT_BROKER",
       "dflowp/plugin_fetchfeeditems": "BUILD_PLUGIN_FETCHFEEDITEMS",
       "dflowp/plugin_embeddata": "BUILD_PLUGIN_EMBEDDATA",
-      "dflowp/plugin_clustering_dbscan": "BUILD_PLUGIN_CLUSTERING_DBSCAN"
+      "dflowp/plugin_clustering_dbscan": "BUILD_PLUGIN_CLUSTERING_DBSCAN",
+      "dflowp/plugin_clustering_hdbscan": "BUILD_PLUGIN_CLUSTERING_HDBSCAN"
     }
   },
   "compose": {
@@ -61,7 +66,8 @@
     "event-broker": "dflowp/event_broker",
     "plugin-fetchfeeditems": "dflowp/plugin_fetchfeeditems",
     "plugin-embeddata": "dflowp/plugin_embeddata",
-    "plugin-clustering-dbscan": "dflowp/plugin_clustering_dbscan"
+    "plugin-clustering-dbscan": "dflowp/plugin_clustering_dbscan",
+    "plugin-clustering-hdbscan": "dflowp/plugin_clustering_hdbscan"
   },
   "compose_env": {
     "api": "DOCKER_IMAGE_API",
@@ -70,6 +76,7 @@
     "event-broker": "DOCKER_IMAGE_EVENT_BROKER",
     "plugin-fetchfeeditems": "DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS",
     "plugin-embeddata": "DOCKER_IMAGE_PLUGIN_EMBEDDATA",
-    "plugin-clustering-dbscan": "DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN"
+    "plugin-clustering-dbscan": "DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN",
+    "plugin-clustering-hdbscan": "DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
   }
 }
