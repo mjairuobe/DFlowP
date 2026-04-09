@@ -2,13 +2,24 @@
 
 from contextlib import asynccontextmanager
 import os
+import uuid
 from typing import AsyncGenerator
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 
 from dflowp.api.auth import require_api_key
-from dflowp.api.process_persist import persist_input_dataset_rows
-from dflowp.api.schemas import ProcessCloneRequest, ProcessCreateRequest, ProcessStopRequest
+from dflowp.api.process_persist import (
+    insert_data_item,
+    insert_dataset,
+    persist_input_dataset_rows,
+)
+from dflowp.api.schemas import (
+    DataItemCreateRequest,
+    DatasetCreateRequest,
+    ProcessCloneRequest,
+    ProcessCreateRequest,
+    ProcessStopRequest,
+)
 from dflowp_processruntime.dataflow.dataflow_state import DataflowState
 from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
 from dflowp_core.database.data_item_repository import DataItemRepository
@@ -87,27 +98,61 @@ async def get_dataset(
     return dataset
 
 
-@app.get("/api/v1/dataitems", dependencies=[Depends(require_api_key)])
-async def list_dataitems(
-    pagination: tuple[int, int] = Depends(_pagination_params),
+@app.post(
+    "/api/v1/datasets",
+    dependencies=[Depends(require_api_key)],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_dataset(
+    request: DatasetCreateRequest = Body(...),
     data_item_repo: DataItemRepository = Depends(get_data_item_repository),
 ) -> dict:
-    page, page_size = pagination
-    return await data_item_repo.list_dataitems(page=page, page_size=page_size)
-
-
-@app.get("/api/v1/dataitems/{item_id}", dependencies=[Depends(require_api_key)])
-async def get_dataitem(
-    item_id: str,
-    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
-) -> dict:
-    item = await data_item_repo.find_by_id(item_id)
-    if not item:
+    """
+    Legt ein Dataset an: entweder `data_ids` (bestehende Data-IDs) oder `rows`
+    (neue Data-Dokumente pro Zeile, IDs wie `{dataset_id}_row_{i}`).
+    """
+    if await data_item_repo.find_by_id(request.id):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"DataItem '{item_id}' wurde nicht gefunden.",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"DataItem mit id '{request.id}' existiert bereits.",
         )
-    return item
+    has_ids = request.data_ids is not None and len(request.data_ids) > 0
+    has_rows = request.rows is not None and len(request.rows) > 0
+    if has_ids == has_rows:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Genau eines von data_ids oder rows muss gesetzt sein (nicht leer).",
+        )
+
+    if has_ids:
+        resolved: list[str] = []
+        for did in request.data_ids or []:
+            d = await data_item_repo.find_by_id(did)
+            if not d or d.get("doc_type") != "data":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Data-Dokument '{did}' nicht gefunden oder kein doc_type=data.",
+                )
+            resolved.append(did)
+        await insert_dataset(
+            data_item_repo=data_item_repo,
+            dataset_id=request.id,
+            data_ids=resolved,
+        )
+    else:
+        await persist_input_dataset_rows(
+            data_item_repo=data_item_repo,
+            dataset_id=request.id,
+            rows=request.rows or [],
+        )
+
+    doc = await data_item_repo.find_dataset_by_id(request.id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Dataset konnte nicht gelesen werden.",
+        )
+    return doc
 
 
 @app.get("/api/v1/data-items", dependencies=[Depends(require_api_key)])
@@ -133,6 +178,37 @@ async def get_data_item_alias(
             detail=f"DataItem '{item_id}' wurde nicht gefunden.",
         )
     return item
+
+
+@app.post(
+    "/api/v1/data-items",
+    dependencies=[Depends(require_api_key)],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_data_item(
+    request: DataItemCreateRequest = Body(...),
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict:
+    """Legt ein Data-Dokument an (doc_type=data)."""
+    data_id = request.id or f"data_{uuid.uuid4().hex[:12]}"
+    if await data_item_repo.find_by_id(data_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"DataItem mit id '{data_id}' existiert bereits.",
+        )
+    await insert_data_item(
+        data_item_repo=data_item_repo,
+        data_id=data_id,
+        content=request.content,
+        data_type=request.type,
+    )
+    doc = await data_item_repo.find_by_id(data_id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="DataItem konnte nicht gelesen werden.",
+        )
+    return doc
 
 
 @app.get("/api/v1/processes", dependencies=[Depends(require_api_key)])

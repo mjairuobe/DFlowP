@@ -55,6 +55,9 @@ class _FakeDataItemRepository:
             return {"id": "ds_001", "doc_type": "dataset", "data_ids": ["d1", "d2"], "timestamp_ms": 100}
         return None
 
+    async def find_by_id(self, item_id: str) -> dict | None:
+        return await self.find_data_item_by_id(item_id)
+
     async def find_dataset_by_id(self, dataset_id: str) -> dict | None:
         doc = await self.find_data_item_by_id(dataset_id)
         if doc and doc.get("doc_type") == "dataset":
@@ -334,6 +337,81 @@ def test_get_data_item_detail_not_found() -> None:
     client = _create_client()
     response = client.get("/api/v1/data-items/not_found", headers=_auth_headers())
     assert response.status_code == 404
+
+
+def test_create_data_item() -> None:
+    client = _create_client()
+    response = client.post(
+        "/api/v1/data-items",
+        headers=_auth_headers(),
+        json={
+            "id": "data_new_1",
+            "content": {"title": "T", "xmlUrl": "https://example.com/feed"},
+            "type": "input",
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["id"] == "data_new_1"
+    assert body["doc_type"] == "data"
+    assert body["content"]["xmlUrl"] == "https://example.com/feed"
+
+
+def test_create_dataset_with_rows() -> None:
+    client = _create_client()
+    response = client.post(
+        "/api/v1/datasets",
+        headers=_auth_headers(),
+        json={
+            "id": "ds_feed_batch",
+            "rows": [
+                {"title": "A", "text": "x", "xmlUrl": "https://a/feed", "htmlUrl": "https://a/"},
+                {"title": "B", "text": "y", "xmlUrl": "https://b/feed", "htmlUrl": "https://b/"},
+            ],
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["id"] == "ds_feed_batch"
+    assert body["doc_type"] == "dataset"
+    assert body["data_ids"] == ["ds_feed_batch_row_0", "ds_feed_batch_row_1"]
+
+
+def test_create_dataset_with_data_ids() -> None:
+    client = _create_client()
+    client.post(
+        "/api/v1/data-items",
+        headers=_auth_headers(),
+        json={"id": "d_ref_a", "content": {"x": 1}, "type": "input"},
+    )
+    client.post(
+        "/api/v1/data-items",
+        headers=_auth_headers(),
+        json={"id": "d_ref_b", "content": {"x": 2}, "type": "input"},
+    )
+    response = client.post(
+        "/api/v1/datasets",
+        headers=_auth_headers(),
+        json={"id": "ds_from_refs", "data_ids": ["d_ref_a", "d_ref_b"]},
+    )
+    assert response.status_code == 201
+    assert response.json()["data_ids"] == ["d_ref_a", "d_ref_b"]
+
+
+def test_create_dataset_conflict_existing_id() -> None:
+    client = _create_client()
+    r1 = client.post(
+        "/api/v1/datasets",
+        headers=_auth_headers(),
+        json={"id": "ds_dup", "rows": [{"a": 1}]},
+    )
+    assert r1.status_code == 201
+    r2 = client.post(
+        "/api/v1/datasets",
+        headers=_auth_headers(),
+        json={"id": "ds_dup", "rows": [{"a": 2}]},
+    )
+    assert r2.status_code == 409
 
 
 def test_list_events_with_pagination() -> None:
