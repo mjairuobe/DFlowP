@@ -35,4 +35,9 @@ include = ["dflowp*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["."]
+# Monorepo: Core/Processruntime liegen unter dflowp-packages/ (ohne vorherige Wheel-Installation)
+pythonpath = [
+    ".",
+    "dflowp-packages/dflowp-core/src",
+    "dflowp-packages/dflowp-processruntime/src",
+]
