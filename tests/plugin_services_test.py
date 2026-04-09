@@ -22,7 +22,6 @@ def test_plugin_directories_exist() -> None:
     assert (root / "plugin_embeddata").is_dir()
     assert (root / "plugin_clustering_dbscan").is_dir()
     assert (root / "plugin_clustering_hdbscan").is_dir()
-    assert (root / "plugin_topic_prompting").is_dir()
 
 
 def test_fetch_plugin_info_and_health() -> None:
@@ -74,23 +73,6 @@ def test_clustering_plugin_info_and_health() -> None:
     payload = info.json()
     assert payload["service_name"] == "plugin-clustering-dbscan"
     assert payload["plugin_name"] == "Clustering_DBSCAN"
-
-
-def test_topic_prompting_plugin_info_and_health() -> None:
-    module = _load_module(
-        "plugin_topic_prompting_app",
-        "dflowp/plugin_topic_prompting/app.py",
-    )
-    client = TestClient(module.app)
-    health = client.get("/health")
-    assert health.status_code == 200
-    assert health.json()["status"] == "ok"
-
-    info = client.get("/plugin/info")
-    assert info.status_code == 200
-    payload = info.json()
-    assert payload["service_name"] == "plugin-topic-prompting"
-    assert payload["plugin_name"] == "TopicPrompting"
 
 
 def test_clustering_hdbscan_plugin_info_and_health() -> None:
