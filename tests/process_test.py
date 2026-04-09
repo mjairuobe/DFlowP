@@ -543,16 +543,20 @@ def test_load_remote_plugin_services_registers_http_clients():
     old = os.environ.get("DFLOWP_PLUGIN_ENDPOINTS")
     os.environ["DFLOWP_PLUGIN_ENDPOINTS"] = (
         "FetchFeedItems=http://plugin-fetchfeeditems:8101,"
-        "EmbedData=http://plugin-embeddata:8102"
+        "EmbedData=http://plugin-embeddata:8102,"
+        "Clustering_DBSCAN=http://plugin-clustering-dbscan:8103"
     )
     try:
         load_remote_plugin_services()
         fetch = get_subprocess("FetchFeedItems")
         embed = get_subprocess("EmbedData")
+        cluster = get_subprocess("Clustering_DBSCAN")
         assert fetch is not None
         assert embed is not None
+        assert cluster is not None
         assert isinstance(fetch, RemotePluginSubprocess)
         assert isinstance(embed, RemotePluginSubprocess)
+        assert isinstance(cluster, RemotePluginSubprocess)
     finally:
         if old is None:
             os.environ.pop("DFLOWP_PLUGIN_ENDPOINTS", None)

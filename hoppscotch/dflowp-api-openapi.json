@@ -59,6 +59,41 @@
             "$ref": "#/components/responses/UnauthorizedError"
           }
         }
+      },
+      "post": {
+        "summary": "Dataset anlegen",
+        "description": "Entweder data_ids (bestehende Data-IDs) oder rows (neue Data-Zeilen); genau eine Variante.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Angelegtes Dataset-Dokument",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictError"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableError"
+          }
+        }
       }
     },
     "/api/v1/datasets/{dataset_id}": {
@@ -90,6 +125,80 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/api/v1/data-items": {
+      "get": {
+        "summary": "DataItems auflisten (Data + Dataset)",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginierte DataItem-Liste",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      },
+      "post": {
+        "summary": "Data-Dokument anlegen",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataItemCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Angelegtes Data-Dokument",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictError"
           }
         }
       }
@@ -263,6 +372,49 @@
         "type": "object",
         "additionalProperties": true
       },
+      "DatasetCreateRequest": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutige Dataset-ID"
+          },
+          "data_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Bestehende Data-IDs (doc_type=data)"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "Neue Data-Zeilen; IDs werden als {id}_row_{i} vergeben"
+          }
+        }
+      },
+      "DataItemCreateRequest": {
+        "type": "object",
+        "required": ["content"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Optionale feste ID"
+          },
+          "content": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "type": {
+            "type": "string",
+            "default": "input"
+          }
+        }
+      },
       "PaginatedListResponse": {
         "type": "object",
         "required": [
@@ -315,6 +467,26 @@
       },
       "NotFoundError": {
         "description": "Dokument nicht gefunden.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "ConflictError": {
+        "description": "ID bereits vergeben.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "UnprocessableError": {
+        "description": "Validierungsfehler (z. B. data_ids und rows gleichzeitig).",
         "content": {
           "application/json": {
             "schema": {

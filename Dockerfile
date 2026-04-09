@@ -20,15 +20,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY dflowp-packages /app/dflowp-packages
 COPY dflowp /app/dflowp
 COPY examples /app/examples
 COPY tests /app/tests
 
 RUN python -m ensurepip --upgrade \
-    && python -m pip install --upgrade pip \
+    && python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install --no-cache-dir -r /app/dflowp/api/requirements.txt \
     && python -m pip install --no-cache-dir \
-      /tmp/wheels/dflowp-core/dflowp_core-*.whl \
       "fastapi>=0.109.0" \
       "uvicorn[standard]>=0.27.0" \
       "httpx>=0.26.0" \
@@ -89,6 +89,9 @@ RUN python -m ensurepip --upgrade \
       "httpx>=0.26.0" \
       "feedparser>=6.0.11" \
       "openai>=1.12.0" \
+      "numpy>=1.26.0" \
+      "scikit-learn>=1.4.0" \
+      "hdbscan>=0.8.33" \
       "pytest>=7.4.0" \
       "pytest-asyncio>=0.23.0" \
       "pytest-cov>=4.1.0"
@@ -177,4 +180,65 @@ RUN python -m ensurepip --upgrade \
       "pytest-cov>=4.1.0"
 
 CMD ["python", "-m", "dflowp.plugin_embeddata.app"]
+
+
+FROM python:3.11-slim-bookworm AS plugin-clustering-dbscan
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
+COPY dflowp /app/dflowp
+COPY tests /app/tests
+
+RUN python -m ensurepip --upgrade \
+    && python -m pip install --upgrade pip \
+    && python -m pip install --no-cache-dir /tmp/wheels/dflowp-core/dflowp_core-*.whl \
+    && python -m pip install --no-cache-dir --no-deps /tmp/wheels/dflowp-processruntime/dflowp_processruntime-*.whl \
+    && python -m pip install --no-cache-dir \
+      "fastapi>=0.109.0" \
+      "uvicorn[standard]>=0.27.0" \
+      "httpx>=0.26.0" \
+      "numpy>=1.26.0" \
+      "scikit-learn>=1.4.0" \
+      "typing-extensions>=4.8.0" \
+      "pytest>=7.4.0" \
+      "pytest-asyncio>=0.23.0" \
+      "pytest-cov>=4.1.0"
+
+CMD ["python", "-m", "dflowp.plugin_clustering_dbscan.app"]
+
+
+FROM python:3.11-slim-bookworm AS plugin-clustering-hdbscan
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
+COPY dflowp /app/dflowp
+COPY tests /app/tests
+
+RUN python -m ensurepip --upgrade \
+    && python -m pip install --upgrade pip \
+    && python -m pip install --no-cache-dir /tmp/wheels/dflowp-core/dflowp_core-*.whl \
+    && python -m pip install --no-cache-dir --no-deps /tmp/wheels/dflowp-processruntime/dflowp_processruntime-*.whl \
+    && python -m pip install --no-cache-dir \
+      "fastapi>=0.109.0" \
+      "uvicorn[standard]>=0.27.0" \
+      "httpx>=0.26.0" \
+      "numpy>=1.26.0" \
+      "scikit-learn>=1.4.0" \
+      "hdbscan>=0.8.33" \
+      "typing-extensions>=4.8.0" \
+      "pytest>=7.4.0" \
+      "pytest-asyncio>=0.23.0" \
+      "pytest-cov>=4.1.0"
+
+CMD ["python", "-m", "dflowp.plugin_clustering_hdbscan.app"]
 
