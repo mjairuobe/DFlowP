@@ -12,7 +12,8 @@
       "dflowp/plugin_fetchfeeditems",
       "dflowp/plugin_embeddata",
       "dflowp/plugin_clustering_dbscan",
-      "dflowp/plugin_clustering_hdbscan"
+      "dflowp/plugin_clustering_hdbscan",
+      "dflowp/plugin_topic_prompting"
     ]
   },
   "required_stack_services": ["mongo"],
@@ -26,7 +27,8 @@
       "dflowp/plugin_fetchfeeditems": "dflowp-plugin-fetchfeeditems",
       "dflowp/plugin_embeddata": "dflowp-plugin-embeddata",
       "dflowp/plugin_clustering_dbscan": "dflowp-plugin-clustering-dbscan",
-      "dflowp/plugin_clustering_hdbscan": "dflowp-plugin-clustering-hdbscan"
+      "dflowp/plugin_clustering_hdbscan": "dflowp-plugin-clustering-hdbscan",
+      "dflowp/plugin_topic_prompting": "dflowp-plugin-topic-prompting"
     },
     "containers": {
       "dflowp/api": "dflowp-api",
@@ -36,7 +38,8 @@
       "dflowp/plugin_fetchfeeditems": "dflowp-plugin-fetchfeeditems",
       "dflowp/plugin_embeddata": "dflowp-plugin-embeddata",
       "dflowp/plugin_clustering_dbscan": "dflowp-plugin-clustering-dbscan",
-      "dflowp/plugin_clustering_hdbscan": "dflowp-plugin-clustering-hdbscan"
+      "dflowp/plugin_clustering_hdbscan": "dflowp-plugin-clustering-hdbscan",
+      "dflowp/plugin_topic_prompting": "dflowp-plugin-topic-prompting"
     },
     "stage_targets": {
       "dflowp/api": "api",
@@ -46,7 +49,8 @@
       "dflowp/plugin_fetchfeeditems": "plugin-fetchfeeditems",
       "dflowp/plugin_embeddata": "plugin-embeddata",
       "dflowp/plugin_clustering_dbscan": "plugin-clustering-dbscan",
-      "dflowp/plugin_clustering_hdbscan": "plugin-clustering-hdbscan"
+      "dflowp/plugin_clustering_hdbscan": "plugin-clustering-hdbscan",
+      "dflowp/plugin_topic_prompting": "plugin-topic-prompting"
     },
     "build_plan_flags": {
       "dflowp/api": "BUILD_API",
@@ -56,7 +60,8 @@
       "dflowp/plugin_fetchfeeditems": "BUILD_PLUGIN_FETCHFEEDITEMS",
       "dflowp/plugin_embeddata": "BUILD_PLUGIN_EMBEDDATA",
       "dflowp/plugin_clustering_dbscan": "BUILD_PLUGIN_CLUSTERING_DBSCAN",
-      "dflowp/plugin_clustering_hdbscan": "BUILD_PLUGIN_CLUSTERING_HDBSCAN"
+      "dflowp/plugin_clustering_hdbscan": "BUILD_PLUGIN_CLUSTERING_HDBSCAN",
+      "dflowp/plugin_topic_prompting": "BUILD_PLUGIN_TOPIC_PROMPTING"
     }
   },
   "compose": {
@@ -67,7 +72,8 @@
     "plugin-fetchfeeditems": "dflowp/plugin_fetchfeeditems",
     "plugin-embeddata": "dflowp/plugin_embeddata",
     "plugin-clustering-dbscan": "dflowp/plugin_clustering_dbscan",
-    "plugin-clustering-hdbscan": "dflowp/plugin_clustering_hdbscan"
+    "plugin-clustering-hdbscan": "dflowp/plugin_clustering_hdbscan",
+    "plugin-topic-prompting": "dflowp/plugin_topic_prompting"
   },
   "compose_env": {
     "api": "DOCKER_IMAGE_API",
@@ -77,6 +83,7 @@
     "plugin-fetchfeeditems": "DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS",
     "plugin-embeddata": "DOCKER_IMAGE_PLUGIN_EMBEDDATA",
     "plugin-clustering-dbscan": "DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN",
-    "plugin-clustering-hdbscan": "DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
+    "plugin-clustering-hdbscan": "DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN",
+    "plugin-topic-prompting": "DOCKER_IMAGE_PLUGIN_TOPIC_PROMPTING"
   }
 }

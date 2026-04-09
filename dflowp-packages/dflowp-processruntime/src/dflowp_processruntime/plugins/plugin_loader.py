@@ -35,7 +35,8 @@ def load_remote_plugin_services() -> None:
         "FetchFeedItems=http://plugin-fetchfeeditems:8101,"
         "EmbedData=http://plugin-embeddata:8102,"
         "Clustering_DBSCAN=http://plugin-clustering-dbscan:8103,"
-        "Clustering_HDBSCAN=http://plugin-clustering-hdbscan:8104",
+        "Clustering_HDBSCAN=http://plugin-clustering-hdbscan:8104,"
+        "TopicPrompting=http://plugin-topic-prompting:8105",
     )
     for entry in [x.strip() for x in endpoints_raw.split(",") if x.strip()]:
         if "=" not in entry:
