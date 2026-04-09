@@ -51,19 +51,19 @@ class RemotePluginSubprocess(BaseSubprocess):
         retries = int(
             context.config.get(
                 "plugin_retry_attempts",
-                os.environ.get("DFLOWP_PLUGIN_REMOTE_RETRIES", "3"),
+                os.environ.get("DFLOWP_PLUGIN_REMOTE_RETRIES", "15"),
             )
         )
         delay_seconds = float(
             context.config.get(
                 "plugin_retry_delay_seconds",
-                os.environ.get("DFLOWP_PLUGIN_REMOTE_RETRY_DELAY_SECONDS", "5"),
+                os.environ.get("DFLOWP_PLUGIN_REMOTE_RETRY_DELAY_SECONDS", "25"),
             )
         )
         request_timeout = float(
             context.config.get(
                 "plugin_request_timeout_seconds",
-                os.environ.get("DFLOWP_PLUGIN_REMOTE_HTTP_TIMEOUT", "120"),
+                os.environ.get("DFLOWP_PLUGIN_REMOTE_HTTP_TIMEOUT", "600"),
             )
         )
 
