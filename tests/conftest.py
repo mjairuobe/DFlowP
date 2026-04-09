@@ -1,23 +1,9 @@
 """Pytest-Konfiguration und Fixtures für DFlowP-Tests."""
 
 import os
-import sys
-from pathlib import Path
 import uuid
 
 import pytest
-
-# Monorepo: ohne installierte Wheels müssen die src-Pfade für Imports erreichbar sein
-# (zusätzlich zu [tool.pytest.ini_options] pythonpath in pyproject.toml).
-_ROOT = Path(__file__).resolve().parents[1]
-for _p in (
-    _ROOT / "dflowp-packages" / "dflowp-core" / "src",
-    _ROOT / "dflowp-packages" / "dflowp-processruntime" / "src",
-):
-    if _p.is_dir():
-        s = str(_p)
-        if s not in sys.path:
-            sys.path.insert(0, s)
 
 
 import pytest_asyncio

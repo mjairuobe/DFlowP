@@ -1,1 +1,4 @@
--e ../../dflowp-packages/dflowp-core
+# Pfade relativ zum Repository-Root (pip install -r dflowp/api/requirements.txt im Projektroot;
+# im API-Container: WORKDIR /app, dflowp-packages liegt unter /app/dflowp-packages).
+-e dflowp-packages/dflowp-core
+-e dflowp-packages/dflowp-processruntime

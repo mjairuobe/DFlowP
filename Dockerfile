@@ -20,18 +20,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
-COPY --from=wheel-builder /build/dflowp-packages/dflowp-processruntime/dist /tmp/wheels/dflowp-processruntime
+COPY dflowp-packages /app/dflowp-packages
 COPY dflowp /app/dflowp
 COPY examples /app/examples
 COPY tests /app/tests
-COPY pyproject.toml /app/pyproject.toml
 
 RUN python -m ensurepip --upgrade \
-    && python -m pip install --upgrade pip \
+    && python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install --no-cache-dir -r /app/dflowp/api/requirements.txt \
     && python -m pip install --no-cache-dir \
-      /tmp/wheels/dflowp-core/dflowp_core-*.whl \
-      /tmp/wheels/dflowp-processruntime/dflowp_processruntime-*.whl \
       "fastapi>=0.109.0" \
       "uvicorn[standard]>=0.27.0" \
       "httpx>=0.26.0" \
