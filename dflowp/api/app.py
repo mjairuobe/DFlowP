@@ -7,7 +7,10 @@ from typing import AsyncGenerator
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 
 from dflowp.api.auth import require_api_key
-from dflowp.api.schemas import ProcessCloneRequest
+from dflowp.api.process_persist import persist_input_dataset_rows
+from dflowp.api.schemas import ProcessCloneRequest, ProcessCreateRequest, ProcessStopRequest
+from dflowp_processruntime.dataflow.dataflow_state import DataflowState
+from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
 from dflowp_core.database.data_item_repository import DataItemRepository
 from dflowp_core.database.event_repository import EventRepository
 from dflowp_core.database.mongo import (
@@ -235,6 +238,7 @@ async def copy_process(
         source_process_id=process_id,
         target_process_id=target_process_id,
         parent_subprocess_ids=request.parent_subprocess_ids,
+        subprocess_config_override=request.subprocess_config,
     )
     if not copied:
         raise HTTPException(
@@ -242,3 +246,120 @@ async def copy_process(
             detail="Prozess konnte nicht kopiert werden.",
         )
     return copied
+
+
+@app.post(
+    "/api/v1/processes",
+    dependencies=[Depends(require_api_key)],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_process(
+    request: ProcessCreateRequest = Body(...),
+    process_repo: ProcessRepository = Depends(get_process_repository),
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict:
+    """
+    Legt einen Prozess mit Konfiguration an; optional werden Input-Zeilen als Dataset gespeichert.
+    `start_immediately=false` (Standard): status=pending – der Runtime-Worker übernimmt den Start.
+    `start_immediately=true`: status=running – für direkten Engine-Start (selten über API).
+    """
+    if await process_repo.find_by_id(request.process_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Prozess '{request.process_id}' existiert bereits.",
+        )
+
+    try:
+        configuration = ProcessConfiguration.from_dict(
+            {
+                "process_id": request.process_id,
+                "software_version": request.software_version,
+                "input_dataset_id": request.input_dataset_id,
+                "dataflow": request.dataflow,
+                "subprocess_config": request.subprocess_config,
+            }
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Ungültige Prozesskonfiguration: {exc}",
+        ) from exc
+
+    configuration.apply_default_openai_key_from_env()
+    configuration.apply_software_version_from_env()
+
+    if request.input_data is not None:
+        existing_ds = await data_item_repo.find_dataset_by_id(request.input_dataset_id)
+        if existing_ds:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Dataset '{request.input_dataset_id}' existiert bereits; Input kann nicht angelegt werden.",
+            )
+        await persist_input_dataset_rows(
+            data_item_repo=data_item_repo,
+            dataset_id=request.input_dataset_id,
+            rows=request.input_data,
+        )
+
+    dataflow_state = DataflowState.from_dataflow(configuration.dataflow)
+    process_doc: dict = {
+        "process_id": configuration.process_id,
+        "software_version": configuration.software_version,
+        "input_dataset_id": configuration.input_dataset_id,
+        "configuration": configuration.to_dict(),
+        "dataflow_state": dataflow_state.to_dict(),
+        "status": "running" if request.start_immediately else "pending",
+    }
+    await process_repo.insert(process_doc)
+    created = await process_repo.find_by_id(configuration.process_id)
+    if not created:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Prozess wurde nicht gespeichert.",
+        )
+    return created
+
+
+@app.post(
+    "/api/v1/processes/{process_id}/stop",
+    dependencies=[Depends(require_api_key)],
+)
+async def stop_process(
+    process_id: str,
+    request: ProcessStopRequest = Body(default=ProcessStopRequest()),
+    process_repo: ProcessRepository = Depends(get_process_repository),
+) -> dict:
+    """
+    Beendet einen Prozess administrativ (status=stopped).
+    Laufende Subprozesse werden nicht zwangsweise abgebrochen; für ein hartes Abbrechen ist ein Runtime-Eingriff nötig.
+    """
+    existing = await process_repo.find_by_id(process_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Prozess '{process_id}' wurde nicht gefunden.",
+        )
+    update: dict = {"status": "stopped"}
+    if request.reason:
+        update["cancelled_reason"] = request.reason
+    await process_repo.update(process_id, update)
+    out = await process_repo.find_by_id(process_id)
+    return out or existing
+
+
+@app.delete(
+    "/api/v1/processes/{process_id}",
+    dependencies=[Depends(require_api_key)],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_process(
+    process_id: str,
+    process_repo: ProcessRepository = Depends(get_process_repository),
+) -> None:
+    """Löscht das Prozessdokument."""
+    deleted = await process_repo.delete_by_id(process_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Prozess '{process_id}' wurde nicht gefunden.",
+        )

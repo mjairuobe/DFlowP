@@ -162,6 +162,7 @@ class ProcessRepository:
         source_process_id: str,
         target_process_id: str,
         parent_subprocess_ids: list[str],
+        subprocess_config_override: Optional[dict[str, dict[str, Any]]] = None,
     ) -> Optional[dict[str, Any]]:
         """
         Kopiert einen Prozess und entfernt IO-States für Re-Execution-Teilgraphen.
@@ -182,6 +183,11 @@ class ProcessRepository:
         cfg = copied.get("configuration", {})
         if isinstance(cfg, dict):
             cfg["process_id"] = target_process_id
+            if subprocess_config_override:
+                merged = dict(cfg.get("subprocess_config") or {})
+                for sid, subcfg in subprocess_config_override.items():
+                    merged[sid] = {**(merged.get(sid) or {}), **subcfg}
+                cfg["subprocess_config"] = merged
             copied["configuration"] = cfg
 
         nodes = copied.get("dataflow_state", {}).get("nodes", []) or []
@@ -226,6 +232,11 @@ class ProcessRepository:
             {"$set": update},
         )
         return result.matched_count > 0
+
+    async def delete_by_id(self, process_id: str) -> bool:
+        """Löscht einen Prozess anhand der process_id."""
+        result = await self._collection.delete_one({"process_id": process_id})
+        return result.deleted_count > 0
 
     async def claim_next_pending(self) -> Optional[dict[str, Any]]:
         """
