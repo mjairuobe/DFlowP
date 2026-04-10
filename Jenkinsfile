@@ -20,6 +20,9 @@
         DOCKER_IMAGE_REPO_EVENT_BROKER = 'docker.io/crawlabase/dflowp-event-broker'
         DOCKER_IMAGE_REPO_PLUGIN_FETCHFEEDITEMS = 'docker.io/crawlabase/dflowp-plugin-fetchfeeditems'
         DOCKER_IMAGE_REPO_PLUGIN_EMBEDDATA = 'docker.io/crawlabase/dflowp-plugin-embeddata'
+        DOCKER_IMAGE_REPO_PLUGIN_CLUSTERING_DBSCAN = 'docker.io/crawlabase/dflowp-plugin-clustering-dbscan'
+        DOCKER_IMAGE_REPO_PLUGIN_CLUSTERING_HDBSCAN = 'docker.io/crawlabase/dflowp-plugin-clustering-hdbscan'
+        DOCKER_IMAGE_REPO_PLUGIN_TOPICPROMPTING = 'docker.io/crawlabase/dflowp-plugin-topicprompting'
 
         DOCKERHUB_CREDS_ID = 'dockerhub-creds'
         OPENAI_KEY_ID      = 'openai-api-key'
@@ -204,6 +207,12 @@
                           plugin-fetchfeeditems pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
                         docker-compose run --rm \
                           plugin-embeddata pytest tests/plugin_services_test.py::test_embed_plugin_info_and_health -v --tb=short
+                        docker-compose run --rm \
+                          plugin-clustering-dbscan pytest tests/plugin_services_test.py::test_clustering_plugin_info_and_health -v --tb=short
+                        docker-compose run --rm \
+                          plugin-clustering-hdbscan pytest tests/plugin_services_test.py::test_clustering_hdbscan_plugin_info_and_health -v --tb=short
+                        docker-compose run --rm \
+                          plugin-topicprompting pytest tests/plugin_services_test.py::test_topic_prompting_plugin_info_and_health -v --tb=short
                     '''
                 }
                 }
