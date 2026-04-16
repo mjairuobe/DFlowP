@@ -74,7 +74,9 @@ services:
       DFLOWP_EVENTSYSTEM_URL: ${DFLOWP_EVENTSYSTEM_URL:-http://eventsystem:8001}
       DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES: ${DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES:-30}
       DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP: ${DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP:-1.0}
-      DFLOWP_PLUGIN_ENDPOINTS: ${DFLOWP_PLUGIN_ENDPOINTS:-FetchFeedItems=http://plugin-fetchfeeditems:8101,EmbedData=http://plugin-embeddata:8102,Clustering_DBSCAN=http://plugin-clustering-dbscan:8103,Clustering_HDBSCAN=http://plugin-clustering-hdbscan:8104}
+      # Standard-Plugin-URLs (intern): FetchFeedItems :8101, EmbedData :8102,
+      # Clustering_DBSCAN :8103, Clustering_HDBSCAN :8104, TopicPrompting :8105
+      DFLOWP_PLUGIN_ENDPOINTS: ${DFLOWP_PLUGIN_ENDPOINTS:-FetchFeedItems=http://plugin-fetchfeeditems:8101,EmbedData=http://plugin-embeddata:8102,Clustering_DBSCAN=http://plugin-clustering-dbscan:8103,Clustering_HDBSCAN=http://plugin-clustering-hdbscan:8104,TopicPrompting=http://plugin-topicprompting:8105}
       DFLOWP_PLUGIN_REMOTE_RETRIES: ${DFLOWP_PLUGIN_REMOTE_RETRIES:-15}
       DFLOWP_PLUGIN_REMOTE_RETRY_DELAY_SECONDS: ${DFLOWP_PLUGIN_REMOTE_RETRY_DELAY_SECONDS:-25}
       DFLOWP_PLUGIN_REMOTE_HTTP_TIMEOUT: ${DFLOWP_PLUGIN_REMOTE_HTTP_TIMEOUT:-600}
@@ -198,4 +200,24 @@ services:
       MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
       SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
     command: ["uvicorn", "dflowp.plugin_clustering_hdbscan.app:app", "--host", "0.0.0.0", "--port", "8104"]
+
+  plugin-topicprompting:
+    container_name: dflowp-plugin-topicprompting
+    build:
+      context: .
+      target: plugin-topicprompting
+    image: ${DOCKER_IMAGE_PLUGIN_TOPICPROMPTING:-dflowp-plugin-topicprompting:local}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_HOST: mongo
+      MONGO_PORT: "27017"
+      MONGODB_USERNAME: ${MONGODB_USERNAME:-dflowp}
+      MONGODB_PASSWORD: ${MONGODB_PASSWORD:-dflowp_password}
+      MONGODB_AUTH_SOURCE: admin
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-dflowp}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
+    command: ["uvicorn", "dflowp.plugin_topicprompting.app:app", "--host", "0.0.0.0", "--port", "8105"]
 
