@@ -19,6 +19,39 @@ if [[ -z "${UI_BAKERY_LICENSE_KEY:-}" ]]; then
   exit 1
 fi
 
+# Jenkins (oder andere Stores) können den Secret-Wert als JSON liefern, z. B.
+# {"UI_BAKERY_LICENSE_KEY":"<jwt>"}. In docker/uibakery.env soll nur der Token stehen.
+_extract_license_plain() {
+  UI_BAKERY_LICENSE_KEY="$UI_BAKERY_LICENSE_KEY" python3 <<'PY'
+import json
+import os
+import sys
+
+raw = os.environ["UI_BAKERY_LICENSE_KEY"].strip()
+if not raw.startswith("{"):
+    print(raw)
+    sys.exit(0)
+try:
+    obj = json.loads(raw)
+except json.JSONDecodeError:
+    print(raw, end="")
+    sys.exit(0)
+if isinstance(obj, dict):
+    val = obj.get("UI_BAKERY_LICENSE_KEY")
+    if isinstance(val, str) and val.strip():
+        print(val.strip())
+        sys.exit(0)
+print(raw, end="")
+PY
+}
+
+UI_BAKERY_LICENSE_KEY="$(_extract_license_plain)"
+
+if [[ -z "${UI_BAKERY_LICENSE_KEY}" ]]; then
+  echo "Fehlend oder leer nach Auflösung: UI_BAKERY_LICENSE_KEY (JSON ohne gültigen Wert?)" >&2
+  exit 1
+fi
+
 {
   echo "UI_BAKERY_VERSION=${UI_BAKERY_VERSION}"
   echo "UI_BAKERY_APP_SERVER_NAME=${UI_BAKERY_APP_SERVER_NAME}"
