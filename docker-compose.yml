@@ -213,6 +213,9 @@ services:
     image: cruibakeryonprem.azurecr.io/cloud/gateway:${UI_BAKERY_VERSION:-latest}
     env_file:
       - ./docker/uibakery.env
+    # Korrekte MIME-Types (Gateway-Image liefert teils falsche Types); Standard nginx mime.types + mjs.
+    volumes:
+      - ./docker/uibakery-gateway/mime.types:/etc/nginx/mime.types:ro
     ports:
       - "127.0.0.1:${UI_BAKERY_PORT:-8010}:3030"
 
