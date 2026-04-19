@@ -15,7 +15,10 @@
       "dflowp/plugin_clustering_hdbscan"
     ]
   },
-  "required_stack_services": ["mongo"],
+  "required_stack_services": ["mongo", "uibakery-gateway"],
+  "required_stack_container_match": {
+    "uibakery-gateway": "dflowp-uibakery-gateway"
+  },
   "docker": {
     "registry": "docker.io/crawlabase",
     "images": {
