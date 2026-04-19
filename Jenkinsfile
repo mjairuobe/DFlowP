@@ -5,10 +5,8 @@
     // Compose-Images: eval "$(python3.11 scripts/ci_compose_env.py)"
     // Docker: scripts/ci_docker_build.py / ci_docker_push.py
     //
-    // UI Bakery: Services nutzen Compose-Profil "uibakery"; ohne COMPOSE_PROFILES werden sie
-    // nicht gestartet (kein Pull von cruibakeryonprem.azurecr.io in CI). Auf dem Server:
-    // COMPOSE_PROFILES=uibakery docker-compose up -d und docker/generate_uibakery_env.sh mit
-    // UI_BAKERY_LICENSE_KEY siehe docker/uibakery.env.example.
+    // UI Bakery: Jenkins-Credential „Secret text“ mit ID UI_BAKERY_LICENSE_KEY → env,
+    // dann docker/generate_uibakery_env.sh vor docker-compose up.
 
     pipeline {
         agent any
@@ -34,6 +32,9 @@
 
         MONGODB_DATABASE = 'dflowp'
         MONGODB_TEST_DB  = 'dflowp_test'
+
+        // Secret text in Jenkins (ID muss exakt so lauten)
+        UI_BAKERY_LICENSE_CREDENTIALS_ID = 'UI_BAKERY_LICENSE_KEY'
         }
 
         stages {
@@ -114,7 +115,8 @@
                 withCredentials([
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
                     string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY'),
-                    string(credentialsId: "${DFLOWP_API_KEY_ID}", variable: 'DFlowP_API_Key')
+                    string(credentialsId: "${DFLOWP_API_KEY_ID}", variable: 'DFlowP_API_Key'),
+                    string(credentialsId: "${UI_BAKERY_LICENSE_CREDENTIALS_ID}", variable: 'UI_BAKERY_LICENSE_KEY')
                 ]) {
                     echo "MONGODB_USERNAME: ${MONGODB_USERNAME}"
 
@@ -125,6 +127,8 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
+                        chmod +x docker/generate_uibakery_env.sh
+                        ./docker/generate_uibakery_env.sh
                         docker-compose up -d
                         docker-compose ps
                     '''
