@@ -199,11 +199,13 @@ services:
       SOFTWARE_VERSION: ${SOFTWARE_VERSION:-latest}
     command: ["uvicorn", "dflowp.plugin_clustering_hdbscan.app:app", "--host", "0.0.0.0", "--port", "8104"]
 
-  # --- UI Bakery On-Premise (unabhängig von DFlowP; eigene Datenbank-Volumes)
-  # Vor erstem Start: cp docker/uibakery.env.example docker/uibakery.env und Lizenz + Secrets setzen.
-  # Port: Loopback 8010 → Gateway 3030 im Container (Variable UI_BAKERY_PORT wie im Upstream).
+  # --- UI Bakery On-Premise (Profil "uibakery": Standard-Jenkins startet nur DFlowP-Stack)
+  # Start: COMPOSE_PROFILES=uibakery docker-compose up -d
+  # Env: docker/generate_uibakery_env.sh → docker/uibakery.env (siehe docker/uibakery.env.example)
 
   uibakery-gateway:
+    profiles:
+      - uibakery
     container_name: dflowp-uibakery-gateway
     restart: unless-stopped
     depends_on:
@@ -217,6 +219,8 @@ services:
       - "127.0.0.1:${UI_BAKERY_PORT:-8010}:3030"
 
   uibakery-front:
+    profiles:
+      - uibakery
     container_name: dflowp-uibakery-front
     restart: unless-stopped
     image: cruibakeryonprem.azurecr.io/cloud/bakery-front:${UI_BAKERY_VERSION:-latest}
@@ -224,6 +228,8 @@ services:
       - ./docker/uibakery.env
 
   uibakery-workbench-front:
+    profiles:
+      - uibakery
     container_name: dflowp-uibakery-workbench-front
     restart: unless-stopped
     image: cruibakeryonprem.azurecr.io/cloud/workbench-front:${UI_BAKERY_VERSION:-latest}
@@ -231,6 +237,8 @@ services:
       - ./docker/uibakery.env
 
   uibakery-datasource:
+    profiles:
+      - uibakery
     container_name: dflowp-uibakery-datasource
     restart: unless-stopped
     image: cruibakeryonprem.azurecr.io/cloud/datasource:${UI_BAKERY_VERSION:-latest}
@@ -238,6 +246,8 @@ services:
       - ./docker/uibakery.env
 
   uibakery-back:
+    profiles:
+      - uibakery
     container_name: dflowp-uibakery-back
     restart: unless-stopped
     depends_on:
@@ -248,6 +258,8 @@ services:
       - ./docker/uibakery.env
 
   uibakery-automation:
+    profiles:
+      - uibakery
     container_name: dflowp-uibakery-automation
     restart: unless-stopped
     image: cruibakeryonprem.azurecr.io/cloud/automation:${UI_BAKERY_VERSION:-latest}
@@ -255,6 +267,8 @@ services:
       - ./docker/uibakery.env
 
   uibakery-python-runtime:
+    profiles:
+      - uibakery
     container_name: dflowp-uibakery-python-runtime
     restart: unless-stopped
     image: cruibakeryonprem.azurecr.io/cloud/python-runtime:${UI_BAKERY_VERSION:-latest}
@@ -263,6 +277,8 @@ services:
 
   # Hostnamen wie im UI-Bakery-Upstream: db / bakery-db (über Netzwerk-Alias)
   uibakery-mysql:
+    profiles:
+      - uibakery
     platform: linux/amd64
     container_name: dflowp-uibakery-mysql
     image: mysql:8.0
@@ -288,6 +304,8 @@ services:
       retries: 10
 
   uibakery-internal-db:
+    profiles:
+      - uibakery
     container_name: dflowp-uibakery-postgres
     image: postgres:16.1
     restart: unless-stopped

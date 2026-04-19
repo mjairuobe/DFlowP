@@ -4,6 +4,11 @@
     // Build-Plan: scripts/ci_build_plan.py (abhängigkeitsbasiert, kein LIB_FORCE)
     // Compose-Images: eval "$(python3.11 scripts/ci_compose_env.py)"
     // Docker: scripts/ci_docker_build.py / ci_docker_push.py
+    //
+    // UI Bakery: Services nutzen Compose-Profil "uibakery"; ohne COMPOSE_PROFILES werden sie
+    // nicht gestartet (kein Pull von cruibakeryonprem.azurecr.io in CI). Auf dem Server:
+    // COMPOSE_PROFILES=uibakery docker-compose up -d und docker/generate_uibakery_env.sh mit
+    // UI_BAKERY_LICENSE_KEY siehe docker/uibakery.env.example.
 
     pipeline {
         agent any
