@@ -35,3 +35,6 @@ htmlcov/
 
 # Persistent local Docker data
 volumes/
+
+# UI Bakery On-Premise (lokal aus Vorlage kopieren)
+docker/uibakery.env
