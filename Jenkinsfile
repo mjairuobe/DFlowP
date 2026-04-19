@@ -5,8 +5,8 @@
     // Compose-Images: eval "$(python3.11 scripts/ci_compose_env.py)"
     // Docker: scripts/ci_docker_build.py / ci_docker_push.py
     //
-    // UI Bakery: Jenkins-Credential „Secret text“ mit ID UI_BAKERY_LICENSE_KEY → env,
-    // dann docker/generate_uibakery_env.sh vor docker-compose up.
+    // UI Bakery: Credential-ID weiter UI_BAKERY_LICENSE_KEY → Variable UI_BAKERY_ON_PREMISE_LICENSE_KEY_SECRET,
+    // dann docker/generate_uibakery_env.sh (schreibt dieselbe Variable in docker/uibakery.env).
 
     pipeline {
         agent any
@@ -116,7 +116,7 @@
                     usernamePassword(credentialsId: "${MONGODB_CREDS_ID}", usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
                     string(credentialsId: "${OPENAI_KEY_ID}", variable: 'OPENAI_API_KEY'),
                     string(credentialsId: "${DFLOWP_API_KEY_ID}", variable: 'DFlowP_API_Key'),
-                    string(credentialsId: "${UI_BAKERY_LICENSE_CREDENTIALS_ID}", variable: 'UI_BAKERY_LICENSE_KEY')
+                    string(credentialsId: "${UI_BAKERY_LICENSE_CREDENTIALS_ID}", variable: 'UI_BAKERY_ON_PREMISE_LICENSE_KEY_SECRET')
                 ]) {
                     echo "MONGODB_USERNAME: ${MONGODB_USERNAME}"
 
