@@ -239,15 +239,59 @@ def _image_tag(image_ref: str) -> str | None:
     return s.rsplit(":", 1)[-1]
 
 
+def _compose_service_container_name(service_name: str) -> str | None:
+    """Letztes container_name unter dem Service-Block in docker-compose.yml."""
+    p = repo_root() / "docker-compose.yml"
+    if not p.is_file():
+        return None
+    lines = p.read_text(encoding="utf-8").splitlines()
+    in_block = False
+    for line in lines:
+        if re.match(rf"^  {re.escape(service_name)}:\s*$", line):
+            in_block = True
+            continue
+        if in_block:
+            if re.match(r"^  [a-zA-Z0-9_.-]+:\s*$", line):
+                break
+            m = re.match(r"^\s+container_name:\s*(.+)$", line)
+            if m:
+                return m.group(1).strip().strip('"').strip("'")
+    return None
+
+
+def _docker_container_running(container_name: str) -> bool:
+    """True, wenn der Container existiert und läuft (bekannt via container_name in Compose)."""
+    try:
+        r = subprocess.run(
+            [
+                "docker",
+                "inspect",
+                "-f",
+                "{{if .State}}{{.State.Running}}{{else}}false{{end}}",
+                container_name,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False
+    return (r.stdout or "").strip().lower() == "true"
+
+
 def required_stack_ok(modules: dict, running_images: list[str]) -> tuple[bool, list[str]]:
     req = modules.get("required_stack_services")
     if not req:
         return True, []
     known = set(compose_service_names())
+    container_override = modules.get("required_stack_container_match") or {}
     missing: list[str] = []
     for name in req:
         if name not in known:
             missing.append(f"{name} (fehlt in docker-compose services)")
+            continue
+        cname = container_override.get(name) or _compose_service_container_name(name)
+        if cname and _docker_container_running(cname):
             continue
         raw = compose_service_image_line(name)
         if not raw:
