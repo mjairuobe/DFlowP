@@ -5,8 +5,7 @@
     // Compose-Images: eval "$(python3.11 scripts/ci_compose_env.py)"
     // Docker: scripts/ci_docker_build.py / ci_docker_push.py
     //
-    // UI Bakery: Jenkins-Credential „Secret text“ mit ID UI_BAKERY_LICENSE_KEY → env,
-    // dann docker/generate_uibakery_env.sh vor docker-compose up.
+    // UI Bakery / DFlowP API Key: Bei JSON-Secrets scripts/plain_env_maybe_json.py vor Compose/Tests.
 
     pipeline {
         agent any
@@ -127,6 +126,7 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
+                        export DFlowP_API_Key="$(python3.11 scripts/plain_env_maybe_json.py DFlowP_API_Key)"
                         chmod +x docker/generate_uibakery_env.sh
                         ./docker/generate_uibakery_env.sh
                         docker-compose up -d
@@ -155,6 +155,7 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
+                        export DFlowP_API_Key="$(python3.11 scripts/plain_env_maybe_json.py DFlowP_API_Key)"
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           api pytest tests/api_test.py -v --tb=short
@@ -182,6 +183,7 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
+                        export DFlowP_API_Key="$(python3.11 scripts/plain_env_maybe_json.py DFlowP_API_Key)"
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           worker pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
@@ -209,6 +211,7 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
+                        export DFlowP_API_Key="$(python3.11 scripts/plain_env_maybe_json.py DFlowP_API_Key)"
                         docker-compose run --rm \
                           plugin-fetchfeeditems pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
                         docker-compose run --rm \
@@ -237,6 +240,7 @@
                         . ./.jenkins_build_plan.env
                         eval "$(python3.11 scripts/ci_compose_env.py)"
                         set +a
+                        export DFlowP_API_Key="$(python3.11 scripts/plain_env_maybe_json.py DFlowP_API_Key)"
                         docker-compose run --rm \
                           -e MONGODB_TEST_DB="${MONGODB_TEST_DB}" \
                           event-broker pytest tests/event_broker_test.py -v --tb=short
