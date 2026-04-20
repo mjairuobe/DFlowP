@@ -12,7 +12,7 @@ RAND() { LC_ALL=C tr -cd 'A-Za-z0-9' < /dev/urandom | head -c "$1" | tr -d '\n';
 : "${UI_BAKERY_VERSION:=latest}"
 : "${UI_BAKERY_PORT:=8010}"
 # Öffentliche URL im Browser (Reverse-Proxy, inkl. Base-Path /App)
-: "${UI_BAKERY_APP_SERVER_NAME:=https://dflowp.ddns.net/App}"
+: "${UI_BAKERY_APP_SERVER_NAME:=https://app.dflowp.online}"
 
 if [[ -z "${UI_BAKERY_LICENSE_KEY:-}" ]]; then
   echo "Fehlend: UI_BAKERY_LICENSE_KEY" >&2
