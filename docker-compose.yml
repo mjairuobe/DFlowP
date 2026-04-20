@@ -217,7 +217,7 @@ services:
     # Wir umgehen entry.sh und starten nginx direkt mit dieser Konfiguration (kein Zurückschreiben).
     volumes:
       - ./docker/uibakery-gateway/nginx.conf:/etc/nginx/dflowp-gateway.conf:ro
-      - ./docker/uibakery-gateway/mime.types:/etc/nginx/dflowp-mime.types:ro
+      - ./docker/uibakery-gateway/mime_extension_map.conf:/etc/nginx/dflowp-mime-extension-map.conf:ro
     entrypoint: []
     command:
       - /usr/sbin/nginx
