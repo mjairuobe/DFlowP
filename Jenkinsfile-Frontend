@@ -1,0 +1,31 @@
+// DFlowP Frontend – nur Container-Umgebung (Node 20+, npm, pnpm) für refine.dev-Builds.
+// Kein App-Build, keine Tests, kein Deploy. Frontend-Code: dflowp/frontend/
+
+pipeline {
+    agent {
+        docker {
+            image 'node:22-bookworm'
+        }
+    }
+
+    options {
+        timestamps()
+    }
+
+    stages {
+        stage('Refine-Frontend-Umgebung im Container') {
+            steps {
+                sh '''
+                    set -eux
+                    node -v
+                    npm -v
+                    # pnpm: Corepack (in Node 22 enthalten) — Standard für viele Refine-Workflows
+                    corepack enable
+                    corepack prepare pnpm@9 --activate
+                    pnpm -v
+                    echo "OK: Node, npm, pnpm stehen im Agent-Image bereit (Workspace: dflowp/frontend bei echten Builds)."
+                '''
+            }
+        }
+    }
+}
