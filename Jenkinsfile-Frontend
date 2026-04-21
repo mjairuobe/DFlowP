@@ -46,7 +46,30 @@ pipeline {
             steps {
                 sh '''
                     set -eux
-                    docker run --rm --entrypoint sh dflowp-frontend:ci -c 'test -f /usr/share/nginx/html/index.html'
+                    docker run --rm --entrypoint sh dflowp-frontend:ci -c 'test -f /app/dist/index.html'
+                '''
+            }
+        }
+
+        stage('Refine-Frontend: Host-Container (localhost:8011)') {
+            agent any
+            steps {
+                sh '''
+                    set -eux
+                    docker stop dflowp-frontend 2>/dev/null || true
+                    docker rm dflowp-frontend 2>/dev/null || true
+                    docker run -d --name dflowp-frontend --restart unless-stopped -p 127.0.0.1:8011:3000 dflowp-frontend:ci
+                    for i in 1 2 3 4 5 6 7 8 9 10; do
+                        if curl -fsS -o /dev/null "http://127.0.0.1:8011/"; then
+                            break
+                        fi
+                        if [ "$i" -eq 10 ]; then
+                            echo "curl smoke failed" >&2
+                            docker logs dflowp-frontend >&2 || true
+                            exit 1
+                        fi
+                        sleep 1
+                    done
                 '''
             }
         }

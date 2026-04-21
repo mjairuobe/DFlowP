@@ -1,4 +1,4 @@
-# DFlowP Refine/Vite-Frontend: Build mit Node, Auslieferung per nginx (statische dist).
+# DFlowP Refine/Vite-Frontend: Build mit Node, statische dist per `serve` (kein nginx).
 # Build-Kontext: Repository-Root (siehe docker-compose, Jenkinsfile-Frontend).
 #
 # @see dflowp/frontend/package.json (npm run build → tsc && refine build)
@@ -14,10 +14,13 @@ COPY dflowp/frontend/ ./
 ENV NODE_ENV=production
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM node:22-bookworm-slim
 
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY docker/dflowp-frontend/default.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+WORKDIR /app
+RUN npm install -g serve@14
 
-CMD ["nginx", "-g", "daemon off;"]
+COPY --from=build /app/dist ./dist
+EXPOSE 3000
+
+# SPA-Routing: -s. Port 3000 (unprivilegiert, kompatibel mit Node-Image-User)
+CMD ["serve", "-s", "dist", "-l", "3000"]
