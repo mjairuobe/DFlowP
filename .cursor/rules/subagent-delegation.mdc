@@ -1,0 +1,35 @@
+---
+description: Aufgaben an passende Subagenten delegieren – Hauptagent führt Spezialthemen nicht selbst aus
+alwaysApply: true
+---
+
+# Subagent-Delegation (Hauptagent)
+
+## Pflicht vor der Umsetzung
+
+- **Zuerst prüfen**, ob die Nutzeranfrage in den Aufgabenbereich eines **projektspezifischen Subagenten** fällt: Beschreibungen und Namen in **`.cursor/agents/*.md`** (YAML-`description` und Prompt-Body).
+- **Trifft das zu:** die Arbeit **nicht** im Hauptagenten-Kontext „selbst erledigen“, sondern **abgeben** – über die in Cursor vorgesehene Delegation (z. B. Aufruf des passenden Subagenten / Task mit dem zugehörigen Spezialisten), sodass der Spezialist die Aufgabe übernimmt.
+- **Kein Workaround:** keine parallele Eigenimplementierung nur deshalb, weil Delegation einen Extra-Schritt bedeutet.
+
+## Einordnung
+
+- Mehrere Subagenten können passen: **den engsten** wählen (kleinster sinnvoller Scope laut `description`).
+- **Kein passender Subagent:** normal im Hauptagenten weiterarbeiten; bei wiederkehrenden Themen kann der Nutzer einen neuen Subagenten unter `.cursor/agents/` ergänzen.
+
+## Aktuell im Repo (Beispiele, nicht abschließend)
+
+| Subagent (`name`) | Typische Themen |
+|-------------------|-----------------|
+| `dflowp-api-repositories` | FastAPI, Schemas, Auth-Muster, MongoDB-Repositories als API-Datenquelle |
+| `build-n-connect-agent` | CI/CD (Jenkins, `scripts/ci_*`), Docker/Compose, Deployment, NGINX, Service-Konnektivität |
+
+Liste immer anhand der **aktuellen Dateien** in `.cursor/agents/` validieren.
+
+## Kurz-Checkliste
+
+```text
+1. Passt die Aufgabe zur description eines .cursor/agents/*.md?
+   Ja → delegieren, nicht selbst ausführen.
+   Nein → Hauptagent übernimmt.
+2. Unklar → Kurz abgleichen mit description; bei Grenzfällen den engeren Subagenten wählen oder nachfragen.
+```
