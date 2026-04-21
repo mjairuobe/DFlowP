@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 import os
 import uuid
-from typing import AsyncGenerator
+from typing import Annotated, AsyncGenerator
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 
@@ -155,22 +155,42 @@ async def create_dataset(
     return doc
 
 
-@app.get("/api/v1/data-items", dependencies=[Depends(require_api_key)])
-async def list_data_items_alias(
+_DATA_DOC_TYPES = frozenset({"data", "dataset"})
+
+
+@app.get("/api/v1/data", dependencies=[Depends(require_api_key)])
+async def list_data(
     pagination: tuple[int, int] = Depends(_pagination_params),
+    doc_type: Annotated[list[str] | None, Query()] = None,
     data_item_repo: DataItemRepository = Depends(get_data_item_repository),
 ) -> dict:
-    """Alias-Endpunkt für dataitems mit Bindestrich."""
+    """Listet Data- und Dataset-Dokumente (Metadaten, ohne ``content``)."""
     page, page_size = pagination
-    return await data_item_repo.list_data_items(page=page, page_size=page_size)
+    doc_types: list[str] | None = None
+    if doc_type is not None:
+        for dt in doc_type:
+            if dt not in _DATA_DOC_TYPES:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"Ungültiger Wert für doc_type: '{dt}'. "
+                        "Erlaubt sind nur 'data' und 'dataset'."
+                    ),
+                )
+        doc_types = list(dict.fromkeys(doc_type))
+    return await data_item_repo.list_data_items(
+        page=page,
+        page_size=page_size,
+        doc_types=doc_types,
+    )
 
 
-@app.get("/api/v1/data-items/{item_id}", dependencies=[Depends(require_api_key)])
-async def get_data_item_alias(
+@app.get("/api/v1/data/{item_id}", dependencies=[Depends(require_api_key)])
+async def get_data_document(
     item_id: str,
     data_item_repo: DataItemRepository = Depends(get_data_item_repository),
 ) -> dict:
-    """Alias-Endpunkt für DataItem-Detail mit Bindestrich."""
+    """Liest ein Data- oder Dataset-Dokument vollständig (inkl. ``content`` bei data)."""
     item = await data_item_repo.find_data_item_by_id(item_id)
     if not item:
         raise HTTPException(
@@ -181,7 +201,7 @@ async def get_data_item_alias(
 
 
 @app.post(
-    "/api/v1/data-items",
+    "/api/v1/data",
     dependencies=[Depends(require_api_key)],
     status_code=status.HTTP_201_CREATED,
 )

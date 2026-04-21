@@ -4,7 +4,10 @@ import os
 
 from fastapi.testclient import TestClient
 
+from math import ceil
+
 from dflowp.api.app import app, get_data_item_repository, get_process_repository
+from dflowp_core.database.data_item_repository import summarize_for_list_view
 
 # Für zustandsbehaftete Fake-Repos (create/update/delete)
 _FAKE_PROCESS_DOCS: dict[str, dict] = {}
@@ -34,16 +37,32 @@ class _FakeDataItemRepository:
             "total_pages": 1,
         }
 
-    async def list_data_items(self, *, page: int, page_size: int) -> dict:
+    async def list_data_items(
+        self, *, page: int, page_size: int, doc_types: list[str] | None = None
+    ) -> dict:
+        raw_items = [
+            {
+                "id": "data_001",
+                "doc_type": "data",
+                "type": "input",
+                "content": {"k": "v"},
+                "timestamp_ms": 200,
+            },
+            {"id": "ds_001", "doc_type": "dataset", "data_ids": ["d1", "d2"], "timestamp_ms": 100},
+        ]
+        if doc_types:
+            filtered = [i for i in raw_items if i["doc_type"] in doc_types]
+        else:
+            filtered = list(raw_items)
+        total_items = len(filtered)
+        skip = (page - 1) * page_size
+        page_slice = filtered[skip : skip + page_size]
         return {
-            "items": [
-                {"id": "data_001", "doc_type": "data", "content": {"k": "v"}, "timestamp_ms": 200},
-                {"id": "ds_001", "doc_type": "dataset", "data_ids": ["d1", "d2"], "timestamp_ms": 100},
-            ][:page_size],
+            "items": [summarize_for_list_view(dict(x)) for x in page_slice],
             "page": page,
             "page_size": page_size,
-            "total_items": 2,
-            "total_pages": 1,
+            "total_items": total_items,
+            "total_pages": ceil(total_items / page_size) if total_items else 0,
         }
 
     async def find_data_item_by_id(self, item_id: str) -> dict | None:
@@ -314,9 +333,9 @@ def test_get_subprocess_detail_not_found() -> None:
     assert response.status_code == 404
 
 
-def test_list_data_items_with_pagination() -> None:
+def test_list_data_with_pagination() -> None:
     client = _create_client()
-    response = client.get("/api/v1/data-items?page=1&page_size=2", headers=_auth_headers())
+    response = client.get("/api/v1/data?page=1&page_size=2", headers=_auth_headers())
     assert response.status_code == 200
     payload = response.json()
     assert payload["page"] == 1
@@ -324,25 +343,51 @@ def test_list_data_items_with_pagination() -> None:
     assert payload["total_items"] == 2
     assert len(payload["items"]) == 2
     assert payload["items"][0]["timestamp_ms"] > payload["items"][1]["timestamp_ms"]
+    for item in payload["items"]:
+        assert "content" not in item
 
 
-def test_get_data_item_detail() -> None:
+def test_list_data_doc_type_filter() -> None:
     client = _create_client()
-    response = client.get("/api/v1/data-items/data_001", headers=_auth_headers())
+    r = client.get(
+        "/api/v1/data?doc_type=data&doc_type=dataset",
+        headers=_auth_headers(),
+    )
+    assert r.status_code == 200
+    assert r.json()["total_items"] == 2
+    r_data = client.get("/api/v1/data?doc_type=data", headers=_auth_headers())
+    assert r_data.status_code == 200
+    body = r_data.json()
+    assert body["total_items"] == 1
+    assert body["items"][0]["doc_type"] == "data"
+    assert "content" not in body["items"][0]
+
+
+def test_list_data_doc_type_invalid() -> None:
+    client = _create_client()
+    response = client.get("/api/v1/data?doc_type=foo", headers=_auth_headers())
+    assert response.status_code == 422
+    assert "doc_type" in response.json()["detail"].lower()
+
+
+def test_get_data_detail_includes_content() -> None:
+    client = _create_client()
+    response = client.get("/api/v1/data/data_001", headers=_auth_headers())
     assert response.status_code == 200
     assert response.json()["id"] == "data_001"
+    assert response.json()["content"]["k"] == "v"
 
 
-def test_get_data_item_detail_not_found() -> None:
+def test_get_data_detail_not_found() -> None:
     client = _create_client()
-    response = client.get("/api/v1/data-items/not_found", headers=_auth_headers())
+    response = client.get("/api/v1/data/not_found", headers=_auth_headers())
     assert response.status_code == 404
 
 
 def test_create_data_item() -> None:
     client = _create_client()
     response = client.post(
-        "/api/v1/data-items",
+        "/api/v1/data",
         headers=_auth_headers(),
         json={
             "id": "data_new_1",
@@ -380,12 +425,12 @@ def test_create_dataset_with_rows() -> None:
 def test_create_dataset_with_data_ids() -> None:
     client = _create_client()
     client.post(
-        "/api/v1/data-items",
+        "/api/v1/data",
         headers=_auth_headers(),
         json={"id": "d_ref_a", "content": {"x": 1}, "type": "input"},
     )
     client.post(
-        "/api/v1/data-items",
+        "/api/v1/data",
         headers=_auth_headers(),
         json={"id": "d_ref_b", "content": {"x": 2}, "type": "input"},
     )

@@ -129,9 +129,10 @@
         }
       }
     },
-    "/api/v1/data-items": {
+    "/api/v1/data": {
       "get": {
-        "summary": "DataItems auflisten (Data + Dataset)",
+        "summary": "Data- und Dataset-Dokumente auflisten",
+        "description": "Paginierte Liste von Data- und Dataset-Dokumenten. Einträge ohne großes content-Feld (nur Metadaten, doc_type, type, data_ids, Zeitstempel, _id). Vollständige Dokumente über GET /api/v1/data/{item_id}.",
         "parameters": [
           {
             "name": "page",
@@ -153,21 +154,39 @@
               "maximum": 100,
               "default": 20
             }
+          },
+          {
+            "name": "doc_type",
+            "in": "query",
+            "required": false,
+            "description": "Filter nach doc_type; wiederholbar (z. B. doc_type=data&doc_type=dataset). Erlaubt: data, dataset.",
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["data", "dataset"]
+              }
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Paginierte DataItem-Liste",
+            "description": "Paginierte Liste ohne content in items",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedListResponse"
+                  "$ref": "#/components/schemas/PaginatedDataListResponse"
                 }
               }
             }
           },
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableError"
           }
         }
       },
@@ -185,7 +204,7 @@
         },
         "responses": {
           "201": {
-            "description": "Angelegtes Data-Dokument",
+            "description": "Angelegtes Data-Dokument (vollständig)",
             "content": {
               "application/json": {
                 "schema": {
@@ -199,6 +218,40 @@
           },
           "409": {
             "$ref": "#/components/responses/ConflictError"
+          }
+        }
+      }
+    },
+    "/api/v1/data/{item_id}": {
+      "get": {
+        "summary": "Data- oder Dataset-Dokument vollständig lesen",
+        "description": "Liefert das vollständige MongoDB-Dokument inkl. content bei doc_type=data.",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vollständiges Dokument",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
           }
         }
       }
@@ -413,6 +466,46 @@
             "type": "string",
             "default": "input"
           }
+        }
+      },
+      "DataListItem": {
+        "type": "object",
+        "description": "Data- oder Dataset-Zeile in GET /api/v1/data ohne top-level content",
+        "additionalProperties": true,
+        "properties": {
+          "_id": { "type": "string" },
+          "id": { "type": "string" },
+          "doc_type": { "type": "string", "enum": ["data", "dataset"] },
+          "type": { "type": "string", "description": "Nur bei doc_type=data" },
+          "data_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Nur bei doc_type=dataset"
+          },
+          "timestamp_ms": { "type": "integer" },
+          "timestamp_human": { "type": "string" }
+        }
+      },
+      "PaginatedDataListResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total_items",
+          "total_pages"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DataListItem"
+            }
+          },
+          "page": { "type": "integer" },
+          "page_size": { "type": "integer" },
+          "total_items": { "type": "integer" },
+          "total_pages": { "type": "integer" }
         }
       },
       "PaginatedListResponse": {

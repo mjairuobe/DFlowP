@@ -1,0 +1,10 @@
+---
+description: Listen-APIs – mehrere Filterwerte per wiederholtem Query-Parameter
+alwaysApply: true
+---
+
+# Mehrwert-Filter an Listen-Endpunkten
+
+- Wo ein Filter mehrere Werte zulässt (z. B. `doc_type` mit `data` und `dataset`), **wiederholte Query-Parameter** nutzen: `doc_type=a&doc_type=b` (nicht komma-separiert in einem String, sofern nicht ausdrücklich anders spezifiziert).
+- FastAPI: `Annotated[list[str] | None, Query()] = None` o. Ä.; Werte validieren und bei ungültigen Einträgen **422** mit **deutschem** `detail` wie in `dflowp/api/app.py`.
+- OpenAPI: Parameter als `array` mit `style: form`, `explode: true` dokumentieren.
