@@ -26,3 +26,7 @@ agent-transcripts/
 
 secrets/
 
+# Frontend: node_modules & Build-Artefakte nicht ins Build-Context
+**/node_modules/
+dflowp/frontend/dist/
+
