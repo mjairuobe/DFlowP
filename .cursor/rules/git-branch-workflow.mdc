@@ -1,0 +1,31 @@
+---
+description: Git-Workflow – keine Arbeit auf main, Feature-Branches, PR nur auf ausdrückliche Aufforderung
+alwaysApply: true
+---
+
+# Git-Branch- und PR-Workflow
+
+## Hauptbranch
+
+- **Niemals** direkt auf `main` (oder `master`, falls das der Standard-Branch ist) committen, Dateien ändern oder Agent-Arbeiten durchführen, die den Arbeitsbaum auf diesem Branch verändern.
+- Wenn der aktuelle Branch der Hauptbranch ist: zuerst einen Feature-Branch anlegen oder wechseln, dann erst Änderungen vornehmen.
+
+## Feature-Arbeit
+
+- Für Features, Bugfixes und vergleichbare Aufgaben **immer** einen separaten Branch nutzen (z. B. `feature/kurzbeschreibung` oder wie im Projekt üblich).
+- Branch-Namen an bestehende Konventionen im Repo anpassen, falls vorhanden.
+
+## Pull Requests
+
+- Einen **Pull Request nur erstellen oder vorschlagen, wenn der Nutzer das ausdrücklich verlangt** (z. B. „erstelle einen PR“, „öffne einen Pull Request“).
+- Ohne solche Aufforderung: Änderungen auf dem Feature-Branch belassen; keinen PR proaktiv eröffnen.
+
+## Beispiele
+
+```text
+❌ Auf main: Dateien editieren und committen
+✅ Branch feature/xyz anlegen, dort arbeiten, committen
+
+❌ Nach Abschluss der Arbeit automatisch einen PR eröffnen
+✅ PR nur, wenn der Nutzer ausdrücklich danach fragt
+```
