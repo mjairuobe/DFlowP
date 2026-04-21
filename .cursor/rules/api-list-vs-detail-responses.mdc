@@ -1,0 +1,10 @@
+---
+description: Listen vs. Detail – keine großen Payload-Felder in Listen
+alwaysApply: true
+---
+
+# Listen- vs. Detail-Antworten (API)
+
+- **Listen** (`GET …` mit Pagination o. Ä.): Keine großen oder sensiblen Vollinhalte ausliefern (z. B. kein top-level **`content`** bei Data-Dokumenten). Metadaten, IDs, Relationen (`data_ids`), Status, Zeitstempel, `doc_type`/`type` sind in Ordnung.
+- **Detail** (`GET …/{id}`): Vollständiges persistiertes Dokument wie in MongoDB (inkl. `content`), sofern das der bestehende Stil ist.
+- Umsetzung: Stripping zentral im Repository (z. B. `summarize_for_list_view` in `DataItemRepository.list_data_items`); Detail-Methoden unverändert vollständig.

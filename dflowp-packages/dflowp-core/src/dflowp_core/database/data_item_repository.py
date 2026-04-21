@@ -4,6 +4,13 @@ from math import ceil
 from typing import Any, Optional
 
 from dflowp_core.database.mongo import get_database
+
+
+def summarize_for_list_view(doc: dict[str, Any]) -> dict[str, Any]:
+    """Kopie eines Data-/Dataset-Dokuments ohne großes ``content``-Feld (nur Listenansicht)."""
+    out = dict(doc)
+    out.pop("content", None)
+    return out
 from dflowp_core.utils.timestamps import add_timestamps
 
 
@@ -128,18 +135,26 @@ class DataItemRepository:
         *,
         page: int,
         page_size: int,
+        doc_types: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Liefert paginierte DataItem-Dokumente (data + dataset)."""
-        total_items = await self._collection.count_documents({})
+        """Liefert paginierte DataItem-Dokumente (data + dataset), Listen ohne ``content``."""
+        query: dict[str, Any] = {}
+        if doc_types:
+            query["doc_type"] = {"$in": doc_types}
+        total_items = await self._collection.count_documents(query)
         skip = (page - 1) * page_size
         docs = (
-            await self._collection.find({})
+            await self._collection.find(query)
             .sort([("timestamp_ms", -1), ("id", 1)])
             .skip(skip)
             .limit(page_size)
             .to_list(length=page_size)
         )
-        items = [self._with_string_id(doc) for doc in docs]
+        items = []
+        for doc in docs:
+            wid = self._with_string_id(doc)
+            if wid is not None:
+                items.append(summarize_for_list_view(dict(wid)))
         return {
             "items": items,
             "page": page,
