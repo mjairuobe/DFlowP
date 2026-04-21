@@ -5,6 +5,9 @@ pipeline {
     agent {
         docker {
             image 'node:22-bookworm'
+            // Default-Jenkins-User (uid 1001) darf in offiziellen Node-Images kein `corepack enable`
+            // (Symlinks nach /usr/local/bin). Root im Ephemeral-Container ist für CI üblich.
+            args '-u root'
         }
     }
 
