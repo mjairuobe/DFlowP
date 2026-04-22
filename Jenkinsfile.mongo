@@ -1,0 +1,83 @@
+// DFlowP – dflowp-mongo (Thin-Image um mongo:7)
+pipeline {
+    agent any
+    options {
+        timestamps()
+        timeout(time: 20, unit: 'MINUTES')
+    }
+    environment {
+        DOCKERFILE   = 'Dockerfile.mongo'
+        IMAGE_REPO   = 'docker.io/crawlabase/dflowp-mongo'
+        LAST_STATE   = '.jenkins_last_dflowp_mongo'
+    }
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+        stage('Fetch tags') {
+            steps { sh 'git remote get-url origin >/dev/null 2>&1 && git fetch origin --tags --force || true' }
+        }
+        stage('Version & lineage') {
+            steps {
+                sh '''set -euo pipefail
+rm -f .jenkins_did_docker_build
+git fetch origin --tags --force 2>/dev/null || true
+LATEST=$(git tag -l 'v[0-9]*.*.*' 2>/dev/null | sort -V | tail -1 || true)
+if [ -n "${LATEST}" ]; then
+  V=${LATEST#v}; MAJ=${V%%.*}; R1=${V#*.}; MIN=${R1%%.*}
+  BN=$(git rev-list --count --all ${LATEST}..HEAD 2>/dev/null || echo 0)
+  SOFTWARE_VERSION="v${MAJ}.${MIN}.${BN}"
+else
+  BN=$(git rev-list --all --count 2>/dev/null || echo 0)
+  SOFTWARE_VERSION="v0.1.${BN}"
+fi
+echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}" > .jenkins_runtime.env
+s=""
+for p in "${DOCKERFILE}"; do
+  s="${s}$(git rev-parse "HEAD:${p}" 2>/dev/null || echo none)"
+done
+LINEAGE=$(printf %s "$s" | sha256sum | cut -c1-5 | tr 'A-Z' 'a-z')
+export LINEAGE
+echo "LINEAGE=${LINEAGE}" >> .jenkins_runtime.env
+echo "SOFTWARE_VERSION=$SOFTWARE_VERSION tag=$LINEAGE"
+'''
+            }
+        }
+        stage('Docker build (if needed)') {
+            steps {
+                sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+: "${LINEAGE?}"
+: "${SOFTWARE_VERSION?}"
+SKIP=0
+if [ -f "${LAST_STATE}" ] && [ "$(cat "${LAST_STATE}" 2>/dev/null)" = "$LINEAGE" ] && docker image inspect "${IMAGE_REPO}:${LINEAGE}" >/dev/null 2>&1; then
+  echo "Kein Build nötig: Lineage unverändert und Image ${IMAGE_REPO}:${LINEAGE} vorhanden."
+  SKIP=1
+fi
+if [ "$SKIP" -eq 1 ]; then exit 0; fi
+docker build -f "${DOCKERFILE}" \
+  -t "${IMAGE_REPO}:${LINEAGE}" \
+  -t "${IMAGE_REPO}:${SOFTWARE_VERSION}" \
+  --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
+  .
+printf %s "$LINEAGE" > "${LAST_STATE}"
+date > .jenkins_did_docker_build
+'''
+            }
+        }
+        stage('Push to registry') {
+            when { expression { return fileExists('.jenkins_did_docker_build') } }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'HUBU', passwordVariable: 'HUBP')]) {
+                    sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+: "${LINEAGE?}"
+: "${SOFTWARE_VERSION?}"
+echo "$HUBP" | docker login -u "$HUBU" --password-stdin
+docker image push "${IMAGE_REPO}:${LINEAGE}"
+docker image push "${IMAGE_REPO}:${SOFTWARE_VERSION}"
+docker logout || true
+'''
+                }
+            }
+        }
+    }
+}

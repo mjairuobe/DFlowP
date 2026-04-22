@@ -1,0 +1,30 @@
+---
+description: DFlowP – entkoppelte CI/CD (Jenkins + Docker) ohne zentrale modules.json
+globs: Jenkinsfile*, Dockerfile*, docker-compose*.yml, .jenkins*
+alwaysApply: false
+---
+
+# Entkoppelte Pipelines (DFlowP)
+
+- **Eine entkoppelte Release-Pipeline** pro wichtigem Dienst/Artefakt, jeweils **eigene Dateien im Repo-Root**:
+  - `Jenkinsfile.<name>` (Declarative Groovy) – **kein** zentrales `Jenkinsfile` für alle.
+  - `Dockerfile.<name>` bzw. `Dockerfile.<dienst>_<suffix>` (statisch, Build-Kontext in der Regel **Repository-Root**).
+- **Kein** `modules.json` und **keine** `scripts/ci_*.py` für Version, Build-Plan, Docker oder Compose-Env. Build- und Skip-Entscheidungen liegen in **Pipeline-`sh` + `git` + `docker`**, nicht in Python-Hilfsskripten.
+- **Gemeinsame Regeln** (konsistente Stages in allen `Jenkinsfile.*`): `SOFTWARE_VERSION` = letztes Semver-`v*`-Tag + Commit-Anzahl ab Tag (`v<major>.<minor>.<n>`) in reiner Shell; **Image-Tags** mit **kurzer Lineage-Hash** (5 Zeichen aus Inhalten relevanter Pfade) **und** `SOFTWARE_VERSION`. Letzter erfolgreicher Lineage-Hash in einer **Workspace-Datei** `.jenkins_last_dflowp_<dienst>`.
+- **Build nur, wenn nötig**: Relevante Git-Objekte (Pfade) geändert **oder** kein lokales Image `docker image inspect` für `IMAGE_REPO:LINEAGE` **oder** erster Lauf. Sonst: **kein** `docker build`, **kein** Push; Stack-Integration in `Jenkinsfile.stack` baut/ testet dagegen bewusst vollständig.
+- **Zusätzliches** `Dockerfile.wheels` erlaubt, um Wheel-Layers/Registry-Cache abzubilden; **Dienst-Dockerfiles** enthalten für lokale `docker compose build`-Barrierefreiheit meist **eingebetteten** wheel-`AS`-Stage (kein separater Skript-Invoke).
+- **Hilfsskripte lokal** (z. B. `docker/generate_uibakery_env.sh`, `scripts/plain_env_maybe_json.py`) dürfen **für manuelle** Entwicklung bleiben; **Jenkinsfiles** sollen **keine** `scripts/`-Aufurfe für Build/Version/Deploy nutzen (Integration nutzt ggf. `jq` in `sh`).
+
+## Referenz-Dateinamen (Beispiele)
+
+| Bereich        | Jenkinsfile            | Dockerfile                      |
+|---------------|------------------------|---------------------------------|
+| API           | `Jenkinsfile.api`      | `Dockerfile.api`                |
+| Worker        | `Jenkinsfile.worker` | `Dockerfile.worker` (Image `dflowp-runtime`) |
+| EventSystem   | `Jenkinsfile.eventsystem` | `Dockerfile.eventsystem`     |
+| Event-Broker  | `Jenkinsfile.event_broker` | `Dockerfile.event_broker`  |
+| Mongo (thin)  | `Jenkinsfile.mongo`   | `Dockerfile.mongo`              |
+| Plugins       | `Jenkinsfile.plugin_*` | `Dockerfile.plugin_*`         |
+| Stack/E2E     | `Jenkinsfile.stack`   | (Compose referenziert `Dockerfile.*` oben) |
+
+Registry-Präfix: `docker.io/crawlabase/...`.

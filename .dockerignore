@@ -26,3 +26,7 @@ agent-transcripts/
 
 secrets/
 
+# Frontend deps (würden den Build-Kontext aufblähen, nichts für DFlowP-Backends-Images)
+dflowp/frontend/node_modules/
+**/node_modules/
+

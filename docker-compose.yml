@@ -3,7 +3,10 @@ name: dflowp
 
 services:
   mongo:
-    image: mongo:7
+    build:
+      context: .
+      dockerfile: Dockerfile.mongo
+    image: ${DOCKER_IMAGE_MONGO:-dflowp-mongo:local}
     container_name: dflowp-mongo
     restart: unless-stopped
     environment:
@@ -23,7 +26,7 @@ services:
     container_name: dflowp-api
     build:
       context: .
-      target: api
+      dockerfile: Dockerfile.api
     image: ${DOCKER_IMAGE_API:-dflowp-api:local}
     depends_on:
       mongo:
@@ -50,7 +53,7 @@ services:
     container_name: dflowp-worker
     build:
       context: .
-      target: runtime
+      dockerfile: Dockerfile.worker
     image: ${DOCKER_IMAGE_RUNTIME:-dflowp-runtime:local}
     depends_on:
       mongo:
@@ -84,7 +87,7 @@ services:
     container_name: dflowp-eventsystem
     build:
       context: .
-      target: eventsystem
+      dockerfile: Dockerfile.eventsystem
     image: ${DOCKER_IMAGE_EVENTSYSTEM:-dflowp-eventsystem:local}
     depends_on:
       mongo:
@@ -102,7 +105,7 @@ services:
     container_name: dflowp-event-broker
     build:
       context: .
-      target: event-broker
+      dockerfile: Dockerfile.event_broker
     image: ${DOCKER_IMAGE_EVENT_BROKER:-dflowp-event-broker:local}
     depends_on:
       mongo:
@@ -126,7 +129,7 @@ services:
     container_name: dflowp-plugin-fetchfeeditems
     build:
       context: .
-      target: plugin-fetchfeeditems
+      dockerfile: Dockerfile.plugin_fetchfeeditems
     image: ${DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS:-dflowp-plugin-fetchfeeditems:local}
     depends_on:
       mongo:
@@ -145,7 +148,7 @@ services:
     container_name: dflowp-plugin-embeddata
     build:
       context: .
-      target: plugin-embeddata
+      dockerfile: Dockerfile.plugin_embeddata
     image: ${DOCKER_IMAGE_PLUGIN_EMBEDDATA:-dflowp-plugin-embeddata:local}
     depends_on:
       mongo:
@@ -165,7 +168,7 @@ services:
     container_name: dflowp-plugin-clustering-dbscan
     build:
       context: .
-      target: plugin-clustering-dbscan
+      dockerfile: Dockerfile.plugin_clustering_dbscan
     image: ${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN:-dflowp-plugin-clustering-dbscan:local}
     depends_on:
       mongo:
@@ -184,7 +187,7 @@ services:
     container_name: dflowp-plugin-clustering-hdbscan
     build:
       context: .
-      target: plugin-clustering-hdbscan
+      dockerfile: Dockerfile.plugin_clustering_hdbscan
     image: ${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN:-dflowp-plugin-clustering-hdbscan:local}
     depends_on:
       mongo:

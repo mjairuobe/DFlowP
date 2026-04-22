@@ -1,0 +1,201 @@
+// DFlowP – vollständiger Stack (docker compose) + Pytest-Integration. Keine CI-Hilfsskripte.
+// JSON-Secrets: jq. UI-Bakery-Env: inline in sh. compose down im post.
+pipeline {
+    agent any
+    options {
+        timestamps()
+        timeout(time: 90, unit: 'MINUTES')
+    }
+    environment {
+        MONGODB_TEST_DB  = 'dflowp_test'
+    }
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+        stage('Fetch tags & SOFTWARE_VERSION') {
+            steps {
+                sh '''set -euo pipefail
+git remote get-url origin >/dev/null 2>&1 && git fetch origin --tags --force || true
+LATEST=$(git tag -l 'v[0-9]*.*.*' 2>/dev/null | sort -V | tail -1 || true)
+if [ -n "${LATEST}" ]; then
+  V=${LATEST#v}; MAJ=${V%%.*}; R1=${V#*.}; MIN=${R1%%.*}
+  BN=$(git rev-list --count --all ${LATEST}..HEAD 2>/dev/null || echo 0)
+  SOFTWARE_VERSION="v${MAJ}.${MIN}.${BN}"
+else
+  BN=$(git rev-list --all --count 2>/dev/null || echo 0)
+  SOFTWARE_VERSION="v0.1.${BN}"
+fi
+export SOFTWARE_VERSION
+echo "SOFTWARE_VERSION=$SOFTWARE_VERSION" > .jenkins_runtime.env
+cat .jenkins_runtime.env
+'''
+            }
+        }
+        stage('Compose: build (App-Services)') {
+            steps {
+                sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+docker compose -f docker-compose.yml build mongo api worker eventsystem event-broker \
+  plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
+'''
+            }
+        }
+        stage('Compose up (Mongo + App + Bakery)') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key'),
+                    string(credentialsId: 'UI_BAKERY_LICENSE_KEY', variable: 'UI_BAKERY_LICENSE_KEY')
+                ]) {
+                    sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+unwrap_one() {
+  _n="$1"; _v="$2"
+  case "${_v}" in
+  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
+        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
+        ;;
+  *) printf %s "${_v}" ;; esac
+}
+: "${UI_BAKERY_VERSION:=latest}"; : "${UI_BAKERY_PORT:=8010}"; : "${UI_BAKERY_APP_SERVER_NAME:=https://app.dflowp.online}"
+export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
+export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
+export UI_BAKERY_LICENSE_KEY=$(unwrap_one "UI_BAKERY_LICENSE_KEY" "${UI_BAKERY_LICENSE_KEY:-}")
+[ -n "${UI_BAKERY_LICENSE_KEY}" ] || { echo "Fehlend: UI_BAKERY_LICENSE_KEY" >&2; exit 1; }
+RAND() { LC_ALL=C tr -cd "A-Za-z0-9" < /dev/urandom 2>/dev/null | head -c "$1" | tr -d "\\n" || true; }
+OUT="docker/uibakery.env"
+{
+  echo "UI_BAKERY_VERSION=${UI_BAKERY_VERSION}"
+  echo "UI_BAKERY_APP_SERVER_NAME=${UI_BAKERY_APP_SERVER_NAME}"
+  echo "UI_BAKERY_PORT=${UI_BAKERY_PORT}"
+  echo "UI_BAKERY_LICENSE_KEY=${UI_BAKERY_LICENSE_KEY}"
+  echo "UI_BAKERY_JWT_SECRET=$(RAND 42)"
+  echo "UI_BAKERY_JWT_SERVICE_ACCOUNT_SECRET=$(RAND 55)"
+  echo "UI_BAKERY_JWT_REFRESH_SECRET=$(RAND 42)"
+  echo "UI_BAKERY_CREDENTIALS_SECRET=$(RAND 32)"
+  echo "UI_BAKERY_PROJECT_PRIVATE_KEY_SECRET=$(RAND 32)"
+  echo "UI_BAKERY_AUTH_DEVICE_INFO_SECRET=$(RAND 32)"
+  echo "UI_BAKERY_MFA_SECRET=$(RAND 32)"
+  echo "UI_BAKERY_INTERNAL_API_URL=http://bakery-back:8080"
+} > "$OUT"
+chmod 600 "$OUT" 2>/dev/null || true
+export SOFTWARE_VERSION
+docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml ps
+'''
+                }
+            }
+        }
+        stage('Tests: API') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
+                ]) {
+                    sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+unwrap_one() {
+  _n="$1"; _v="$2"
+  case "${_v}" in
+  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
+        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
+        ;;
+  *) printf %s "${_v}" ;; esac
+}
+export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
+export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
+docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" api \
+  pytest tests/api_test.py -v --tb=short
+'''
+                }
+            }
+        }
+        stage('Tests: Runtime/Worker') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
+                ]) {
+                    sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+unwrap_one() {
+  _n="$1"; _v="$2"
+  case "${_v}" in
+  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
+        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
+        ;;
+  *) printf %s "${_v}" ;; esac
+}
+export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
+export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
+docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" worker \
+  pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
+'''
+                }
+            }
+        }
+        stage('Tests: Plugins (Smoke)') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
+                ]) {
+                    sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+unwrap_one() {
+  _n="$1"; _v="$2"
+  case "${_v}" in
+  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
+        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
+        ;;
+  *) printf %s "${_v}" ;; esac
+}
+export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
+export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
+docker compose -f docker-compose.yml run --rm plugin-fetchfeeditems \
+  pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
+docker compose -f docker-compose.yml run --rm plugin-embeddata \
+  pytest tests/plugin_services_test.py::test_embed_plugin_info_and_health -v --tb=short
+'''
+                }
+            }
+        }
+        stage('Tests: Event broker + EventSystem') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
+                ]) {
+                    sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+unwrap_one() {
+  _n="$1"; _v="$2"
+  case "${_v}" in
+  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
+        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
+        ;;
+  *) printf %s "${_v}" ;; esac
+}
+export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
+export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
+docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" event-broker \
+  pytest tests/event_broker_test.py -v --tb=short
+docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" eventsystem \
+  pytest tests/eventsystem_test.py -k "not with_persistence" -v --tb=short
+'''
+                }
+            }
+        }
+    }
+    post {
+        always {
+            sh 'docker compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true'
+        }
+        failure { echo 'Stack-Pipeline fehlgeschlagen – Logs prüfen.' }
+        success { echo 'Stack-Pipeline OK (Build/Up/Tests).' }
+    }
+}

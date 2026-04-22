@@ -1,0 +1,25 @@
+# dflowp-event-broker. Self-contained (wheel stage inlined, core only).
+FROM python:3.11-slim-bookworm AS wheel-builder
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /build
+COPY dflowp-packages /build/dflowp-packages
+RUN python -m ensurepip --upgrade \
+    && python -m pip install --upgrade pip setuptools wheel build \
+    && python -m build /build/dflowp-packages/dflowp-core
+
+FROM python:3.11-slim-bookworm
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY --from=wheel-builder /build/dflowp-packages/dflowp-core/dist /tmp/wheels/dflowp-core
+COPY dflowp /app/dflowp
+COPY tests /app/tests
+RUN python -m ensurepip --upgrade \
+    && python -m pip install --upgrade pip \
+    && python -m pip install --no-cache-dir \
+      /tmp/wheels/dflowp-core/dflowp_core-*.whl \
+      "httpx>=0.26.0" \
+      "pytest>=7.4.0" \
+      "pytest-asyncio>=0.23.0" \
+      "pytest-cov>=4.1.0"
+CMD ["python", "-m", "dflowp.event_broker.app"]
