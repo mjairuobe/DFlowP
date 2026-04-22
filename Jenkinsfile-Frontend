@@ -17,7 +17,7 @@ pipeline {
                 }
             }
             steps {
-                // Vite bakt VITE_* nur beim `vite build` in den statischen Bundle ein; Laufzeit-`docker -e` ersetzt das nicht.
+                // VITE_*: Werte in dflowp/frontend/.env; Vite lädt sie beim `npm run build` (statischer Bundle, kein docker -e Ersatz).
                 sh '''
                     set -eux
                     node -v
@@ -27,8 +27,6 @@ pipeline {
                     pnpm -v
                     cd dflowp/frontend
                     npm ci
-                    export VITE_DFLOWP_API_BASE_URL=https://api.dflowp.online
-                    export VITE_ORDERS_API_BASE_URL=https://api.finefoods.refine.dev
                     npm run build
                 '''
             }

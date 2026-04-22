@@ -27,6 +27,7 @@ htmlcov/
 
 # Environment
 .env
+!dflowp/frontend/.env
 .env.local
 .jenkins_runtime.env
 .jenkins_skip_pipeline
