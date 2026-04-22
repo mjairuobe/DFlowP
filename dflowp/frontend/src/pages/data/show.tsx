@@ -16,7 +16,6 @@ export const DataShow = () => {
   const t = useTranslate();
   const { id: routeId } = useParams<{ id: string }>();
   const { query, result: doc } = useShow<BaseRecord, HttpError>({
-    dataProviderName: "dflowp",
     errorNotification: false,
   });
 

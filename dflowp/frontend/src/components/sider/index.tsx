@@ -21,16 +21,14 @@ import ListItemText from "@mui/material/ListItemText";
 import Tooltip from "@mui/material/Tooltip";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
-import ShoppingBagOutlinedIcon from "@mui/icons-material/ShoppingBagOutlined";
 import StorageOutlinedIcon from "@mui/icons-material/StorageOutlined";
 import Logout from "@mui/icons-material/Logout";
 import ChevronLeft from "@mui/icons-material/ChevronLeft";
 
-const ordersPath = "/orders";
 const dataPath = "/data";
 
 /**
- * Kompakte Sidenav: Datenobjekte (DFlowP), Bestellungen (Finefoods), Abmelden.
+ * Kompakte Sidenav: Datenobjekte (DFlowP), Abmelden.
  */
 export const MinimalSider: React.FC<RefineThemedLayoutSiderProps> = ({
   Title: TitleFromProps,
@@ -56,9 +54,6 @@ export const MinimalSider: React.FC<RefineThemedLayoutSiderProps> = ({
   const { mutate: mutateLogout } = useLogout();
 
   const RenderToTitle = TitleFromProps ?? DefaultTitle;
-
-  const ordersSelected =
-    pathname === ordersPath || pathname.startsWith(`${ordersPath}/`);
 
   const dataSelected = pathname === dataPath || pathname.startsWith(`${dataPath}/`);
 
@@ -124,50 +119,6 @@ export const MinimalSider: React.FC<RefineThemedLayoutSiderProps> = ({
     </Tooltip>
   );
 
-  const ordersItem = (
-    <Tooltip
-      title={t("orders.orders", "Orders")}
-      placement="right"
-      disableHoverListener={!siderCollapsed}
-      arrow
-    >
-      <ListItemButton
-        component={Link as React.ElementType}
-        to={ordersPath}
-        selected={ordersSelected}
-        style={linkStyle}
-        onClick={() => {
-          setMobileSiderOpen(false);
-        }}
-        sx={{
-          pl: 2,
-          py: 1,
-          justifyContent: "center",
-          color: ordersSelected ? "primary.main" : "text.primary",
-        }}
-      >
-        <ListItemIcon
-          sx={{
-            justifyContent: "center",
-            transition: "margin-right 0.3s",
-            marginRight: siderCollapsed ? "0px" : "12px",
-            minWidth: "24px",
-            color: "currentColor",
-          }}
-        >
-          <ShoppingBagOutlinedIcon />
-        </ListItemIcon>
-        <ListItemText
-          primary={t("orders.orders", "Orders")}
-          primaryTypographyProps={{
-            noWrap: true,
-            fontSize: "14px",
-          }}
-        />
-      </ListItemButton>
-    </Tooltip>
-  );
-
   const logout = isExistAuthentication && (
     <Tooltip
       title={t("buttons.logout", "Logout")}
@@ -215,7 +166,6 @@ export const MinimalSider: React.FC<RefineThemedLayoutSiderProps> = ({
       }}
     >
       {dataItem}
-      {ordersItem}
       {logout}
     </List>
   );

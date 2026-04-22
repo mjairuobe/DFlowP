@@ -25,7 +25,6 @@ export const DataCreate = () => {
     Record<string, unknown>
   >({
     resource: "data",
-    dataProviderName: "dflowp",
     successNotification: false,
     errorNotification: false,
   });

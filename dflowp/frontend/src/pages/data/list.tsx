@@ -17,7 +17,6 @@ export const DataList = () => {
 
   const { dataGridProps } = useDataGrid<IDataListItem, HttpError>({
     resource: "data",
-    dataProviderName: "dflowp",
     pagination: {
       pageSize: 20,
     },

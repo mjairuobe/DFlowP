@@ -11,7 +11,7 @@ const unsupported: HttpError = {
 
 /**
  * Data-Provider ausschließlich für die Ressource `data` → DFlowP `GET/POST /api/v1/data`.
- * Multi-`dataProvider`: in `<Refine>` mit `dataProviderName: "dflowp"` an die Ressource hängen.
+ * Als einziger `dataProvider` in `<Refine>` für die Ressource `data` nutzen.
  */
 export const createDflowpDataDataProvider = (
   apiBase: string,
