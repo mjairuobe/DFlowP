@@ -43,6 +43,15 @@ echo "SOFTWARE_VERSION=$SOFTWARE_VERSION tag=$LINEAGE"
 '''
             }
         }
+        stage('Docker Hub login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'HUBU', passwordVariable: 'HUBP')]) {
+                    sh '''set -euo pipefail
+echo "$HUBP" | docker login -u "$HUBU" --password-stdin docker.io
+'''
+                }
+            }
+        }
         stage('Docker build (if needed)') {
             steps {
                 sh '''set -euo pipefail
@@ -68,17 +77,14 @@ date > .jenkins_did_docker_build
         stage('Push to registry') {
             when { expression { return fileExists('.jenkins_did_docker_build') } }
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'HUBU', passwordVariable: 'HUBP')]) {
-                    sh '''set -euo pipefail
+                sh '''set -euo pipefail
 . ./.jenkins_runtime.env
 : "${LINEAGE?}"
 : "${SOFTWARE_VERSION?}"
-echo "$HUBP" | docker login -u "$HUBU" --password-stdin
 docker image push "${IMAGE_REPO}:${LINEAGE}"
 docker image push "${IMAGE_REPO}:${SOFTWARE_VERSION}"
-docker logout || true
+docker logout docker.io 2>/dev/null || true
 '''
-                }
             }
         }
     }
