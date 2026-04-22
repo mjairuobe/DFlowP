@@ -13,7 +13,7 @@ alwaysApply: false
 - **Gemeinsame Regeln** (konsistente Stages in allen `Jenkinsfile.*`): `SOFTWARE_VERSION` = letztes Semver-`v*`-Tag + Commit-Anzahl ab Tag (`v<major>.<minor>.<n>`) in reiner Shell; **Image-Tags** mit **kurzer Lineage-Hash** (5 Zeichen aus Inhalten relevanter Pfade) **und** `SOFTWARE_VERSION`. Letzter erfolgreicher Lineage-Hash in einer **Workspace-Datei** `.jenkins_last_dflowp_<dienst>`.
 - **Build nur, wenn nötig**: Relevante Git-Objekte (Pfade) geändert **oder** kein lokales Image `docker image inspect` für `IMAGE_REPO:LINEAGE` **oder** erster Lauf. Sonst: **kein** `docker build`, **kein** Push; Stack-Integration in `Jenkinsfile.stack` baut/ testet dagegen bewusst vollständig.
 - **Zusätzliches** `Dockerfile.wheels` erlaubt, um Wheel-Layers/Registry-Cache abzubilden; **Dienst-Dockerfiles** enthalten für lokale `docker compose build`-Barrierefreiheit meist **eingebetteten** wheel-`AS`-Stage (kein separater Skript-Invoke).
-- **Hilfsskripte lokal** (z. B. `docker/generate_uibakery_env.sh`, `scripts/plain_env_maybe_json.py`) dürfen **für manuelle** Entwicklung bleiben; **Jenkinsfiles** sollen **keine** `scripts/`-Aufurfe für Build/Version/Deploy nutzen (Integration nutzt ggf. `jq` in `sh`).
+- **Hilfsskripte lokal** (z. B. `scripts/plain_env_maybe_json.py`) dürfen **für manuelle** Entwicklung bleiben; **Jenkinsfiles** sollen **keine** `scripts/`-Aufrufe für Build/Version/Deploy nutzen (Integration nutzt ggf. `jq` in `sh`).
 
 ## Referenz-Dateinamen (Beispiele)
 
