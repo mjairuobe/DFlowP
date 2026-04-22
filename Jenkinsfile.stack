@@ -1,4 +1,4 @@
-// DFlowP – vollständiger Stack (docker compose) + Pytest-Integration. Keine CI-Hilfsskripte.
+// DFlowP – vollständiger Stack (docker-compose v1) + Pytest-Integration. Keine CI-Hilfsskripte.
 // JSON-Secrets: jq. UI-Bakery-Env: inline in sh. compose down im post.
 pipeline {
     agent any
@@ -30,11 +30,20 @@ cat .jenkins_runtime.env
 '''
             }
         }
+        stage('Docker Hub login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'HUBU', passwordVariable: 'HUBP')]) {
+                    sh '''set -euo pipefail
+echo "$HUBP" | docker login -u "$HUBU" --password-stdin docker.io
+'''
+                }
+            }
+        }
         stage('Compose: build (App-Services)') {
             steps {
                 sh '''set -euo pipefail
 . ./.jenkins_runtime.env
-docker compose -f docker-compose.yml build mongo api worker eventsystem event-broker \
+docker-compose -f docker-compose.yml build mongo api worker eventsystem event-broker \
   plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
 '''
             }
@@ -80,8 +89,8 @@ OUT="docker/uibakery.env"
 } > "$OUT"
 chmod 600 "$OUT" 2>/dev/null || true
 export SOFTWARE_VERSION
-docker compose -f docker-compose.yml up -d
-docker compose -f docker-compose.yml ps
+docker-compose -f docker-compose.yml up -d
+docker-compose -f docker-compose.yml ps
 '''
                 }
             }
@@ -105,7 +114,7 @@ unwrap_one() {
 }
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" api \
+docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" api \
   pytest tests/api_test.py -v --tb=short
 '''
                 }
@@ -130,7 +139,7 @@ unwrap_one() {
 }
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" worker \
+docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" worker \
   pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
 '''
                 }
@@ -155,9 +164,9 @@ unwrap_one() {
 }
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-docker compose -f docker-compose.yml run --rm plugin-fetchfeeditems \
+docker-compose -f docker-compose.yml run --rm plugin-fetchfeeditems \
   pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
-docker compose -f docker-compose.yml run --rm plugin-embeddata \
+docker-compose -f docker-compose.yml run --rm plugin-embeddata \
   pytest tests/plugin_services_test.py::test_embed_plugin_info_and_health -v --tb=short
 '''
                 }
@@ -182,9 +191,9 @@ unwrap_one() {
 }
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" event-broker \
+docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" event-broker \
   pytest tests/event_broker_test.py -v --tb=short
-docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" eventsystem \
+docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" eventsystem \
   pytest tests/eventsystem_test.py -k "not with_persistence" -v --tb=short
 '''
                 }
@@ -193,7 +202,8 @@ docker compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_
     }
     post {
         always {
-            sh 'docker compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true'
+            sh '''docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
+docker logout docker.io 2>/dev/null || true'''
         }
         failure { echo 'Stack-Pipeline fehlgeschlagen – Logs prüfen.' }
         success { echo 'Stack-Pipeline OK (Build/Up/Tests).' }
