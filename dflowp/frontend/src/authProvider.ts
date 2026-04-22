@@ -1,34 +1,28 @@
 import type { AuthProvider } from "@refinedev/core";
-import { disableAutoLogin, enableAutoLogin } from "./hooks";
+import {
+  clearDflowpApiKeyCookie,
+  hasDflowpApiKeyCookie,
+  setDflowpApiKeyCookie,
+} from "./dflowpApiKeyCookie";
 
-export const TOKEN_KEY = "refine-auth";
+/**
+ * Test-Attrappe: kein Abgleich mit Server-Hashed Admin-Credentials. Login prüft das
+ * Formular nicht; es setzt nur einen Cookie mit dem in Vite exponierten API-Key
+ * (Testkonfiguration, siehe VITE_DFLOWP_API_KEY).
+ */
+const performTestLogin = async () => {
+  const apiKey = import.meta.env.VITE_DFLOWP_API_KEY ?? "";
+  setDflowpApiKeyCookie(apiKey);
+  return {
+    success: true,
+    redirectTo: "/",
+  };
+};
 
 export const authProvider: AuthProvider = {
-  login: async ({ email, password }) => {
-    enableAutoLogin();
-    localStorage.setItem(TOKEN_KEY, `${email}-${password}`);
-    return {
-      success: true,
-      redirectTo: "/",
-    };
-  },
-  register: async ({ email, password }) => {
-    try {
-      await authProvider.login({ email, password });
-      return {
-        success: true,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: {
-          message: "Register failed",
-          name: "Invalid email or password",
-        },
-      };
-    }
-  },
-  updatePassword: async (params) => {
+  login: performTestLogin,
+  register: performTestLogin,
+  updatePassword: async () => {
     return {
       success: true,
     };
@@ -39,8 +33,7 @@ export const authProvider: AuthProvider = {
     };
   },
   logout: async () => {
-    disableAutoLogin();
-    localStorage.removeItem(TOKEN_KEY);
+    clearDflowpApiKeyCookie();
     return {
       success: true,
       redirectTo: "/login",
@@ -56,8 +49,7 @@ export const authProvider: AuthProvider = {
     return { error };
   },
   check: async () => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
+    if (hasDflowpApiKeyCookie()) {
       return {
         authenticated: true,
       };
@@ -67,7 +59,7 @@ export const authProvider: AuthProvider = {
       authenticated: false,
       error: {
         message: "Check failed",
-        name: "Token not found",
+        name: "API-Key-Cookie not found",
       },
       logout: true,
       redirectTo: "/login",
@@ -75,14 +67,13 @@ export const authProvider: AuthProvider = {
   },
   getPermissions: async () => null,
   getIdentity: async () => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
+    if (!hasDflowpApiKeyCookie()) {
       return null;
     }
 
     return {
       id: 1,
-      name: "James Sullivan",
+      name: "Test",
       avatar: "https://i.pravatar.cc/150",
     };
   },

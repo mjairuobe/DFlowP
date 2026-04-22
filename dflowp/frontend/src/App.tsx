@@ -9,6 +9,7 @@ import {
 import GlobalStyles from "@mui/material/GlobalStyles";
 import CssBaseline from "@mui/material/CssBaseline";
 import dataProvider from "@refinedev/simple-rest";
+import { dflowpHttpClient } from "./dflowpHttpClient";
 import routerProvider, {
   CatchAllNavigate,
   NavigateToResource,
@@ -36,25 +37,17 @@ import { ProductEdit, ProductList, ProductCreate } from "./pages/products";
 import { CategoryList } from "./pages/categories";
 import { ColorModeContextProvider } from "./contexts";
 import { Header, Title } from "./components";
-import { useAutoLoginForDemo } from "./hooks";
-
-const API_URL = "https://api.finefoods.refine.dev";
+// Test/Build: Basis-URL der REST-API; DFlowP z. B. in .env via VITE_DFLOWP_API_BASE_URL.
+const API_URL =
+  import.meta.env.VITE_DFLOWP_API_BASE_URL || "https://api.finefoods.refine.dev";
 
 const App: React.FC = () => {
-  // This hook is used to automatically login the user.
-  // We use this hook to skip the login page and demonstrate the application more quickly.
-  const { loading } = useAutoLoginForDemo();
-
   const { t, i18n } = useTranslation();
   const i18nProvider = {
     translate: (key: string, params: object) => t(key, params),
     changeLocale: (lang: string) => i18n.changeLanguage(lang),
     getLocale: () => i18n.language,
   };
-
-  if (loading) {
-    return null;
-  }
 
   return (
     <BrowserRouter>
@@ -66,7 +59,7 @@ const App: React.FC = () => {
           <RefineSnackbarProvider>
             <Refine
               routerProvider={routerProvider}
-              dataProvider={dataProvider(API_URL)}
+              dataProvider={dataProvider(API_URL, dflowpHttpClient)}
               authProvider={authProvider}
               i18nProvider={i18nProvider}
               options={{
