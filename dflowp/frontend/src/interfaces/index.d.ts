@@ -1,24 +1,3 @@
-export interface IOrderChart {
-  count: number;
-  status:
-    | "waiting"
-    | "ready"
-    | "on the way"
-    | "delivered"
-    | "could not be delivered";
-}
-
-export interface IOrderTotalCount {
-  total: number;
-  totalDelivered: number;
-}
-
-export interface ISalesChart {
-  date: string;
-  title: "Order Count" | "Order Amount";
-  value: number;
-}
-
 export interface IOrderStatus {
   id: number;
   text: "Pending" | "Ready" | "On The Way" | "Delivered" | "Cancelled";
@@ -114,13 +93,6 @@ export interface IOrderFilterVariables {
   status?: string[];
 }
 
-export interface IUserFilterVariables {
-  q: string;
-  status: boolean;
-  gender: string;
-  isActive: boolean | string;
-}
-
 export interface ICourierStatus {
   id: number;
   text: "Available" | "Offline" | "On delivery";
@@ -141,22 +113,6 @@ export interface ICourier {
   store: IStore;
   status: ICourierStatus;
   vehicle: IVehicle;
-}
-
-export interface IReview {
-  id: number;
-  order: IOrder;
-  user: IUser;
-  star: number;
-  createDate: string;
-  status: "pending" | "approved" | "rejected";
-  comment: string[];
-}
-
-export interface ITrendingProducts {
-  id: number;
-  product: IProduct;
-  orderCount: number;
 }
 
 export type IVehicle = {
