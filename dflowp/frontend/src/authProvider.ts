@@ -6,13 +6,29 @@ import {
 } from "./dflowpApiKeyCookie";
 
 /**
- * Test-Attrappe: kein Abgleich mit Server-Hashed Admin-Credentials. Login prüft das
- * Formular nicht; es setzt nur einen Cookie mit dem in Vite exponierten API-Key
- * (Testkonfiguration, siehe VITE_DFLOWP_API_KEY).
+ * Test-Attrappe: kein Abgleich mit Server-Credentials. Der im Refine-Login
+ * eingegebene Wert im Passwortfeld ist der DFlowP-API-Key; derselbe Wert landet
+ * im Cookie `dflowp-api-key` und wird als `X-API-Key` an die API gesendet.
  */
-const performTestLogin = async () => {
-  const apiKey = import.meta.env.VITE_DFLOWP_API_KEY ?? "";
-  setDflowpApiKeyCookie(apiKey);
+const performDflowpTestAuth = async (params: {
+  password?: unknown;
+}): Promise<{
+  success: boolean;
+  redirectTo?: string;
+  error?: { name: string; message: string };
+}> => {
+  const raw = params?.password;
+  const password = typeof raw === "string" ? raw.trim() : "";
+  if (!password) {
+    return {
+      success: false,
+      error: {
+        name: "ValidationError",
+        message: "Bitte API-Key im Passwortfeld eingeben.",
+      },
+    };
+  }
+  setDflowpApiKeyCookie(password);
   return {
     success: true,
     redirectTo: "/",
@@ -20,8 +36,8 @@ const performTestLogin = async () => {
 };
 
 export const authProvider: AuthProvider = {
-  login: performTestLogin,
-  register: performTestLogin,
+  login: (params) => performDflowpTestAuth(params),
+  register: (params) => performDflowpTestAuth(params),
   updatePassword: async () => {
     return {
       success: true,

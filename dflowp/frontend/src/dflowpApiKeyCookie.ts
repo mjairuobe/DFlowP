@@ -1,7 +1,7 @@
 /**
- * Testkonfiguration: Der Cookie-Wert entspricht dem API-Key, den DFlowP per
- * `X-API-Key` erwartet; der String kommt aus Vite (`VITE_DFLOWP_API_KEY`), nicht aus
- * Formular- oder Server-Credentials-Store.
+ * Testkonfiguration: Der Cookie-Wert ist der DFlowP-API-Key (dasselbe, was die API
+ * per `X-API-Key` erwartet). Eingabe im Refine-Login: Passwortfeld → Cookie
+ * `dflowp-api-key` → Header für HTTP-Requests.
  */
 export const DFLOWP_API_KEY_COOKIE = "dflowp-api-key";
 
@@ -47,7 +47,7 @@ export function hasDflowpSessionCookie(): boolean {
   return getDflowpApiKeyRawFromCookie() !== undefined;
 }
 
-/** Setzt den Cookie; Wert in der Regel aus `import.meta.env.VITE_DFLOWP_API_KEY` (Test-Bundle). */
+/** Setzt den Cookie (Testflow: Wert = API-Key aus dem Refine-Login-Passwortfeld). */
 export function setDflowpApiKeyCookie(value: string): void {
   if (typeof document === "undefined") {
     return;
