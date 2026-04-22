@@ -310,6 +310,36 @@
       "cancelled": "Abgesagt"
     }
   },
+  "data": {
+    "nav": "Datenobjekte",
+    "titles": {
+      "list": "Datenobjekte",
+      "show": "Datenobjekt",
+      "create": "Datenobjekt anlegen"
+    },
+    "fields": {
+      "timestamp": "Zeitstempel",
+      "objectId": "Datenobjekt-ID",
+      "docType": "Dokumententyp"
+    },
+    "actions": {
+      "create": "Anlegen"
+    },
+    "create": {
+      "saved": "Gespeichert.",
+      "openingDetail": "Objekt {{id}}",
+      "hint": "Erwartet wird ein JSON-Objekt mit mindestens \"content\"; optional \"id\" und \"type\" (Standard \"input\")."
+    },
+    "errors": {
+      "jsonInvalid": "Ungültiges JSON.",
+      "bodyMustBeObject": "Der Body muss ein JSON-Objekt sein.",
+      "contentRequired": "Feld \"content\" ist Pflicht (DataItemCreateRequest).",
+      "contentMustBeObject": "\"content\" muss ein JSON-Objekt sein."
+    },
+    "hints": {
+      "refreshing": "Aktualisiere …"
+    }
+  },
   "orders": {
     "orders": "Bestellungen",
     "order": "Bestellung",

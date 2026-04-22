@@ -7,8 +7,9 @@ import {
 } from "@refinedev/mui";
 import GlobalStyles from "@mui/material/GlobalStyles";
 import CssBaseline from "@mui/material/CssBaseline";
-import dataProvider from "@refinedev/simple-rest";
+import simpleRest from "@refinedev/simple-rest";
 import { dflowpHttpClient } from "./dflowpHttpClient";
+import { createDflowpDataDataProvider } from "./dflowpDataDataProvider";
 import routerProvider, {
   CatchAllNavigate,
   NavigateToResource,
@@ -18,17 +19,23 @@ import routerProvider, {
 import { BrowserRouter, Routes, Route, Outlet } from "react-router";
 import { useTranslation } from "react-i18next";
 import ShoppingBagOutlinedIcon from "@mui/icons-material/ShoppingBagOutlined";
+import StorageOutlinedIcon from "@mui/icons-material/StorageOutlined";
 import Box from "@mui/material/Box";
 import { authProvider } from "./authProvider";
 import { DashboardPage } from "./pages/dashboard";
 import { OrderList, OrderShow } from "./pages/orders";
+import { DataCreate, DataList, DataShow } from "./pages/data";
 import { AuthPage } from "./pages/auth";
 import { ColorModeContextProvider } from "./contexts";
 import { Header, Title } from "./components";
 import { MinimalSider } from "./components/sider";
 
-const API_URL =
-  import.meta.env.VITE_DFLOWP_API_BASE_URL || "https://api.finefoods.refine.dev";
+const ORDERS_API_URL =
+  import.meta.env.VITE_ORDERS_API_BASE_URL || "https://api.finefoods.refine.dev";
+const DFLOWP_API_BASE_URL = import.meta.env.VITE_DFLOWP_API_BASE_URL || "";
+
+const ordersDataProvider = simpleRest(ORDERS_API_URL, dflowpHttpClient);
+const dflowpDataDataProvider = createDflowpDataDataProvider(DFLOWP_API_BASE_URL, dflowpHttpClient);
 
 const App: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -47,7 +54,10 @@ const App: React.FC = () => {
         <RefineSnackbarProvider>
           <Refine
             routerProvider={routerProvider}
-            dataProvider={dataProvider(API_URL, dflowpHttpClient)}
+            dataProvider={{
+              default: ordersDataProvider,
+              dflowp: dflowpDataDataProvider,
+            }}
             authProvider={authProvider}
             i18nProvider={i18nProvider}
             options={{
@@ -71,6 +81,16 @@ const App: React.FC = () => {
                 show: "/orders/:id",
                 meta: {
                   icon: <ShoppingBagOutlinedIcon />,
+                },
+              },
+              {
+                name: "data",
+                list: "/data",
+                show: "/data/:id",
+                create: "/data/new",
+                meta: {
+                  dataProviderName: "dflowp",
+                  icon: <StorageOutlinedIcon />,
                 },
               },
             ]}
@@ -105,6 +125,12 @@ const App: React.FC = () => {
                 <Route path="/orders">
                   <Route index element={<OrderList />} />
                   <Route path=":id" element={<OrderShow />} />
+                </Route>
+
+                <Route path="/data">
+                  <Route index element={<DataList />} />
+                  <Route path="new" element={<DataCreate />} />
+                  <Route path=":id" element={<DataShow />} />
                 </Route>
               </Route>
 

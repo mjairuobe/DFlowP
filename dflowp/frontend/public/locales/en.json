@@ -311,6 +311,36 @@
       "Cancelled": "Cancelled"
     }
   },
+  "data": {
+    "nav": "Data items",
+    "titles": {
+      "list": "Data items",
+      "show": "Data item",
+      "create": "Create data item"
+    },
+    "fields": {
+      "timestamp": "Timestamp",
+      "objectId": "Data object ID",
+      "docType": "Document type"
+    },
+    "actions": {
+      "create": "Create"
+    },
+    "create": {
+      "saved": "Saved.",
+      "openingDetail": "Object {{id}}",
+      "hint": "JSON object with at least \"content\"; optional \"id\" and \"type\" (default \"input\")."
+    },
+    "errors": {
+      "jsonInvalid": "Invalid JSON.",
+      "bodyMustBeObject": "The request body must be a JSON object.",
+      "contentRequired": "The \"content\" field is required (DataItemCreateRequest).",
+      "contentMustBeObject": "\"content\" must be a JSON object."
+    },
+    "hints": {
+      "refreshing": "Refreshing…"
+    }
+  },
   "orders": {
     "orders": "Orders",
     "order": "Order",

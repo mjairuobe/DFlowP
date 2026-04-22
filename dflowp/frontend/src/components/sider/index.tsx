@@ -22,13 +22,15 @@ import Tooltip from "@mui/material/Tooltip";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import ShoppingBagOutlinedIcon from "@mui/icons-material/ShoppingBagOutlined";
+import StorageOutlinedIcon from "@mui/icons-material/StorageOutlined";
 import Logout from "@mui/icons-material/Logout";
 import ChevronLeft from "@mui/icons-material/ChevronLeft";
 
 const ordersPath = "/orders";
+const dataPath = "/data";
 
 /**
- * Sidenav with only “Bestellungen” and “Abmelden” (no resource-driven menu list).
+ * Kompakte Sidenav: Datenobjekte (DFlowP), Bestellungen (Finefoods), Abmelden.
  */
 export const MinimalSider: React.FC<RefineThemedLayoutSiderProps> = ({
   Title: TitleFromProps,
@@ -58,6 +60,8 @@ export const MinimalSider: React.FC<RefineThemedLayoutSiderProps> = ({
   const ordersSelected =
     pathname === ordersPath || pathname.startsWith(`${ordersPath}/`);
 
+  const dataSelected = pathname === dataPath || pathname.startsWith(`${dataPath}/`);
+
   const linkStyle: CSSProperties = {};
   const handleLogout = () => {
     if (warnWhen) {
@@ -75,6 +79,50 @@ export const MinimalSider: React.FC<RefineThemedLayoutSiderProps> = ({
       mutateLogout();
     }
   };
+
+  const dataItem = (
+    <Tooltip
+      title={t("data.nav", "Datenobjekte")}
+      placement="right"
+      disableHoverListener={!siderCollapsed}
+      arrow
+    >
+      <ListItemButton
+        component={Link as React.ElementType}
+        to={dataPath}
+        selected={dataSelected}
+        style={linkStyle}
+        onClick={() => {
+          setMobileSiderOpen(false);
+        }}
+        sx={{
+          pl: 2,
+          py: 1,
+          justifyContent: "center",
+          color: dataSelected ? "primary.main" : "text.primary",
+        }}
+      >
+        <ListItemIcon
+          sx={{
+            justifyContent: "center",
+            transition: "margin-right 0.3s",
+            marginRight: siderCollapsed ? "0px" : "12px",
+            minWidth: "24px",
+            color: "currentColor",
+          }}
+        >
+          <StorageOutlinedIcon />
+        </ListItemIcon>
+        <ListItemText
+          primary={t("data.nav", "Datenobjekte")}
+          primaryTypographyProps={{
+            noWrap: true,
+            fontSize: "14px",
+          }}
+        />
+      </ListItemButton>
+    </Tooltip>
+  );
 
   const ordersItem = (
     <Tooltip
@@ -166,6 +214,7 @@ export const MinimalSider: React.FC<RefineThemedLayoutSiderProps> = ({
         flexDirection: "column",
       }}
     >
+      {dataItem}
       {ordersItem}
       {logout}
     </List>
