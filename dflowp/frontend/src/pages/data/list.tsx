@@ -26,8 +26,7 @@ export const DataList = () => {
     () => [
       {
         field: "timestamp_ms",
-        flex: 60,
-        minWidth: 200,
+        width: 240,
         headerName: t("data.fields.timestamp", "Zeitstempel"),
         display: "flex",
         sortable: false,
@@ -42,8 +41,7 @@ export const DataList = () => {
       },
       {
         field: "id",
-        flex: 75,
-        minWidth: 180,
+        width: 300,
         headerName: t("data.fields.objectId", "Datenobjekt-ID"),
         display: "flex",
         sortable: false,
