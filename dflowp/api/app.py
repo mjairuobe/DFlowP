@@ -8,6 +8,7 @@ from typing import Annotated, AsyncGenerator
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 
 from dflowp.api.auth import require_api_key
+from dflowp.api.cors import add_cors_middleware
 from dflowp.api.process_persist import (
     insert_data_item,
     insert_dataset,
@@ -54,6 +55,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(title="DFlowP API", version="1.0.0", lifespan=lifespan)
+add_cors_middleware(app)
 
 
 def _pagination_params(
