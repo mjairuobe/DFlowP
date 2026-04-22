@@ -1,5 +1,5 @@
 // DFlowP – vollständiger Stack (docker-compose v1) + Pytest-Integration. Keine CI-Hilfsskripte.
-// JSON-Secrets: jq. UI-Bakery-Env: inline in sh. compose down im post.
+// docker/uibakery.env vor build/up erzeugen (compose env_file). JSON-Secrets: jq. Post: compose down + docker logout.
 pipeline {
     agent any
     options {
@@ -39,23 +39,9 @@ echo "$HUBP" | docker login -u "$HUBU" --password-stdin docker.io
                 }
             }
         }
-        stage('Compose: build (App-Services)') {
+        stage('Prepare UI Bakery env file') {
             steps {
-                sh '''set -euo pipefail
-. ./.jenkins_runtime.env
-docker-compose -f docker-compose.yml build mongo api worker eventsystem event-broker \
-  plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
-'''
-            }
-        }
-        stage('Compose up (Mongo + App + Bakery)') {
-            steps {
-                withCredentials([
-                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
-                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
-                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key'),
-                    string(credentialsId: 'UI_BAKERY_LICENSE_KEY', variable: 'UI_BAKERY_LICENSE_KEY')
-                ]) {
+                withCredentials([string(credentialsId: 'UI_BAKERY_LICENSE_KEY', variable: 'UI_BAKERY_LICENSE_KEY')]) {
                     sh '''set -euo pipefail
 . ./.jenkins_runtime.env
 unwrap_one() {
@@ -67,8 +53,6 @@ unwrap_one() {
   *) printf %s "${_v}" ;; esac
 }
 : "${UI_BAKERY_VERSION:=latest}"; : "${UI_BAKERY_PORT:=8010}"; : "${UI_BAKERY_APP_SERVER_NAME:=https://app.dflowp.online}"
-export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
-export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
 export UI_BAKERY_LICENSE_KEY=$(unwrap_one "UI_BAKERY_LICENSE_KEY" "${UI_BAKERY_LICENSE_KEY:-}")
 [ -n "${UI_BAKERY_LICENSE_KEY}" ] || { echo "Fehlend: UI_BAKERY_LICENSE_KEY" >&2; exit 1; }
 RAND() { LC_ALL=C tr -cd "A-Za-z0-9" < /dev/urandom 2>/dev/null | head -c "$1" | tr -d "\\n" || true; }
@@ -88,6 +72,40 @@ OUT="docker/uibakery.env"
   echo "UI_BAKERY_INTERNAL_API_URL=http://bakery-back:8080"
 } > "$OUT"
 chmod 600 "$OUT" 2>/dev/null || true
+echo "Bereit: $OUT"
+'''
+                }
+            }
+        }
+        stage('Compose: build (App-Services)') {
+            steps {
+                sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+docker-compose -f docker-compose.yml build mongo api worker eventsystem event-broker \
+  plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
+'''
+            }
+        }
+        stage('Compose up (Mongo + App + Bakery)') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
+                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
+                ]) {
+                    sh '''set -euo pipefail
+. ./.jenkins_runtime.env
+[ -f docker/uibakery.env ] || { echo "Fehlend: docker/uibakery.env (Stage Prepare UI Bakery env file?)" >&2; exit 1; }
+unwrap_one() {
+  _n="$1"; _v="$2"
+  case "${_v}" in
+  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
+        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
+        ;;
+  *) printf %s "${_v}" ;; esac
+}
+export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
+export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
 export SOFTWARE_VERSION
 docker-compose -f docker-compose.yml up -d
 docker-compose -f docker-compose.yml ps
