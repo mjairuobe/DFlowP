@@ -1,0 +1,190 @@
+{
+  "pages": {
+    "login": {
+      "title": "Melden Sie sich bei Ihrem Konto an",
+      "signin": "Einloggen",
+      "signup": "Anmelden",
+      "divider": "oder",
+      "fields": {
+        "email": "Email",
+        "password": "Passwort"
+      },
+      "errors": {
+        "validEmail": "Ungültige E-Mail-Adresse"
+      },
+      "buttons": {
+        "submit": "Anmeldung",
+        "forgotPassword": "Passwort vergessen?",
+        "noAccount": "Sie haben kein Konto?",
+        "rememberMe": "Erinnere dich an mich"
+      }
+    },
+    "forgotPassword": {
+      "title": "Haben Sie Ihr Passwort vergessen?",
+      "fields": {
+        "email": "Email"
+      },
+      "errors": {
+        "validEmail": "Ungültige E-Mail-Adresse"
+      },
+      "buttons": {
+        "submit": "Anweisungen zum Zurücksetzen senden"
+      }
+    },
+    "register": {
+      "title": "Registrieren Sie sich für Ihr Konto",
+      "fields": {
+        "email": "Email",
+        "password": "Passwort"
+      },
+      "errors": {
+        "validEmail": "Ungültige E-Mail-Adresse"
+      },
+      "buttons": {
+        "submit": "Registrieren",
+        "haveAccount": "Ein Konto haben?"
+      }
+    },
+    "updatePassword": {
+      "title": "Kennwort aktualisieren",
+      "fields": {
+        "password": "Neues Passwort",
+        "confirmPassword": "Bestätige neues Passwort"
+      },
+      "errors": {
+        "confirmPasswordNotMatch": "Passwörter stimmen nicht überein"
+      },
+      "buttons": {
+        "submit": "Aktualisieren"
+      }
+    },
+    "error": {
+      "404": "Leider existiert diese Seite nicht.",
+      "info": "Sie haben vergessen, {{action}} component zu {{resource}} hinzufügen.",
+      "resource404": "Haben Sie die {{resource}} resource erstellt?",
+      "backHome": "Zurück"
+    }
+  },
+  "actions": {
+    "list": "Aufführen",
+    "create": "Erstellen",
+    "edit": "Bearbeiten",
+    "show": "Zeigen",
+    "delete": "Löschen",
+    "cancel": "Abbrechen"
+  },
+  "buttons": {
+    "create": "Erstellen",
+    "save": "Speichern",
+    "logout": "Abmelden",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "cancel": "Abbrechen",
+    "confirm": "Sicher?",
+    "filter": "Filter",
+    "clear": "Löschen",
+    "refresh": "Erneuern",
+    "show": "Zeigen",
+    "undo": "Undo",
+    "import": "Importieren",
+    "export": "Exportieren",
+    "clone": "Klonen",
+    "accept": "Akzeptieren",
+    "acceptAll": "Alles akzeptieren",
+    "reject": "Abweisen",
+    "rejectAll": "Alles abweisen",
+    "nextStep": "Vorwärts",
+    "previousStep": "Zurück"
+  },
+  "loading": "Wird geladen",
+  "tags": {
+    "clone": "Klonen"
+  },
+  "table": {
+    "actions": "Aktionen",
+    "inTotal": "Insgesamt"
+  },
+  "search": {
+    "placeholder": "Suchen mit Geschäfts-ID, E-mail oder Stichwort",
+    "more": "Noch mehr"
+  },
+  "status": {
+    "enable": "Aktiv",
+    "disable": "Passiv"
+  },
+  "warnWhenUnsavedChanges": "Nicht gespeicherte Änderungen werden nicht übernommen.",
+  "notifications": {
+    "success": "Erfolg",
+    "error": "Fehler (status code: {{statusCode}})",
+    "undoable": "Sie haben {{seconds}} Sekunden Zeit für Undo.",
+    "createSuccess": "{{resource}} erfolgreich erstellt.",
+    "createError": "Fehler beim Erstellen {{resource}} (status code: {{statusCode}})",
+    "deleteSuccess": "{{resource}} erfolgreich gelöscht.",
+    "deleteError": "Fehler beim Löschen {{resource}} (status code: {{statusCode}})",
+    "editSuccess": "{{resource}} erfolgreich bearbeitet.",
+    "importProgress": "{{processed}}/{{total}} importiert"
+  },
+  "dashboard": {
+    "title": "Panel",
+    "overview": {
+      "title": "Übersicht"
+    },
+    "filter": {
+      "title": "Filter",
+      "date": {
+        "lastWeek": "Letzte Woche",
+        "lastMonth": "Letzter Monat",
+        "lastYear": "Letztes Jahr"
+      }
+    },
+    "revenue": {
+      "title": "Umsatz"
+    },
+    "totalSales": {
+      "title": "Gesamtumsatz"
+    },
+    "dailyRevenue": {
+      "title": "Tagesumsatz"
+    },
+    "newCustomers": {
+      "title": "Neue Kunden"
+    }
+  },
+  "data": {
+    "nav": "Datenobjekte",
+    "titles": {
+      "list": "Datenobjekte",
+      "show": "Datenobjekt",
+      "create": "Datenobjekt anlegen"
+    },
+    "fields": {
+      "timestamp": "Zeitstempel",
+      "objectId": "Datenobjekt-ID",
+      "docType": "Dokumententyp"
+    },
+    "actions": {
+      "create": "Anlegen"
+    },
+    "create": {
+      "saved": "Gespeichert.",
+      "openingDetail": "Objekt {{id}}",
+      "hint": "Erwartet wird ein JSON-Objekt mit mindestens \"content\"; optional \"id\" und \"type\" (Standard \"input\")."
+    },
+    "errors": {
+      "jsonInvalid": "Ungültiges JSON.",
+      "bodyMustBeObject": "Der Body muss ein JSON-Objekt sein.",
+      "contentRequired": "Feld \"content\" ist Pflicht (DataItemCreateRequest).",
+      "contentMustBeObject": "\"content\" muss ein JSON-Objekt sein."
+    },
+    "hints": {
+      "refreshing": "Aktualisiere …"
+    }
+  },
+  "errors": {
+    "minLength": "Mindestens {{min}} Zeichen",
+    "maxLength": "Maximal {{max}} Zeichen",
+    "required": {
+      "field": "Dieses Feld ist erforderlich."
+    }
+  }
+}

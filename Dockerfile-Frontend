@@ -1,0 +1,26 @@
+# DFlowP Refine/Vite-Frontend: Build mit Node, statische dist per `serve` (kein nginx).
+# Build-Kontext: Repository-Root (siehe docker-compose, Jenkinsfile-Frontend).
+#
+# @see dflowp/frontend/package.json (npm run build → tsc && refine build)
+
+FROM node:22-bookworm AS build
+
+WORKDIR /app
+
+COPY dflowp/frontend/package.json dflowp/frontend/package-lock.json dflowp/frontend/.npmrc ./
+RUN npm ci
+
+COPY dflowp/frontend/ ./
+ENV NODE_ENV=production
+RUN npm run build
+
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+RUN npm install -g serve@14
+
+COPY --from=build /app/dist ./dist
+EXPOSE 3000
+
+# SPA-Routing: -s. Port 3000 (unprivilegiert, kompatibel mit Node-Image-User)
+CMD ["serve", "-s", "dist", "-l", "3000"]

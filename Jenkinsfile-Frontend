@@ -1,0 +1,78 @@
+// DFlowP Refine-Frontend: Tooling, Workspace-Build (npm) + Docker-Image (Dockerfile-Frontend)
+// Quelle: dflowp/frontend/
+
+pipeline {
+    agent none
+
+    options {
+        timestamps()
+    }
+
+    stages {
+        stage('Refine-Frontend: npm ci + build') {
+            agent {
+                docker {
+                    image 'node:22-bookworm'
+                    args '-u root'
+                }
+            }
+            steps {
+                // VITE_*: Werte in dflowp/frontend/.env; Vite lädt sie beim `npm run build` (statischer Bundle, kein docker -e Ersatz).
+                sh '''
+                    set -eux
+                    node -v
+                    npm -v
+                    corepack enable
+                    corepack prepare pnpm@9 --activate
+                    pnpm -v
+                    cd dflowp/frontend
+                    npm ci
+                    npm run build
+                '''
+            }
+        }
+
+        stage('Refine-Frontend: Docker-Image bauen') {
+            agent any
+            steps {
+                sh '''
+                    set -eux
+                    docker build -f Dockerfile-Frontend -t dflowp-frontend:ci .
+                '''
+            }
+        }
+
+        stage('Refine-Frontend: Image-Smoke (statische dist)') {
+            agent any
+            steps {
+                sh '''
+                    set -eux
+                    docker run --rm --entrypoint sh dflowp-frontend:ci -c 'test -f /app/dist/index.html'
+                '''
+            }
+        }
+
+        stage('Refine-Frontend: Host-Container (localhost:8011)') {
+            agent any
+            steps {
+                sh '''
+                    set -eux
+                    docker stop dflowp-frontend 2>/dev/null || true
+                    docker rm dflowp-frontend 2>/dev/null || true
+                    docker run -d --name dflowp-frontend --restart unless-stopped -p 127.0.0.1:8011:3000 dflowp-frontend:ci
+                    for i in 1 2 3 4 5 6 7 8 9 10; do
+                        if curl -fsS -o /dev/null "http://127.0.0.1:8011/"; then
+                            break
+                        fi
+                        if [ "$i" -eq 10 ]; then
+                            echo "curl smoke failed" >&2
+                            docker logs dflowp-frontend >&2 || true
+                            exit 1
+                        fi
+                        sleep 1
+                    done
+                '''
+            }
+        }
+    }
+}
