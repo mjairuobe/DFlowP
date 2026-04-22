@@ -1,7 +1,7 @@
 import type { AuthProvider } from "@refinedev/core";
 import {
   clearDflowpApiKeyCookie,
-  hasDflowpApiKeyCookie,
+  hasDflowpSessionCookie,
   setDflowpApiKeyCookie,
 } from "./dflowpApiKeyCookie";
 
@@ -49,7 +49,7 @@ export const authProvider: AuthProvider = {
     return { error };
   },
   check: async () => {
-    if (hasDflowpApiKeyCookie()) {
+    if (hasDflowpSessionCookie()) {
       return {
         authenticated: true,
       };
@@ -67,7 +67,7 @@ export const authProvider: AuthProvider = {
   },
   getPermissions: async () => null,
   getIdentity: async () => {
-    if (!hasDflowpApiKeyCookie()) {
+    if (!hasDflowpSessionCookie()) {
       return null;
     }
 

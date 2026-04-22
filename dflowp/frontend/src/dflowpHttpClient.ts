@@ -1,11 +1,11 @@
 import type { HttpError } from "@refinedev/core";
 import axios from "axios";
-import { getDflowpApiKeyFromCookie } from "./dflowpApiKeyCookie";
+import { getDflowpApiKeyForHeader } from "./dflowpApiKeyCookie";
 
 const dflowpHttpClient = axios.create();
 
 dflowpHttpClient.interceptors.request.use((config) => {
-  const key = getDflowpApiKeyFromCookie();
+  const key = getDflowpApiKeyForHeader();
   if (key) {
     config.headers = config.headers ?? {};
     config.headers["X-API-Key"] = key;

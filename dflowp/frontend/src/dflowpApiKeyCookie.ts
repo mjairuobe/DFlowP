@@ -22,9 +22,29 @@ function parseCookies(): Record<string, string> {
   );
 }
 
-export function getDflowpApiKeyFromCookie(): string | undefined {
-  const v = parseCookies()[DFLOWP_API_KEY_COOKIE];
-  return v !== undefined && v !== "" ? v : undefined;
+/**
+ * Roher Wert, nur wenn der Cookie-Name existiert. Leerer String = eingeloggt ohne Key
+ * (für X-API-Key wird nichts gesendet).
+ */
+function getDflowpApiKeyRawFromCookie(): string | undefined {
+  const map = parseCookies();
+  if (!Object.prototype.hasOwnProperty.call(map, DFLOWP_API_KEY_COOKIE)) {
+    return undefined;
+  }
+  return map[DFLOWP_API_KEY_COOKIE] ?? "";
+}
+
+/** Liefert den Key für `X-API-Key` nur, wenn inhaltlich gesetzt. */
+export function getDflowpApiKeyForHeader(): string | undefined {
+  const raw = getDflowpApiKeyRawFromCookie();
+  if (raw === undefined) {
+    return undefined;
+  }
+  return raw === "" ? undefined : raw;
+}
+
+export function hasDflowpSessionCookie(): boolean {
+  return getDflowpApiKeyRawFromCookie() !== undefined;
 }
 
 /** Setzt den Cookie; Wert in der Regel aus `import.meta.env.VITE_DFLOWP_API_KEY` (Test-Bundle). */
@@ -41,8 +61,4 @@ export function clearDflowpApiKeyCookie(): void {
     return;
   }
   document.cookie = `${DFLOWP_API_KEY_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
-}
-
-export function hasDflowpApiKeyCookie(): boolean {
-  return getDflowpApiKeyFromCookie() !== undefined;
 }
