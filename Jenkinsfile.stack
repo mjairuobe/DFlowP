@@ -1,5 +1,6 @@
 // DFlowP – vollständiger Stack (docker-compose v1) + Pytest-Integration. Keine CI-Hilfsskripte.
 // JSON-Secrets: jq. Post: compose down + docker logout.
+// Compose-Build: DOCKER_BUILDKIT=0 + COMPOSE_BAKE=false — vermeidet „buildx 0.17+“ auf Agents mit altem buildx (z. B. AL2023).
 pipeline {
     agent any
     options {
@@ -43,6 +44,8 @@ echo "$HUBP" | docker login -u "$HUBU" --password-stdin docker.io
             steps {
                 sh '''set -euo pipefail
 . ./.jenkins_runtime.env
+export DOCKER_BUILDKIT=0
+export COMPOSE_BAKE=false
 docker-compose -f docker-compose.yml build mongo api worker eventsystem event-broker \
   plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
 '''
