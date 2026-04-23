@@ -26,6 +26,9 @@ agent-transcripts/
 
 secrets/
 
+# Laufzeit-Daten (Compose-Bind-Mounts): nie ins Docker-Build-Kontext (sonst tar/permission-Fehler bei parallelen Builds).
+volumes/
+
 # Frontend: node_modules & Build-Artefakte nicht ins Build-Context
 **/node_modules/
 dflowp/frontend/dist/
