@@ -1,5 +1,5 @@
 # DFlowP Refine/Vite-Frontend: Build mit Node, statische dist per `serve` (kein nginx).
-# Build-Kontext: Repository-Root (siehe docker-compose, Jenkinsfile-Frontend).
+# Build-Kontext: Repository-Root (siehe docker-compose, Jenkinsfile.frontend).
 #
 # @see dflowp/frontend/package.json (npm run build → tsc && refine build)
 

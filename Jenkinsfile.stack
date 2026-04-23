@@ -53,7 +53,7 @@ cat .jenkins_runtime.env
             steps {
                 sh '''set -euo pipefail
 # Lineage-Berechnung muss mit Jenkinsfile.api / .worker / .eventsystem / .event_broker /
-# .mongo / .plugin_* übereinstimmen (gleiche Pfadlisten + gleiche Mongo-Sonderlogik).
+# .mongo / .plugin_* / .frontend übereinstimmen (gleiche Pfadlisten + gleiche Mongo-Sonderlogik).
 lineage_from_paths() {
   _s=""
   for _p in "$@"; do
@@ -81,11 +81,13 @@ L_PF=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dfl
 L_PE=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.plugin_embeddata)
 L_PCDB=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.plugin_clustering_dbscan)
 L_PCHDB=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.plugin_clustering_hdbscan)
+L_FE=$(lineage_from_paths dflowp/frontend Dockerfile-Frontend)
 
 : > .jenkins_stack_images.env
 {
   echo "DOCKER_IMAGE_MONGO=docker.io/crawlabase/dflowp-mongo:${L_MONGO}"
   echo "DOCKER_IMAGE_API=docker.io/crawlabase/dflowp-api:${L_API}"
+  echo "DOCKER_IMAGE_FRONTEND=docker.io/crawlabase/dflowp-frontend:${L_FE}"
   echo "DOCKER_IMAGE_RUNTIME=docker.io/crawlabase/dflowp-runtime:${L_WORKER}"
   echo "DOCKER_IMAGE_EVENTSYSTEM=docker.io/crawlabase/dflowp-eventsystem:${L_EV}"
   echo "DOCKER_IMAGE_EVENT_BROKER=docker.io/crawlabase/dflowp-event-broker:${L_BR}"
@@ -95,7 +97,7 @@ L_PCHDB=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/
   echo "DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=docker.io/crawlabase/dflowp-plugin-clustering-hdbscan:${L_PCHDB}"
 } >> .jenkins_stack_images.env
 
-echo "Lineage mongo=${L_MONGO} api=${L_API} worker=${L_WORKER} eventsystem=${L_EV} event_broker=${L_BR} ..."
+echo "Lineage mongo=${L_MONGO} api=${L_API} frontend=${L_FE} worker=${L_WORKER} eventsystem=${L_EV} event_broker=${L_BR} ..."
 cat .jenkins_stack_images.env
 
 # Voreinstellung: lokal bauen; wird von der Gate-Stage bei Erfolg auf Skip gesetzt.
@@ -169,6 +171,7 @@ try_registry_all_present() {
   for img in \
     "${DOCKER_IMAGE_MONGO}" \
     "${DOCKER_IMAGE_API}" \
+    "${DOCKER_IMAGE_FRONTEND}" \
     "${DOCKER_IMAGE_RUNTIME}" \
     "${DOCKER_IMAGE_EVENTSYSTEM}" \
     "${DOCKER_IMAGE_EVENT_BROKER}" \
@@ -216,7 +219,7 @@ export DOCKER_BUILDKIT=0
 export COMPOSE_BAKE=false
 if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
   . ./.jenkins_stack_images.env
-  export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER
+  export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER
   export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN
   pull_if_missing() {
     _img="$1"
@@ -229,6 +232,7 @@ if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
   }
   pull_if_missing "${DOCKER_IMAGE_MONGO}"
   pull_if_missing "${DOCKER_IMAGE_API}"
+  pull_if_missing "${DOCKER_IMAGE_FRONTEND}"
   pull_if_missing "${DOCKER_IMAGE_RUNTIME}"
   pull_if_missing "${DOCKER_IMAGE_EVENTSYSTEM}"
   pull_if_missing "${DOCKER_IMAGE_EVENT_BROKER}"
@@ -237,7 +241,7 @@ if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
   pull_if_missing "${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN}"
   pull_if_missing "${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN}"
 else
-  docker-compose -f docker-compose.yml build mongo api worker eventsystem event-broker \
+  docker-compose -f docker-compose.yml build mongo api frontend worker eventsystem event-broker \
     plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
 fi
 '''
@@ -269,6 +273,7 @@ want_for_svc() {
   case "$1" in
     mongo) printf %s "${DOCKER_IMAGE_MONGO}" ;;
     api) printf %s "${DOCKER_IMAGE_API}" ;;
+    frontend) printf %s "${DOCKER_IMAGE_FRONTEND}" ;;
     worker) printf %s "${DOCKER_IMAGE_RUNTIME}" ;;
     eventsystem) printf %s "${DOCKER_IMAGE_EVENTSYSTEM}" ;;
     event-broker) printf %s "${DOCKER_IMAGE_EVENT_BROKER}" ;;
@@ -294,10 +299,10 @@ needs_redeploy() {
 
 if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
   . ./.jenkins_stack_images.env
-  export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER
+  export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER
   export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN
   # Abhängigkeiten: mongo zuerst, event-broker nach eventsystem; compose up ohne --no-deps erledigt Starts.
-  for _svc in mongo eventsystem api worker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan event-broker; do
+  for _svc in mongo eventsystem api frontend worker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan event-broker; do
     _w=$(want_for_svc "${_svc}")
     if needs_redeploy "${_svc}" "${_w}"; then
       echo "Start/Recreate ${_svc} -> ${_w}"
@@ -309,6 +314,8 @@ if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
 else
   # Feste container_name in compose: Rest-Container von Abbrüchen/anderen Läufen sonst „already in use“.
   docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
+  # Frühere Frontend-CI (docker run --name dflowp-frontend) außerhalb von Compose → Namenskollision mit Compose-Service.
+  docker rm -f dflowp-frontend 2>/dev/null || true
   docker-compose -f docker-compose.yml up -d
 fi
 docker-compose -f docker-compose.yml ps
@@ -336,7 +343,7 @@ unwrap_one() {
 }
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
+if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
 docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" api \
   pytest tests/api_test.py -v --tb=short
 '''
@@ -363,7 +370,7 @@ unwrap_one() {
 }
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
+if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
 docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" worker \
   pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
 '''
@@ -390,7 +397,7 @@ unwrap_one() {
 }
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
+if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
 docker-compose -f docker-compose.yml run --rm plugin-fetchfeeditems \
   pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
 docker-compose -f docker-compose.yml run --rm plugin-embeddata \
@@ -419,7 +426,7 @@ unwrap_one() {
 }
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
+if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
 docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" event-broker \
   pytest tests/event_broker_test.py -v --tb=short
 docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" eventsystem \
