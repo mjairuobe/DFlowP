@@ -20,6 +20,7 @@ alwaysApply: false
 | Bereich        | Jenkinsfile            | Dockerfile                      |
 |---------------|------------------------|---------------------------------|
 | API           | `Jenkinsfile.api`      | `Dockerfile.api`                |
+| Frontend      | `Jenkinsfile.frontend` | `Dockerfile-Frontend`           |
 | Worker        | `Jenkinsfile.worker` | `Dockerfile.worker` (Image `dflowp-runtime`) |
 | EventSystem   | `Jenkinsfile.eventsystem` | `Dockerfile.eventsystem`     |
 | Event-Broker  | `Jenkinsfile.event_broker` | `Dockerfile.event_broker`  |
