@@ -57,7 +57,7 @@ services:
     image: ${DOCKER_IMAGE_FRONTEND:-dflowp-frontend:local}
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:8011:3000"
 
   worker:
     container_name: dflowp-worker
