@@ -323,6 +323,16 @@ docker-compose -f docker-compose.yml ps
                 }
             }
         }
+        // Direkt nach erfolgreichem „Compose up“: Agent-Platz freimachen, bevor Test-`docker-compose run` zusätzliche Ephemeral-Container anlegt.
+        // Laufende Stack-Container: `container prune` betrifft nur gestoppte; `image prune -a` entfernt nur Images ohne Container-Referenz (kein `docker volume prune`).
+        stage('Docker: prune unused') {
+            steps {
+                sh '''set -euo pipefail
+docker container prune -f
+docker image prune -af
+'''
+            }
+        }
         stage('Tests: API') {
             steps {
                 withCredentials([
