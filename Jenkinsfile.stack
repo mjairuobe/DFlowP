@@ -206,8 +206,9 @@ cat .jenkins_stack_mode.env
                 sh '''set -euo pipefail
 . ./.jenkins_runtime.env
 . ./.jenkins_stack_mode.env
-# Compose bind-mount ./volumes/mongo — bei frischem Workspace fehlt der Pfad; Buildx/Compose prüft Kontext/Unterpfade.
-mkdir -p volumes/mongo/.mongodb
+# Compose bind-mount ./volumes/mongo — bei frischem Workspace fehlt der Pfad; Mongo (User mongodb) braucht Schreibrechte.
+mkdir -p volumes/mongo
+chmod a+rwx volumes/mongo || chmod 777 volumes/mongo || true
 export DOCKER_BUILDKIT=0
 export COMPOSE_BAKE=false
 if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
