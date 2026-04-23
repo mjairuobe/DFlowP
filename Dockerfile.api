@@ -1,0 +1,25 @@
+# dflowp-api (see Jenkinsfile.api). Build: docker build -f Dockerfile.api -t <registry>/dflowp-api:<tag> .
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY dflowp-packages /app/dflowp-packages
+COPY dflowp /app/dflowp
+COPY examples /app/examples
+COPY tests /app/tests
+
+RUN python -m ensurepip --upgrade \
+    && python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install --no-cache-dir -r /app/dflowp/api/requirements.txt \
+    && python -m pip install --no-cache-dir \
+      "fastapi>=0.109.0" \
+      "uvicorn[standard]>=0.27.0" \
+      "httpx>=0.26.0" \
+      "pytest>=7.4.0" \
+      "pytest-asyncio>=0.23.0" \
+      "pytest-cov>=4.1.0"
+
+CMD ["uvicorn", "dflowp.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,15 @@
+# DFlowP: wheel cache image for dflowp-core + dflowp-processruntime (used by other Dockerfiles).
+# Build from repository root: docker build -f Dockerfile.wheels -t <registry>/dflowp-wheels:<tag> .
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /build
+
+COPY dflowp-packages /build/dflowp-packages
+
+RUN python -m ensurepip --upgrade \
+    && python -m pip install --upgrade pip setuptools wheel build \
+    && python -m build /build/dflowp-packages/dflowp-core \
+    && python -m build /build/dflowp-packages/dflowp-processruntime

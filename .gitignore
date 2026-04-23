@@ -33,9 +33,8 @@ htmlcov/
 .jenkins_skip_pipeline
 .jenkins_build_plan.env
 .jenkins_last_trees
+.jenkins_did_docker_build
+.jenkins_last_dflowp_*
 
 # Persistent local Docker data
 volumes/
-
-# UI Bakery On-Premise (lokal aus Vorlage kopieren)
-docker/uibakery.env
