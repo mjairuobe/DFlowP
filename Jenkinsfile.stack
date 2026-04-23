@@ -428,10 +428,9 @@ docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_
     }
     post {
         always {
-            sh '''docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
-docker logout docker.io 2>/dev/null || true'''
+            sh '''docker logout docker.io 2>/dev/null || true'''
         }
         failure { echo 'Stack-Pipeline fehlgeschlagen – Logs prüfen.' }
-        success { echo 'Stack-Pipeline OK (Build/Up/Tests).' }
+        success { echo 'Stack-Pipeline OK – Container laufen weiter (kein automatisches compose down).' }
     }
 }
