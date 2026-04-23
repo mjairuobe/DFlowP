@@ -127,7 +127,8 @@ try_jenkins_paths() {
     CURL_AUTH=( -u "${JENKINS_API_USER}:${JENKINS_API_TOKEN}" )
   fi
   for _path in ${DFLOWP_STACK_VERIFY_JOB_PATHS}; do
-    _url="${JENKINS_URL%/}/${_path}/lastSuccessfulBuild/api/json?tree=result,changeSet[items[commitId]]"
+    # changeSets + BuildData: Workflow-/Multibranch-Pipelines liefern oft kein klassisches changeSet.items
+    _url="${JENKINS_URL%/}/${_path}/lastSuccessfulBuild/api/json?tree=result,changeSet[items[commitId]],changeSets[items[commitId]],actions[_class,lastBuiltRevision[SHA1]]"
     echo "Prüfe Downstream: ${_url}"
     if ! _json=$(curl -fsS --connect-timeout 5 --max-time 60 "${CURL_AUTH[@]}" "${_url}"); then
       echo "Jenkins-API: Abruf fehlgeschlagen für ${_path}"
@@ -138,12 +139,24 @@ try_jenkins_paths() {
       echo "Letzter Lauf nicht SUCCESS (${_res}) für ${_path}"
       return 1
     fi
-    # Erwartet git changeSet mit commitId (bei manchen Pipeline-Typen ggf. leer → Gate schlägt fehl, dann lokal bauen).
     _hit=$(printf '%s' "${_json}" | jq -r --arg c "${GIT_COMMIT_FULL}" '
-      [ .changeSet.items[]?.commitId ] | index($c) != null
-    ')
+def commit_ids:
+  ((.changeSet // {}) | (.items // []) | map(.commitId) | map(select(type == "string")))
+  + ((.changeSets // []) | [.[] | (.items // [])[] | .commitId // empty] | map(select(type == "string")))
+  + ((.actions // []) | [.[] | select((._class // "") == "hudson.plugins.git.util.BuildData") | .lastBuiltRevision.SHA1 // empty] | map(select(type == "string")))
+  ;
+def matches($full; $id):
+  if ($id | type) != "string" or $id == "" then false
+  else ($full | ascii_downcase) as $fl | ($id | ascii_downcase) as $il
+  | if $il == $fl then true
+    elif ($fl | startswith($il)) then true
+    elif ($il | length) >= 7 and ($il | startswith($fl[0:7])) then true
+    else false end
+  end;
+(if any(commit_ids[]; matches($c; .)) then "true" else "false" end)
+')
     if [ "${_hit}" != "true" ]; then
-      echo "lastSuccessfulBuild von ${_path} enthält nicht GIT_COMMIT=${GIT_COMMIT_FULL} (oder changeSet leer)"
+      echo "lastSuccessfulBuild von ${_path} enthält nicht GIT_COMMIT=${GIT_COMMIT_FULL} (changeSet/changeSets/BuildData ohne Treffer)"
       return 1
     fi
   done
@@ -193,6 +206,8 @@ cat .jenkins_stack_mode.env
                 sh '''set -euo pipefail
 . ./.jenkins_runtime.env
 . ./.jenkins_stack_mode.env
+# Compose bind-mount ./volumes/mongo — bei frischem Workspace fehlt der Pfad; Buildx/Compose prüft Kontext/Unterpfade.
+mkdir -p volumes/mongo/.mongodb
 export DOCKER_BUILDKIT=0
 export COMPOSE_BAKE=false
 if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then

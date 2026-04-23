@@ -26,6 +26,9 @@ agent-transcripts/
 
 secrets/
 
+# Lokale DB-Daten (gitignored); Build-Kontext braucht sie nicht, vermeidet compose/buildx-Stat-Fehler
+volumes/
+
 # Frontend deps (würden den Build-Kontext aufblähen, nichts für DFlowP-Backends-Images)
 dflowp/frontend/node_modules/
 **/node_modules/
