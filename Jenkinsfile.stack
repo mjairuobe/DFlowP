@@ -303,6 +303,8 @@ if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
     fi
   done
 else
+  # Feste container_name in compose: Rest-Container von Abbrüchen/anderen Läufen sonst „already in use“.
+  docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
   docker-compose -f docker-compose.yml up -d
 fi
 docker-compose -f docker-compose.yml ps
