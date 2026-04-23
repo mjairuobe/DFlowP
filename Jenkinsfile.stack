@@ -206,9 +206,12 @@ cat .jenkins_stack_mode.env
                 sh '''set -euo pipefail
 . ./.jenkins_runtime.env
 . ./.jenkins_stack_mode.env
-# Compose bind-mount ./volumes/mongo — bei frischem Workspace fehlt der Pfad; Mongo (User mongodb) braucht Schreibrechte.
+# Compose bind-mount ./volumes/mongo — Pfad anlegen; Mongo braucht Schreibrechte (oft root/999 vom letzten Lauf → chmod auf Host scheitert).
 mkdir -p volumes/mongo
-chmod a+rwx volumes/mongo || chmod 777 volumes/mongo || true
+if ! chmod a+rwx volumes/mongo 2>/dev/null && ! chmod 777 volumes/mongo 2>/dev/null; then
+  echo "Hinweis: chmod auf volumes/mongo nicht möglich, setze Rechte per kurzem root-Container auf dem Bind-Mount."
+  docker run --rm --user root -v "$(pwd)/volumes/mongo:/v:rw" alpine:3.20 sh -ceu 'chmod -R 777 /v' || true
+fi
 export DOCKER_BUILDKIT=0
 export COMPOSE_BAKE=false
 if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
