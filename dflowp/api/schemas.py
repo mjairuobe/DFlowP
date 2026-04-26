@@ -51,6 +51,62 @@ class DataItemCreateRequest(BaseModel):
     type: str = Field(default="input", description="Typ-Label (z. B. input, output).")
 
 
+class PipelineCreateRequest(BaseModel):
+    """Pipeline anlegen (entspricht Prozess; Primärschlüssel: ``pipeline_id``)."""
+
+    pipeline_id: str = Field(..., min_length=1)
+    software_version: str = "0.1.0"
+    input_dataset_id: str = Field(..., min_length=1)
+    dataflow: dict[str, Any]
+    plugin_config: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Pro plugin_worker_id Parameter (vormals subprocess_config).",
+    )
+    input_data: Optional[list[dict[str, Any]]] = Field(
+        default=None,
+        description="Optional: Input-Zeilen als neues Dataset unter input_dataset_id.",
+    )
+    start_immediately: bool = Field(
+        default=False,
+        description="true: status=running; false: pending für Worker.",
+    )
+
+
+class DataflowCreateRequest(BaseModel):
+    """Neues Dataflow-Definition-Dokument."""
+
+    dataflow_id: str = Field(..., min_length=1)
+    name: str = "dataflow"
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DataflowStateCreateRequest(BaseModel):
+    """Neues DataflowState-Dokument (Nodes inkl. io_transformation_states möglich)."""
+
+    dataflow_state_id: str = Field(..., min_length=1)
+    pipeline_id: str = Field(..., min_length=1)
+    dataflow_id: str = Field(..., min_length=1)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PluginConfigurationCreateRequest(BaseModel):
+    """Neue Plugin-Konfiguration (kein Update bestehender Id – immer neues Dokument)."""
+
+    plugin_configuration_id: str = Field(..., min_length=1)
+    by_plugin_worker_id: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
+class EventCreateRequest(BaseModel):
+    """Event persistieren (i. d. R. nutzt die Engine den EventService; für Integrationstests / Admin)."""
+
+    pipeline_id: str = Field(..., min_length=1)
+    plugin_worker_id: str = Field(..., min_length=1)
+    event_type: str = Field(..., min_length=1)
+    payload: Optional[dict[str, Any]] = None
+
+
 class DatasetCreateRequest(BaseModel):
     """Dataset mit referenzierten Data-IDs oder eingebetteten Zeilen."""
 

@@ -9,6 +9,10 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 
 from dflowp.api.auth import require_api_key
 from dflowp.api.cors import add_cors_middleware
+from dflowp.api.deps import get_data_item_repository, get_event_repository, get_process_repository
+from dflowp.api.kebab_routes import router as kebab_v1_router
+from dflowp.api.list_summaries import apply_summary_to_page, summarize_pipeline_list_item
+from dflowp.api.pipeline_handlers import create_pipeline_document
 from dflowp.api.process_persist import (
     insert_data_item,
     insert_dataset,
@@ -21,7 +25,6 @@ from dflowp.api.schemas import (
     ProcessCreateRequest,
     ProcessStopRequest,
 )
-from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
 from dflowp_core.database.data_item_repository import DataItemRepository
 from dflowp_core.database.event_repository import EventRepository
 from dflowp_core.database.migrations import migrate_legacy_processes_to_pipelines
@@ -59,6 +62,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(title="DFlowP API", version="1.0.0", lifespan=lifespan)
 add_cors_middleware(app)
+app.include_router(kebab_v1_router)
 
 
 def _pagination_params(
@@ -66,18 +70,6 @@ def _pagination_params(
     page_size: int = Query(default=20, ge=1, le=100),
 ) -> tuple[int, int]:
     return page, page_size
-
-
-def get_process_repository() -> ProcessRepository:
-    return ProcessRepository()
-
-
-def get_data_item_repository() -> DataItemRepository:
-    return DataItemRepository()
-
-
-def get_event_repository() -> EventRepository:
-    return EventRepository()
 
 
 _DATA_DOC_TYPES = frozenset({"data", "dataset"})
@@ -218,7 +210,8 @@ async def list_processes(
     process_repo: ProcessRepository = Depends(get_process_repository),
 ) -> dict:
     page, page_size = pagination
-    return await process_repo.list_processes(page=page, page_size=page_size)
+    raw = await process_repo.list_processes(page=page, page_size=page_size)
+    return apply_summary_to_page(raw, summarize_pipeline_list_item)
 
 
 @app.get("/api/v1/processes/{process_id}", dependencies=[Depends(require_api_key)])
@@ -344,52 +337,17 @@ async def create_process(
     `start_immediately=false` (Standard): status=pending – der Runtime-Worker übernimmt den Start.
     `start_immediately=true`: status=running – für direkten Engine-Start (selten über API).
     """
-    if await process_repo.find_by_id(request.process_id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Prozess '{request.process_id}' existiert bereits.",
-        )
-
-    try:
-        configuration = ProcessConfiguration.from_dict(
-            {
-                "process_id": request.process_id,
-                "software_version": request.software_version,
-                "input_dataset_id": request.input_dataset_id,
-                "dataflow": request.dataflow,
-                "subprocess_config": request.subprocess_config,
-            }
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Ungültige Prozesskonfiguration: {exc}",
-        ) from exc
-
-    configuration.apply_default_openai_key_from_env()
-    configuration.apply_software_version_from_env()
-
-    if request.input_data is not None:
-        existing_ds = await data_item_repo.find_dataset_by_id(request.input_dataset_id)
-        if existing_ds:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Dataset '{request.input_dataset_id}' existiert bereits; Input kann nicht angelegt werden.",
-            )
-        await persist_input_dataset_rows(
-            data_item_repo=data_item_repo,
-            dataset_id=request.input_dataset_id,
-            rows=request.input_data,
-        )
-
-    st = "running" if request.start_immediately else "pending"
-    created = await process_repo.insert_from_configuration(configuration, status=st)
-    if not created:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Pipeline wurde nicht gespeichert.",
-        )
-    return created
+    return await create_pipeline_document(
+        pipeline_id=request.process_id,
+        software_version=request.software_version,
+        input_dataset_id=request.input_dataset_id,
+        dataflow=request.dataflow,
+        plugin_config=request.subprocess_config,
+        input_data=request.input_data,
+        start_immediately=request.start_immediately,
+        process_repo=process_repo,
+        data_item_repo=data_item_repo,
+    )
 
 
 @app.post(
