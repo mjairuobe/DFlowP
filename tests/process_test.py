@@ -148,11 +148,19 @@ def isolated_event_service():
     return _IsolatedEventService()
 
 
-def _make_mock_process_config_doc(process_id: str, nodes=None, edges=None):
-    """Erstellt ein Prozess-Dokument-Dict für Mock-Repositories."""
+def _make_mock_process_config_doc(
+    process_id: str,
+    nodes=None,
+    edges=None,
+    *,
+    dataflow_state_id: str = "dfs_test_mock",
+) -> dict[str, Any]:
+    """Pipeline-Dokument für Mock-Repositories (mit ``dataflow_state_id`` für die Engine)."""
     nodes = nodes or [{"subprocess_id": "A", "subprocess_type": "TypeA"}]
     return {
+        "pipeline_id": process_id,
         "process_id": process_id,
+        "dataflow_state_id": dataflow_state_id,
         "status": "running",
         "configuration": {
             "process_id": process_id,
@@ -164,11 +172,28 @@ def _make_mock_process_config_doc(process_id: str, nodes=None, edges=None):
     }
 
 
+def _async_insert_from_configuration(
+    configuration: Any, *, status: str = "running"  # noqa: ANN401
+) -> dict[str, Any]:
+    """Simuliert Rückgabe von ``PipelineRepository.insert_from_configuration``."""
+    pid = configuration.pipeline_id
+    dfs_id = "dfs_test_mock"
+    return {
+        "pipeline_id": pid,
+        "process_id": pid,
+        "dataflow_state_id": dfs_id,
+        "status": status,
+    }
+
+
 @pytest.fixture
 def mock_repos():
     """Erstellt Mock-Repositories, die eine einfache Prozesskonfiguration kennen."""
     process_repo = AsyncMock()
     process_repo.insert = AsyncMock(return_value="mock_inserted_id")
+    process_repo.insert_from_configuration = AsyncMock(
+        side_effect=_async_insert_from_configuration
+    )
     process_repo.update = AsyncMock(return_value=True)
     # find_by_id muss immer ein dict zurückgeben (kein AsyncMock),
     # sonst gibt .get() darauf eine Coroutine zurück
@@ -182,6 +207,8 @@ def mock_repos():
         return_value={
             "nodes": [
                 {
+                    "plugin_worker_id": "A",
+                    "plugin_type": "TypeA",
                     "subprocess_id": "A",
                     "subprocess_type": "TypeA",
                     "event_status": "EVENT_COMPLETED",
@@ -216,13 +243,13 @@ def mock_repos():
 
 
 def test_dataflow_parsing_nodes_and_edges():
-    """DataFlow wird korrekt aus einem Dict geparst."""
+    """DataFlow wird korrekt aus einem Dict geparst (Legacy-Keys → ``plugin_worker_id``/``plugin_type``)."""
     df = parse_dataflow(_SIMPLE_DATAFLOW_CONFIG)
 
     assert len(df.nodes) == 2
     assert len(df.edges) == 1
-    assert df.nodes[0].subprocess_id == "A"
-    assert df.nodes[0].subprocess_type == "TypeA"
+    assert df.nodes[0].plugin_worker_id == "A"
+    assert df.nodes[0].plugin_type == "TypeA"
     assert df.edges[0].from_node == "A"
     assert df.edges[0].to_node == "B"
 
@@ -305,7 +332,7 @@ def test_dataflow_get_node():
 
     node = df.get_node("B")
     assert node is not None
-    assert node.subprocess_type == "TypeB"
+    assert node.plugin_type == "TypeB"
 
     assert df.get_node("NONEXISTENT") is None
 
@@ -332,15 +359,15 @@ def test_dataflow_state_to_dict():
 
     assert "nodes" in d
     assert "edges" in d
-    assert d["nodes"][0]["subprocess_id"] == "A"
+    assert d["nodes"][0]["plugin_worker_id"] == "A"
     assert d["edges"][0]["from"] == "A"
 
 
 def test_dataflow_node_add_or_update_io_state():
     """DataflowNodeState.add_or_update_io_state fügt hinzu und aktualisiert korrekt."""
     node = DataflowNodeState(
-        subprocess_id="A",
-        subprocess_type="TypeA",
+        plugin_worker_id="A",
+        plugin_type="TypeA",
         event_status="Not Started",
         io_transformation_states=[],
     )
@@ -444,11 +471,11 @@ def test_process_configuration_from_dict():
         subprocess_config={"A": {"param": "value"}},
     )
 
-    assert pc.process_id == "test_001"
+    assert pc.pipeline_id == "test_001"
     assert pc.software_version == "1.0.0"
     assert pc.input_dataset_id == "ds_test"
     assert len(pc.dataflow.nodes) == 1
-    assert pc.subprocess_config["A"]["param"] == "value"
+    assert pc.plugin_config["A"]["param"] == "value"
 
 
 def test_process_configuration_to_dict_roundtrip():
@@ -464,7 +491,7 @@ def test_process_configuration_to_dict_roundtrip():
     d = pc.to_dict()
     pc2 = ProcessConfiguration.from_dict(d)
 
-    assert pc2.process_id == pc.process_id
+    assert pc2.pipeline_id == pc.pipeline_id
     assert len(pc2.dataflow.nodes) == 2
     assert len(pc2.dataflow.edges) == 1
 
@@ -491,10 +518,10 @@ def test_process_configuration_apply_software_version_v_prefix(monkeypatch):
 
 def test_process_state_to_dict():
     """ProcessState.to_dict enthält alle Felder."""
-    ps = ProcessState(process_id="proc_xyz", status="running")
+    ps = ProcessState(pipeline_id="proc_xyz", status="running")
     d = ps.to_dict()
 
-    assert d["process_id"] == "proc_xyz"
+    assert d["pipeline_id"] == "proc_xyz"
     assert d["status"] == "running"
     assert "dataflow_state" in d
 
@@ -574,7 +601,7 @@ def test_load_remote_plugin_services_registers_http_clients():
 async def test_process_engine_inserts_process_document(
     isolated_event_service, mock_repos
 ):
-    """ProcessEngine speichert Prozess-Dokument beim Start."""
+    """ProcessEngine legt die Pipeline per ``insert_from_configuration`` an."""
     process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
     config = _make_process_config(process_id="proc_insert_test")
     process_repo.find_by_id = AsyncMock(
@@ -605,11 +632,10 @@ async def test_process_engine_inserts_process_document(
     await engine.start_process(config)
     await asyncio.sleep(0.15)  # Tasks ablaufen lassen
 
-    process_repo.insert.assert_called_once()
-    inserted_doc = process_repo.insert.call_args[0][0]
-    assert inserted_doc["process_id"] == "proc_insert_test"
-    assert inserted_doc["status"] == "running"
-    assert "dataflow_state" in inserted_doc
+    process_repo.insert_from_configuration.assert_called_once()
+    icall_args, icall_kwargs = process_repo.insert_from_configuration.call_args
+    assert icall_args[0].pipeline_id == "proc_insert_test"
+    assert icall_kwargs.get("status") == "running"
 
 
 @pytest.mark.asyncio
@@ -673,10 +699,19 @@ async def test_process_engine_subprocess_chaining(isolated_event_service):
 
     process_repo = AsyncMock()
     process_repo.insert = AsyncMock(return_value="id")
+    process_repo.insert_from_configuration = AsyncMock(
+        return_value={
+            "pipeline_id": "proc_chain_test",
+            "dataflow_state_id": "dfs_chain",
+            "status": "running",
+        }
+    )
     process_repo.update = AsyncMock(return_value=True)
     process_repo.find_by_id = AsyncMock(
         return_value={
+            "pipeline_id": "proc_chain_test",
             "process_id": "proc_chain_test",
+            "dataflow_state_id": "dfs_chain",
             "configuration": chain_config.to_dict(),
         }
     )
@@ -687,8 +722,8 @@ async def test_process_engine_subprocess_chaining(isolated_event_service):
         return_value={
             "nodes": [
                 {
-                    "subprocess_id": "Step1",
-                    "subprocess_type": "TypeA",
+                    "plugin_worker_id": "Step1",
+                    "plugin_type": "TypeA",
                     "event_status": "EVENT_COMPLETED",
                     "io_transformation_states": [
                         {
@@ -700,9 +735,9 @@ async def test_process_engine_subprocess_chaining(isolated_event_service):
                     ],
                 },
                 {
-                    "subprocess_id": "Step2",
-                    "subprocess_type": "TypeB",
-                    "event_status": "EVENT_COMPLETED",
+                    "plugin_worker_id": "Step2",
+                    "plugin_type": "TypeB",
+                    "event_status": "Not Started",
                     "io_transformation_states": [],
                 },
             ],
@@ -857,32 +892,10 @@ async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reex
     process_repo.update = AsyncMock(return_value=True)
     process_repo.find_by_id = AsyncMock(
         return_value={
+            "pipeline_id": "proc_partial_reexec",
             "process_id": "proc_partial_reexec",
+            "dataflow_state_id": "dfs_partial",
             "configuration": config.to_dict(),
-            "dataflow_state": {
-                "nodes": [
-                    {
-                        "subprocess_id": "FetchFeedItems1",
-                        "subprocess_type": "TypeA",
-                        "event_status": "EVENT_COMPLETED",
-                        "io_transformation_states": [
-                            {
-                                "input_data_id": "d1",
-                                "output_data_ids": ["out_fetch_1"],
-                                "status": "Finished",
-                                "quality": 1.0,
-                            }
-                        ],
-                    },
-                    {
-                        "subprocess_id": "EmbedData1",
-                        "subprocess_type": "TypeB",
-                        "event_status": "Not Started",
-                        "io_transformation_states": [],
-                    },
-                ],
-                "edges": [{"from": "FetchFeedItems1", "to": "EmbedData1"}],
-            },
         }
     )
 
@@ -984,10 +997,19 @@ async def test_process_engine_external_event_notifications_without_local_subscri
 
     process_repo = AsyncMock()
     process_repo.insert = AsyncMock(return_value="id")
+    process_repo.insert_from_configuration = AsyncMock(
+        return_value={
+            "pipeline_id": "proc_external_notify",
+            "dataflow_state_id": "dfs_ext",
+            "status": "running",
+        }
+    )
     process_repo.update = AsyncMock(return_value=True)
     process_repo.find_by_id = AsyncMock(
         return_value={
+            "pipeline_id": "proc_external_notify",
             "process_id": "proc_external_notify",
+            "dataflow_state_id": "dfs_ext",
             "configuration": chain_config.to_dict(),
         }
     )
@@ -998,8 +1020,8 @@ async def test_process_engine_external_event_notifications_without_local_subscri
         return_value={
             "nodes": [
                 {
-                    "subprocess_id": "Step1",
-                    "subprocess_type": "TypeA",
+                    "plugin_worker_id": "Step1",
+                    "plugin_type": "TypeA",
                     "event_status": "EVENT_COMPLETED",
                     "io_transformation_states": [
                         {
@@ -1011,8 +1033,8 @@ async def test_process_engine_external_event_notifications_without_local_subscri
                     ],
                 },
                 {
-                    "subprocess_id": "Step2",
-                    "subprocess_type": "TypeB",
+                    "plugin_worker_id": "Step2",
+                    "plugin_type": "TypeB",
                     "event_status": "Not Started",
                     "io_transformation_states": [],
                 },

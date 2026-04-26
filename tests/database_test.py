@@ -84,7 +84,7 @@ async def test_process_repository_crud(db_session):
     await repo.create_indexes()
 
     process = {
-        "process_id": "proc_test_001",
+        "pipeline_id": "proc_test_001",
         "software_version": "1.0.0",
         "status": "running",
     }
@@ -93,7 +93,7 @@ async def test_process_repository_crud(db_session):
 
     found = await repo.find_by_id("proc_test_001")
     assert found is not None
-    assert found["process_id"] == "proc_test_001"
+    assert found["pipeline_id"] == "proc_test_001"
     assert found["status"] == "running"
     assert isinstance(found["timestamp_ms"], int)
     assert isinstance(found["timestamp_human"], str)
@@ -108,7 +108,7 @@ async def test_process_repository_crud(db_session):
     # Cleanup
     if should_delete():
         await db_session[ProcessRepository.COLLECTION_NAME].delete_one(
-            {"process_id": "proc_test_001"}
+            {"pipeline_id": "proc_test_001"}
         )
 
 
