@@ -40,7 +40,11 @@ from dflowp_core.database.event_repository import EventRepository
 from dflowp_core.database.plugin_configuration_repository import PluginConfigurationRepository
 from dflowp_core.database.process_repository import ProcessRepository
 
-router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
+router = APIRouter(
+    prefix="/api/v1",
+    dependencies=[Depends(require_api_key)],
+    tags=["v1"],
+)
 
 
 def _pagination(

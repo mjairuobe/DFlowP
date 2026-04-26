@@ -60,7 +60,25 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
             await close_mongodb_connection()
 
 
-app = FastAPI(title="DFlowP API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="DFlowP API",
+    version="1.0.0",
+    lifespan=lifespan,
+    description=(
+        "REST-API für Pipelines, Data-Items, Datasets, Events, Dataflows, Dataflow-States und "
+        "Plugin-Konfigurationen. Authentifizierung: Header `X-API-Key` auf allen Endpunkten. "
+        "Vollständige Endpunktliste, cURL-Beispiele pro Route und beispielhafte JSON-Responses für "
+        "Detail-GETs: Repository-Datei `docs/API-DBDoc-Restructure-Plan.md`."
+    ),
+    openapi_tags=[
+        {
+            "name": "v1",
+            "description": (
+                "Kebab-Case-Pfade (pipelines, dataflows, …). Doku: `docs/API-DBDoc-Restructure-Plan.md`."
+            ),
+        },
+    ],
+)
 add_cors_middleware(app)
 app.include_router(kebab_v1_router)
 
