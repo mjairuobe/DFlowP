@@ -19,7 +19,9 @@ class EventRepository:
     async def create_indexes(self) -> None:
         """Erstellt Indizes für effiziente Abfragen."""
         await self._collection.create_index("process_id")
+        await self._collection.create_index("pipeline_id")
         await self._collection.create_index("subprocess_id")
+        await self._collection.create_index("plugin_worker_id")
         await self._collection.create_index("event_time")
         await self._collection.create_index("timestamp_ms")
         await self._collection.create_index("delivered_at")
@@ -103,11 +105,13 @@ class EventRepository:
         page: int,
         page_size: int,
         process_id: Optional[str] = None,
+        pipeline_id: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Liefert paginierte Event-Dokumente."""
+        """Liefert paginierte Event-Dokumente (Filter: ``pipeline_id`` oder legacy ``process_id``)."""
         query: dict[str, Any] = {}
-        if process_id:
-            query["process_id"] = process_id
+        pid = pipeline_id or process_id
+        if pid:
+            query = {"$or": [{"pipeline_id": pid}, {"process_id": pid}]}
 
         total_items = await self._collection.count_documents(query)
         skip = (page - 1) * page_size

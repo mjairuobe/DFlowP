@@ -198,3 +198,84 @@ async def migrate_all(dry_run: bool = False) -> dict:
         "cleanup": cleanup_results,
         "dry_run": dry_run,
     }
+
+
+async def migrate_legacy_processes_to_pipelines() -> int:
+    """
+    Legt je ein Pipeline-/Dataflow-/State-/Config-Dokument für jedes Legacy-`processes`-Dokument an,
+    sofern noch keine `pipeline_id` in `pipelines` existiert. Idempotent.
+    """
+    from dflowp_core.database.dataflow_repository import DataflowRepository
+    from dflowp_core.database.dataflow_state_repository import DataflowStateRepository
+    from dflowp_core.database.pipeline_repository import PipelineRepository
+    from dflowp_core.database.plugin_configuration_repository import PluginConfigurationRepository
+
+    db = get_database()
+    col_old = db["processes"]
+    if await col_old.count_documents({}) == 0:
+        return 0
+
+    pr = PipelineRepository()
+    dfr = DataflowRepository()
+    pcr = PluginConfigurationRepository()
+    dsr = DataflowStateRepository()
+    n = 0
+    async for old in col_old.find({}):
+        pid = old.get("process_id")
+        if not pid:
+            continue
+        if await pr.find_by_id(pid):
+            continue
+        cfg = old.get("configuration") or {}
+        dataflow = cfg.get("dataflow") or {"nodes": [], "edges": []}
+        df_id = f"mig_df_{pid}"
+        if not await dfr.find_by_id(df_id):
+            await dfr.insert(
+                {
+                    "dataflow_id": df_id,
+                    "name": str(pid),
+                    "nodes": dataflow.get("nodes", []),
+                    "edges": dataflow.get("edges", []),
+                }
+            )
+        pcfg_id = f"mig_pcfg_{pid}"
+        sc = cfg.get("subprocess_config") or {}
+        if not await pcr.find_by_id(pcfg_id):
+            await pcr.insert(
+                {
+                    "plugin_configuration_id": pcfg_id,
+                    "by_plugin_worker_id": sc,
+                }
+            )
+        st = old.get("dataflow_state") or {"nodes": [], "edges": []}
+        dfs_id = f"mig_dfs_{pid}"
+        if not await dsr.get_by_id(dfs_id):
+            await dsr.insert(
+                {
+                    "dataflow_state_id": dfs_id,
+                    "pipeline_id": pid,
+                    "dataflow_id": df_id,
+                    "nodes": st.get("nodes", []),
+                    "edges": st.get("edges", []),
+                    "dataflow_state": st,
+                }
+            )
+        input_ds = old.get("input_dataset_id")
+        if input_ds is None:
+            input_ds = cfg.get("input_dataset_id", "unknown")
+        pl = {
+            "pipeline_id": pid,
+            "software_version": old.get("software_version", cfg.get("software_version", "0.1.0")),
+            "input_dataset_id": input_ds,
+            "dataflow_id": df_id,
+            "plugin_configuration_id": pcfg_id,
+            "dataflow_state_id": dfs_id,
+            "status": old.get("status", "pending"),
+        }
+        if old.get("timestamp_ms") is not None:
+            pl["timestamp_ms"] = old["timestamp_ms"]
+        await pr.insert(pl)
+        n += 1
+    if n:
+        logger.info("migrate_legacy_processes_to_pipelines: %d migriert", n)
+    return n

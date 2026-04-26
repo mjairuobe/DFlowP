@@ -21,10 +21,10 @@ from dflowp.api.schemas import (
     ProcessCreateRequest,
     ProcessStopRequest,
 )
-from dflowp_processruntime.dataflow.dataflow_state import DataflowState
 from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
 from dflowp_core.database.data_item_repository import DataItemRepository
 from dflowp_core.database.event_repository import EventRepository
+from dflowp_core.database.migrations import migrate_legacy_processes_to_pipelines
 from dflowp_core.database.mongo import (
     close_mongodb_connection,
     connect_to_mongodb,
@@ -44,8 +44,11 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         )
         process_repo = ProcessRepository()
         data_item_repo = DataItemRepository()
+        event_repo = EventRepository()
         await process_repo.create_indexes()
         await data_item_repo.create_indexes()
+        await event_repo.create_indexes()
+        await migrate_legacy_processes_to_pipelines()
 
     try:
         yield
@@ -77,27 +80,7 @@ def get_event_repository() -> EventRepository:
     return EventRepository()
 
 
-@app.get("/api/v1/datasets", dependencies=[Depends(require_api_key)])
-async def list_datasets(
-    pagination: tuple[int, int] = Depends(_pagination_params),
-    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
-) -> dict:
-    page, page_size = pagination
-    return await data_item_repo.list_datasets(page=page, page_size=page_size)
-
-
-@app.get("/api/v1/datasets/{dataset_id}", dependencies=[Depends(require_api_key)])
-async def get_dataset(
-    dataset_id: str,
-    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
-) -> dict:
-    dataset = await data_item_repo.find_dataset_by_id(dataset_id)
-    if not dataset:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dataset '{dataset_id}' wurde nicht gefunden.",
-        )
-    return dataset
+_DATA_DOC_TYPES = frozenset({"data", "dataset"})
 
 
 @app.post(
@@ -110,8 +93,7 @@ async def create_dataset(
     data_item_repo: DataItemRepository = Depends(get_data_item_repository),
 ) -> dict:
     """
-    Legt ein Dataset an: entweder `data_ids` (bestehende Data-IDs) oder `rows`
-    (neue Data-Dokumente pro Zeile, IDs wie `{dataset_id}_row_{i}`).
+    Legt ein Dataset an (kein separater Listen-Endpunkt für Datasets – siehe ``GET /api/v1/data``).
     """
     if await data_item_repo.find_by_id(request.id):
         raise HTTPException(
@@ -155,9 +137,6 @@ async def create_dataset(
             detail="Dataset konnte nicht gelesen werden.",
         )
     return doc
-
-
-_DATA_DOC_TYPES = frozenset({"data", "dataset"})
 
 
 @app.get("/api/v1/data", dependencies=[Depends(require_api_key)])
@@ -285,10 +264,14 @@ async def get_subprocess(
 @app.get("/api/v1/events", dependencies=[Depends(require_api_key)])
 async def list_events(
     pagination: tuple[int, int] = Depends(_pagination_params),
+    pipeline_id: Annotated[str | None, Query()] = None,
+    process_id: Annotated[str | None, Query()] = None,
     event_repo: EventRepository = Depends(get_event_repository),
 ) -> dict:
     page, page_size = pagination
-    return await event_repo.list_events(page=page, page_size=page_size)
+    return await event_repo.list_events(
+        page=page, page_size=page_size, pipeline_id=pipeline_id, process_id=process_id
+    )
 
 
 @app.get("/api/v1/events/{event_id}", dependencies=[Depends(require_api_key)])
@@ -399,21 +382,12 @@ async def create_process(
             rows=request.input_data,
         )
 
-    dataflow_state = DataflowState.from_dataflow(configuration.dataflow)
-    process_doc: dict = {
-        "process_id": configuration.process_id,
-        "software_version": configuration.software_version,
-        "input_dataset_id": configuration.input_dataset_id,
-        "configuration": configuration.to_dict(),
-        "dataflow_state": dataflow_state.to_dict(),
-        "status": "running" if request.start_immediately else "pending",
-    }
-    await process_repo.insert(process_doc)
-    created = await process_repo.find_by_id(configuration.process_id)
+    st = "running" if request.start_immediately else "pending"
+    created = await process_repo.insert_from_configuration(configuration, status=st)
     if not created:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Prozess wurde nicht gespeichert.",
+            detail="Pipeline wurde nicht gespeichert.",
         )
     return created
 

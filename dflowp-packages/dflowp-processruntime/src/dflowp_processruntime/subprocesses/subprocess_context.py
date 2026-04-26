@@ -1,25 +1,36 @@
-"""SubprocessContext - Kontext für einen zu startenden Subprozess."""
+"""Kontext für einen zu startenden Plugin-Worker (Subprozess)."""
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from dflowp_processruntime.datastructures.data import Data
 from dflowp_processruntime.datastructures.dataset import Dataset
 
 
 class SubprocessContext(BaseModel):
-    """
-    Enthält den kompletten Kontext, den ein zu startender Subprozess benötigt.
-    Zusammengesetzt aus Prozesskonfiguration und Input-Daten der Vorgänger-Subprozesse.
-    """
+    """Laufzeitkontext für einen Plugin-Worker."""
 
-    process_id: str
-    subprocess_id: str
-    subprocess_type: str
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+    )
+
+    pipeline_id: str = Field(validation_alias=AliasChoices("pipeline_id", "process_id"))
+    plugin_worker_id: str = Field(validation_alias=AliasChoices("plugin_worker_id", "subprocess_id"))
+    plugin_type: str = Field(validation_alias=AliasChoices("plugin_type", "subprocess_type"))
     config: dict[str, Any] = Field(default_factory=dict)
     input_dataset: Optional[Dataset] = None
     input_data: list[Data] = Field(default_factory=list)
 
-    class ConfigDict:
-        arbitrary_types_allowed = True
+    @property
+    def process_id(self) -> str:
+        return self.pipeline_id
+
+    @property
+    def subprocess_id(self) -> str:
+        return self.plugin_worker_id
+
+    @property
+    def subprocess_type(self) -> str:
+        return self.plugin_type
