@@ -1,112 +1,112 @@
-// DFlowP – entkoppelt: dflowp-frontend. Template: Pfade + DOCKERFILE + IMAGE_REPO pro Service anpassen.
-// Build nur bei geänderter Lineage (git) oder fehlendem Image; Tag = kurzer Content-Hash + SOFTWARE_VERSION.
+// DFlowP – entkoppelt: Frontend Remote-Vite-HMR Sync gegen Supervisor.
 pipeline {
     agent any
     options {
         timestamps()
-        timeout(time: 60, unit: 'MINUTES')
-    }
-    environment {
-        DOCKERFILE   = 'Dockerfile-Frontend'
-        IMAGE_REPO   = 'docker.io/crawlabase/dflowp-frontend'
-        LAST_STATE   = '.jenkins_last_dflowp_frontend'
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
     }
     stages {
         stage('Checkout') {
             steps { checkout scm }
         }
-        stage('Fetch tags') {
-            steps {
-                sh 'git remote get-url origin >/dev/null 2>&1 && git fetch origin --tags --force || true'
+        stage('Remote HMR sync') {
+            options {
+                timeout(time: 20, unit: 'MINUTES')
             }
-        }
-        stage('Version & lineage') {
             steps {
-                sh '''set -euo pipefail
-rm -f .jenkins_did_docker_build
-git fetch origin --tags --force 2>/dev/null || true
-LATEST=$(git tag -l 'v[0-9]*.*.*' 2>/dev/null | sort -V | tail -1 || true)
-if [ -n "${LATEST}" ]; then
-  V=${LATEST#v}
-  MAJ=${V%%.*}
-  R1=${V#*.}
-  MIN=${R1%%.*}
-  BN=$(git rev-list --count --all ${LATEST}..HEAD 2>/dev/null || echo 0)
-  SOFTWARE_VERSION="v${MAJ}.${MIN}.${BN}"
-else
-  BN=$(git rev-list --all --count 2>/dev/null || echo 0)
-  SOFTWARE_VERSION="v0.1.${BN}"
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
+
+command -v curl >/dev/null 2>&1
+command -v jq >/dev/null 2>&1
+command -v awk >/dev/null 2>&1
+
+ENV_FILE="${DFLOWP_REMOTE_HMR_ENV_FILE:-dflowp/frontend/remote-hmr/.env.remote-hmr.jenkins}"
+if [ -f "${ENV_FILE}" ]; then
+  echo "Lade Remote-HMR-Env aus ${ENV_FILE}"
+  set -a
+  # shellcheck disable=SC1090
+  . "${ENV_FILE}"
+  set +a
 fi
-echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}" > .jenkins_runtime.env
-# Lineage: Frontend-Quellbaum und dieses Dockerfile
-s=""
-for p in dflowp/frontend "${DOCKERFILE}"; do
-  if git cat-file -e "HEAD:${p}" 2>/dev/null; then s="${s}$(git rev-parse "HEAD:${p}")"
-  else s="${s}none"
+
+SUPERVISOR_URL="${DFLOWP_REMOTE_HMR_SUPERVISOR_URL:-http://127.0.0.1:40890}"
+SUPERVISOR_URL="${SUPERVISOR_URL%/}"
+REF_TO_SYNC="${DFLOWP_REMOTE_HMR_REF:-${BRANCH_NAME:-main}}"
+
+echo "Supervisor URL: ${SUPERVISOR_URL}"
+echo "Ref to sync: ${REF_TO_SYNC}"
+
+curl_supervisor() {
+  if [ -n "${DFLOWP_REMOTE_HMR_SHARED_SECRET:-}" ]; then
+    curl -fsS "$@" -H "X-Shared-Secret: ${DFLOWP_REMOTE_HMR_SHARED_SECRET}"
+  else
+    curl -fsS "$@"
   fi
-done
-LINEAGE=$(printf %s "$s" | sha256sum | cut -c1-5 | tr 'A-Z' 'a-z')
-export LINEAGE
-echo "LINEAGE=${LINEAGE}" >> .jenkins_runtime.env
-echo "SOFTWARE_VERSION=$SOFTWARE_VERSION tag=$LINEAGE"
-'''
-            }
-        }
-        stage('Docker Hub login') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'HUBU', passwordVariable: 'HUBP')]) {
-                    sh '''set -euo pipefail
-echo "$HUBP" | docker login -u "$HUBU" --password-stdin docker.io
-'''
-                }
-            }
-        }
-        stage('Docker build (if needed)') {
-            steps {
-                sh '''set -euo pipefail
-. ./.jenkins_runtime.env
-: "${LINEAGE?}"
-: "${SOFTWARE_VERSION?}"
-SKIP=0
-if [ -f "${LAST_STATE}" ] && [ "$(cat "${LAST_STATE}" 2>/dev/null)" = "$LINEAGE" ] && docker image inspect "${IMAGE_REPO}:${LINEAGE}" >/dev/null 2>&1; then
-  echo "Kein Build nötig: Lineage unverändert und Image ${IMAGE_REPO}:${LINEAGE} vorhanden."
-  SKIP=1
+}
+
+SYNC_PAYLOAD="$(jq -cn --arg ref "${REF_TO_SYNC}" '{ref: $ref}')"
+SYNC_RESPONSE="$(
+  curl_supervisor \
+    -X POST "${SUPERVISOR_URL}/sync" \
+    -H "Content-Type: application/json" \
+    -d "${SYNC_PAYLOAD}"
+)"
+RUN_ID="$(printf '%s' "${SYNC_RESPONSE}" | jq -r '.runId // empty')"
+if [ -z "${RUN_ID}" ]; then
+  echo "No runId returned by supervisor." >&2
+  echo "Sync response: ${SYNC_RESPONSE}" >&2
+  exit 1
 fi
-if [ "$SKIP" -eq 1 ]; then
-  exit 0
+
+echo "runId=${RUN_ID}"
+echo "Streaming events until terminal state..."
+
+TERMINAL_STATE="$(
+  curl_supervisor -N "${SUPERVISOR_URL}/events?runId=${RUN_ID}" \
+  | awk '
+      /^data:/ {
+        sub(/^data:[[:space:]]*/, "", $0)
+        print $0 > "/dev/stderr"
+        if (match($0, /(READY|BUILD_ERROR|CRASHED|SYNC_ERROR)/)) {
+          print substr($0, RSTART, RLENGTH)
+          exit
+        }
+      }
+    '
+)"
+
+if [ -z "${TERMINAL_STATE}" ]; then
+  echo "Events stream ended without terminal state." >&2
+  exit 1
 fi
-echo "Build ${IMAGE_REPO}:${LINEAGE} (+ ${SOFTWARE_VERSION})"
-docker build -f "${DOCKERFILE}" \
-  -t "${IMAGE_REPO}:${LINEAGE}" \
-  -t "${IMAGE_REPO}:${SOFTWARE_VERSION}" \
-  --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
-  .
-printf %s "$LINEAGE" > "${LAST_STATE}"
-date > .jenkins_did_docker_build
+echo "Terminal event state: ${TERMINAL_STATE}"
+
+STATUS_RESPONSE="$(curl_supervisor "${SUPERVISOR_URL}/status")"
+FINAL_STATE="$(printf '%s' "${STATUS_RESPONSE}" | jq -r '.state // empty')"
+
+if [ -z "${FINAL_STATE}" ]; then
+  echo "Supervisor /status did not return .state." >&2
+  echo "Status response: ${STATUS_RESPONSE}" >&2
+  exit 1
+fi
+
+echo "Final supervisor state: ${FINAL_STATE}"
+if [ "${FINAL_STATE}" != "READY" ]; then
+  echo "Remote sync did not end in READY." >&2
+  exit 1
+fi
 '''
             }
         }
-        stage('Image smoke') {
-            steps {
-                sh '''set -euo pipefail
-. ./.jenkins_runtime.env
-: "${LINEAGE?}"
-docker run --rm --entrypoint sh "${IMAGE_REPO}:${LINEAGE}" -c 'test -f /app/dist/index.html'
-'''
-            }
+    }
+    post {
+        failure {
+            echo 'Frontend Remote-HMR-Sync fehlgeschlagen – Supervisor-/Events-Logs prüfen.'
         }
-        stage('Push to registry') {
-            when { expression { return fileExists('.jenkins_did_docker_build') } }
-            steps {
-                sh '''set -euo pipefail
-. ./.jenkins_runtime.env
-: "${LINEAGE?}"
-: "${SOFTWARE_VERSION?}"
-docker image push "${IMAGE_REPO}:${LINEAGE}"
-docker image push "${IMAGE_REPO}:${SOFTWARE_VERSION}"
-docker logout docker.io 2>/dev/null || true
-'''
-            }
+        success {
+            echo 'Frontend Remote-HMR-Sync erfolgreich (final state READY).'
         }
     }
 }
