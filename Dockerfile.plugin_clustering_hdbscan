@@ -1,5 +1,6 @@
 # dflowp-plugin-clustering-hdbscan
-FROM python:3.11-slim-bookworm AS wheel-builder
+ARG PYTHON_BASE_IMAGE=python:3.11-slim-bookworm
+FROM ${PYTHON_BASE_IMAGE} AS wheel-builder
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /build
 COPY dflowp-packages /build/dflowp-packages
@@ -8,7 +9,7 @@ RUN python -m ensurepip --upgrade \
     && python -m build /build/dflowp-packages/dflowp-core \
     && python -m build /build/dflowp-packages/dflowp-processruntime
 
-FROM python:3.11-slim-bookworm
+FROM ${PYTHON_BASE_IMAGE}
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app

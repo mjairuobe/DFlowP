@@ -34,6 +34,9 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 class RuntimeEventPayload(BaseModel):
     event_id: str | None = None
+    pipeline_id: str | None = None
+    plugin_worker_id: str | None = None
+    plugin_worker_replica_id: int | None = 1
     process_id: str | None = None
     subprocess_id: str | None = None
     subprocess_instance_id: int | None = 1
@@ -102,7 +105,7 @@ async def _bootstrap_runtime() -> Runtime:
     with open(CONFIG_PATH, encoding="utf-8") as file:
         config_dict = json.load(file)
 
-    config_dict["process_id"] = build_human_readable_document_id(
+    config_dict["pipeline_id"] = build_human_readable_document_id(
         domain="pipeline",
         document_type="proc",
     )
@@ -113,7 +116,7 @@ async def _bootstrap_runtime() -> Runtime:
         dataset_id=config.input_dataset_id,
         input_json_path=INPUT_PATH,
     )
-    logger.info("Starte Prozess '%s' ...", config.process_id)
+    logger.info("Starte Pipeline '%s' ...", config.pipeline_id)
     await runtime.engine.start_process(config)
     return runtime
 
@@ -124,9 +127,12 @@ async def _poll_pending_processes(shutdown: asyncio.Event, runtime: Runtime) -> 
     while not shutdown.is_set():
         claimed = await runtime.process_repository.claim_next_pending()
         if claimed:
-            process_id = claimed["process_id"]
-            logger.info("Übernehme wartenden Prozess '%s' …", process_id)
-            await runtime.engine.activate_pending_process(process_id)
+            pipeline_id = claimed.get("pipeline_id") or claimed.get("process_id")
+            if not pipeline_id:
+                logger.warning("Wartender Eintrag ohne pipeline_id/process_id wird übersprungen.")
+                continue
+            logger.info("Übernehme wartende Pipeline '%s' …", pipeline_id)
+            await runtime.engine.activate_pending_process(pipeline_id)
             continue
         try:
             await asyncio.wait_for(shutdown.wait(), timeout=poll_interval)

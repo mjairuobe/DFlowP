@@ -1,24 +1,5 @@
-// DFlowP – vollständiger Stack (docker-compose v1) + Pytest-Integration.
-//
-// Modus A (Standard): docker-compose build wie bisher, dann up + Tests.
-// Modus B (Skip-Build): Wenn alle Downstream-Pipelines für den aktuellen Commit grün waren
-//   (siehe DFLOWP_STACK_VERIFY_JOB_PATHS + optional API-Auth) ODER wenn
-//   DFLOWP_STACK_TRUST_REGISTRY_SKIP=1 und alle Registry-Images mit Lineage-Tag existieren:
-//   kein compose-build, nur „docker pull“ für fehlende lokale Images, dann selektives
-//   „compose up“ (nur Services mit anderem Image / ohne Container).
-//
-// Lineage-Hashes (5 Zeichen) und Pfade pro Dienst entsprechen den jeweiligen Jenkinsfile.* /
-// Dockerfile.* – identisch zu den entkoppelten Release-Pipelines; Compose nutzt dann
-// DOCKER_IMAGE_* auf docker.io/crawlabase/...:<lineage>.
-//
-// Optional Jenkins-API: In der Job-Konfiguration Umgebungsvariable DFLOWP_STACK_VERIFY_JOB_PATHS
-// setzen (Leerzeichen-getrennte Pfade relativ zu JENKINS_URL, ohne führenden Slash), z. B.
-// Multibranch: job/Ordner/job/dflowp-api/job/feature%252Fmein-branch
-// Bei geschütztem Jenkins: JENKINS_API_USER und JENKINS_API_TOKEN als gebundene Credentials
-// (oder gleichwertige Env-Vars) bereitstellen – sonst unauthentifizierter GET.
-//
-// JSON-Secrets: jq. Post: compose down + docker logout.
-// Compose-Build: DOCKER_BUILDKIT=0 + COMPOSE_BAKE=false — vermeidet „buildx 0.17+“ auf Agents mit altem buildx (z. B. AL2023).
+// DFlowP stack pipeline (vereinfachte Full-Flow-Variante mit docker buildx).
+// Fokus: klare Stages, parallele Buildx-Builds mit Cache, compose up + Integrationstests.
 pipeline {
     agent any
     options {
@@ -26,11 +7,24 @@ pipeline {
         timeout(time: 90, unit: 'MINUTES')
     }
     environment {
-        MONGODB_TEST_DB  = 'dflowp_test'
+        MONGODB_TEST_DB = 'dflowp_test'
     }
     stages {
-        stage('Checkout') { steps { checkout scm } }
-        stage('Fetch tags & SOFTWARE_VERSION') {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Preflight tools') {
+            steps {
+                sh '''set -euo pipefail
+docker version
+docker buildx version
+docker-compose version
+'''
+            }
+        }
+        stage('Prepare version & image env') {
             steps {
                 sh '''set -euo pipefail
 git remote get-url origin >/dev/null 2>&1 && git fetch origin --tags --force || true
@@ -43,211 +37,452 @@ else
   BN=$(git rev-list --all --count 2>/dev/null || echo 0)
   SOFTWARE_VERSION="v0.1.${BN}"
 fi
-export SOFTWARE_VERSION
-echo "SOFTWARE_VERSION=$SOFTWARE_VERSION" > .jenkins_runtime.env
-cat .jenkins_runtime.env
-'''
-            }
-        }
-        stage('Lineage & Compose-Image-Env') {
-            steps {
-                sh '''set -euo pipefail
-# Lineage-Berechnung muss mit Jenkinsfile.api / .worker / .eventsystem / .event_broker /
-# .mongo / .plugin_* / .frontend übereinstimmen (gleiche Pfadlisten + gleiche Mongo-Sonderlogik).
-lineage_from_paths() {
-  _s=""
-  for _p in "$@"; do
-    if git cat-file -e "HEAD:${_p}" 2>/dev/null; then _s="${_s}$(git rev-parse "HEAD:${_p}")"
-    else _s="${_s}none"
-    fi
-  done
-  printf %s "${_s}" | sha256sum | cut -c1-5 | tr 'A-Z' 'a-z'
-}
-lineage_mongo_only() {
-  _df="$1"
-  _s=""
-  for _p in "${_df}"; do
-    _s="${_s}$(git rev-parse "HEAD:${_p}" 2>/dev/null || echo none)"
-  done
-  printf %s "${_s}" | sha256sum | cut -c1-5 | tr 'A-Z' 'a-z'
-}
-
-L_API=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime examples tests Dockerfile.api)
-L_WORKER=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime examples tests main.py Dockerfile.worker)
-L_EV=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.eventsystem)
-L_BR=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.event_broker)
-L_MONGO=$(lineage_mongo_only Dockerfile.mongo)
-L_PF=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.plugin_fetchfeeditems)
-L_PE=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.plugin_embeddata)
-L_PCDB=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.plugin_clustering_dbscan)
-L_PCHDB=$(lineage_from_paths dflowp dflowp-packages/dflowp-core dflowp-packages/dflowp-processruntime tests Dockerfile.plugin_clustering_hdbscan)
-L_FE=$(lineage_from_paths dflowp/frontend Dockerfile-Frontend)
-
-: > .jenkins_stack_images.env
-{
-  echo "DOCKER_IMAGE_MONGO=docker.io/crawlabase/dflowp-mongo:${L_MONGO}"
-  echo "DOCKER_IMAGE_API=docker.io/crawlabase/dflowp-api:${L_API}"
-  echo "DOCKER_IMAGE_FRONTEND=docker.io/crawlabase/dflowp-frontend:${L_FE}"
-  echo "DOCKER_IMAGE_RUNTIME=docker.io/crawlabase/dflowp-runtime:${L_WORKER}"
-  echo "DOCKER_IMAGE_EVENTSYSTEM=docker.io/crawlabase/dflowp-eventsystem:${L_EV}"
-  echo "DOCKER_IMAGE_EVENT_BROKER=docker.io/crawlabase/dflowp-event-broker:${L_BR}"
-  echo "DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS=docker.io/crawlabase/dflowp-plugin-fetchfeeditems:${L_PF}"
-  echo "DOCKER_IMAGE_PLUGIN_EMBEDDATA=docker.io/crawlabase/dflowp-plugin-embeddata:${L_PE}"
-  echo "DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN=docker.io/crawlabase/dflowp-plugin-clustering-dbscan:${L_PCDB}"
-  echo "DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=docker.io/crawlabase/dflowp-plugin-clustering-hdbscan:${L_PCHDB}"
-} >> .jenkins_stack_images.env
-
-echo "Lineage mongo=${L_MONGO} api=${L_API} frontend=${L_FE} worker=${L_WORKER} eventsystem=${L_EV} event_broker=${L_BR} ..."
-cat .jenkins_stack_images.env
-
-# Voreinstellung: lokal bauen; wird von der Gate-Stage bei Erfolg auf Skip gesetzt.
-echo "STACK_SKIP_BUILD=0" > .jenkins_stack_mode.env
-'''
-            }
-        }
-        stage('Docker Hub login') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'HUBU', passwordVariable: 'HUBP')]) {
-                    sh '''set -euo pipefail
-echo "$HUBP" | docker login -u "$HUBU" --password-stdin docker.io
-'''
-                }
-            }
-        }
-        stage('Gate: Downstream-Jobs oder Registry (Skip-Build?)') {
-            steps {
-                sh '''set -euo pipefail
-. ./.jenkins_stack_images.env
-GIT_COMMIT_FULL=$(git rev-parse HEAD)
-export GIT_COMMIT_FULL
-
-try_jenkins_paths() {
-  [ -n "${DFLOWP_STACK_VERIFY_JOB_PATHS:-}" ] || return 1
-  [ -n "${JENKINS_URL:-}" ] || { echo "DFLOWP_STACK_VERIFY_JOB_PATHS gesetzt, aber JENKINS_URL fehlt."; return 1; }
-  CURL_AUTH=()
-  if [ -n "${JENKINS_API_USER:-}" ] && [ -n "${JENKINS_API_TOKEN:-}" ]; then
-    CURL_AUTH=( -u "${JENKINS_API_USER}:${JENKINS_API_TOKEN}" )
-  fi
-  for _path in ${DFLOWP_STACK_VERIFY_JOB_PATHS}; do
-    # changeSets + BuildData: Workflow-/Multibranch-Pipelines liefern oft kein klassisches changeSet.items
-    _url="${JENKINS_URL%/}/${_path}/lastSuccessfulBuild/api/json?tree=result,changeSet[items[commitId]],changeSets[items[commitId]],actions[_class,lastBuiltRevision[SHA1]]"
-    echo "Prüfe Downstream: ${_url}"
-    if ! _json=$(curl -fsS --connect-timeout 5 --max-time 60 "${CURL_AUTH[@]}" "${_url}"); then
-      echo "Jenkins-API: Abruf fehlgeschlagen für ${_path}"
-      return 1
-    fi
-    _res=$(printf '%s' "${_json}" | jq -r '.result // empty')
-    if [ "${_res}" != "SUCCESS" ]; then
-      echo "Letzter Lauf nicht SUCCESS (${_res}) für ${_path}"
-      return 1
-    fi
-    _hit=$(printf '%s' "${_json}" | jq -r --arg c "${GIT_COMMIT_FULL}" '
-def commit_ids:
-  ((.changeSet // {}) | (.items // []) | map(.commitId) | map(select(type == "string")))
-  + ((.changeSets // []) | [.[] | (.items // [])[] | .commitId // empty] | map(select(type == "string")))
-  + ((.actions // []) | [.[] | select((._class // "") == "hudson.plugins.git.util.BuildData") | .lastBuiltRevision.SHA1 // empty] | map(select(type == "string")))
-  ;
-def matches($full; $id):
-  if ($id | type) != "string" or $id == "" then false
-  else ($full | ascii_downcase) as $fl | ($id | ascii_downcase) as $il
-  | if $il == $fl then true
-    elif ($fl | startswith($il)) then true
-    elif ($il | length) >= 7 and ($il | startswith($fl[0:7])) then true
-    else false end
-  end;
-(if any(commit_ids[]; matches($c; .)) then "true" else "false" end)
-')
-    if [ "${_hit}" != "true" ]; then
-      echo "lastSuccessfulBuild von ${_path} enthält nicht GIT_COMMIT=${GIT_COMMIT_FULL} (changeSet/changeSets/BuildData ohne Treffer)"
-      return 1
-    fi
-  done
-  echo "Alle konfigurierten Downstream-Jobs: SUCCESS mit passendem Commit."
-  return 0
-}
-
-try_registry_all_present() {
-  [ "${DFLOWP_STACK_TRUST_REGISTRY_SKIP:-0}" = "1" ] || return 1
-  for img in \
-    "${DOCKER_IMAGE_MONGO}" \
-    "${DOCKER_IMAGE_API}" \
-    "${DOCKER_IMAGE_FRONTEND}" \
-    "${DOCKER_IMAGE_RUNTIME}" \
-    "${DOCKER_IMAGE_EVENTSYSTEM}" \
-    "${DOCKER_IMAGE_EVENT_BROKER}" \
-    "${DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS}" \
-    "${DOCKER_IMAGE_PLUGIN_EMBEDDATA}" \
-    "${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN}" \
-    "${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN}"
-  do
-    if ! docker manifest inspect "${img}" >/dev/null 2>&1; then
-      echo "Registry: Manifest fehlt oder nicht erreichbar: ${img}"
-      return 1
-    fi
-  done
-  echo "Alle Stack-Images mit Lineage-Tag sind in der Registry (DFLOWP_STACK_TRUST_REGISTRY_SKIP=1)."
-  return 0
-}
-
-if [ -n "${DFLOWP_STACK_VERIFY_JOB_PATHS:-}" ]; then
-  if try_jenkins_paths; then
-    echo "STACK_SKIP_BUILD=1" > .jenkins_stack_mode.env
+GIT_SHORT=$(git rev-parse --short=12 HEAD)
+ECR_ENDPOINT="${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}"
+ECR_REGION="${ECR_REGION:-eu-central-1}"
+ECR_REPO_PREFIX="${ECR_REPO_PREFIX:-${ECR_NAMESPACE:-dflowp}}"
+IMAGE_REPO_BASE="${ECR_ENDPOINT}"
+service_image_repo() {
+  local service_name="$1"
+  if [ -n "${ECR_REPO_PREFIX}" ]; then
+    printf '%s/%s-%s\n' "${IMAGE_REPO_BASE}" "${ECR_REPO_PREFIX}" "${service_name}"
   else
-    echo "STACK_SKIP_BUILD=0" > .jenkins_stack_mode.env
+    printf '%s/%s\n' "${IMAGE_REPO_BASE}" "${service_name}"
   fi
-elif try_registry_all_present; then
-  echo "STACK_SKIP_BUILD=1" > .jenkins_stack_mode.env
-else
-  echo "STACK_SKIP_BUILD=0" > .jenkins_stack_mode.env
-fi
-cat .jenkins_stack_mode.env
+}
+IMAGE_REPO_MONGO="$(service_image_repo mongo)"
+IMAGE_REPO_API="$(service_image_repo api)"
+IMAGE_REPO_RUNTIME="$(service_image_repo runtime)"
+IMAGE_REPO_EVENTSYSTEM="$(service_image_repo eventsystem)"
+IMAGE_REPO_EVENT_BROKER="$(service_image_repo event-broker)"
+IMAGE_REPO_PLUGIN_FETCHFEEDITEMS="$(service_image_repo plugin-fetchfeeditems)"
+IMAGE_REPO_PLUGIN_EMBEDDATA="$(service_image_repo plugin-embeddata)"
+IMAGE_REPO_PLUGIN_CLUSTERING_DBSCAN="$(service_image_repo plugin-clustering-dbscan)"
+IMAGE_REPO_PLUGIN_CLUSTERING_HDBSCAN="$(service_image_repo plugin-clustering-hdbscan)"
+ECR_CACHE_REPO="${ECR_CACHE_REPO:-$(service_image_repo buildcache)}"
+ECR_PULLTHROUGH_ENDPOINT="${ECR_PULLTHROUGH_ENDPOINT:-${ECR_ENDPOINT}}"
+ECR_PULLTHROUGH_PREFIX="${ECR_PULLTHROUGH_PREFIX:-docker-hub}"
+PULL_PARALLEL="${PULL_PARALLEL:-15}"
+
+cat > .jenkins_runtime.env <<EOF
+SOFTWARE_VERSION=${SOFTWARE_VERSION}
+GIT_SHORT=${GIT_SHORT}
+ECR_ENDPOINT=${ECR_ENDPOINT}
+ECR_REGION=${ECR_REGION}
+ECR_REPO_PREFIX=${ECR_REPO_PREFIX}
+IMAGE_REPO_BASE=${IMAGE_REPO_BASE}
+ECR_CACHE_REPO=${ECR_CACHE_REPO}
+ECR_PULLTHROUGH_ENDPOINT=${ECR_PULLTHROUGH_ENDPOINT}
+ECR_PULLTHROUGH_PREFIX=${ECR_PULLTHROUGH_PREFIX}
+PULL_PARALLEL=${PULL_PARALLEL}
+EOF
+
+cat > .jenkins_stack_images.env <<EOF
+DOCKER_IMAGE_MONGO=${IMAGE_REPO_MONGO}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_API=${IMAGE_REPO_API}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_RUNTIME=${IMAGE_REPO_RUNTIME}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_EVENTSYSTEM=${IMAGE_REPO_EVENTSYSTEM}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_EVENT_BROKER=${IMAGE_REPO_EVENT_BROKER}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS=${IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_EMBEDDATA=${IMAGE_REPO_PLUGIN_EMBEDDATA}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN=${IMAGE_REPO_PLUGIN_CLUSTERING_DBSCAN}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=${IMAGE_REPO_PLUGIN_CLUSTERING_HDBSCAN}:${SOFTWARE_VERSION}
+EOF
+
+echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}"
+echo "GIT_SHORT=${GIT_SHORT}"
+echo "IMAGE_REPO_BASE=${IMAGE_REPO_BASE}"
+echo "ECR_CACHE_REPO=${ECR_CACHE_REPO}"
+echo "ECR_ENDPOINT=${ECR_ENDPOINT}"
+echo "ECR_REGION=${ECR_REGION}"
+echo "ECR_REPO_PREFIX=${ECR_REPO_PREFIX}"
+echo "ECR_PULLTHROUGH_ENDPOINT=${ECR_PULLTHROUGH_ENDPOINT}"
+echo "ECR_PULLTHROUGH_PREFIX=${ECR_PULLTHROUGH_PREFIX}"
+echo "PULL_PARALLEL=${PULL_PARALLEL}"
 '''
             }
         }
-        stage('Compose: build or pull (App-Services)') {
+        stage('ECR login') {
             steps {
                 sh '''set -euo pipefail
+set -a
 . ./.jenkins_runtime.env
-. ./.jenkins_stack_mode.env
-# Compose bind-mount ./volumes/mongo — Pfad anlegen; Mongo braucht Schreibrechte (oft root/999 vom letzten Lauf → chmod auf Host scheitert).
-mkdir -p volumes/mongo
-if ! chmod a+rwx volumes/mongo 2>/dev/null && ! chmod 777 volumes/mongo 2>/dev/null; then
-  echo "Hinweis: chmod auf volumes/mongo nicht möglich, setze Rechte per kurzem root-Container auf dem Bind-Mount."
-  docker run --rm --user root -v "$(pwd)/volumes/mongo:/v:rw" alpine:3.20 sh -ceu 'chmod -R 777 /v' || true
-fi
-export DOCKER_BUILDKIT=0
-export COMPOSE_BAKE=false
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
-  . ./.jenkins_stack_images.env
-  export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER
-  export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN
-  pull_if_missing() {
-    _img="$1"
-    if docker image inspect "${_img}" >/dev/null 2>&1; then
-      echo "Lokal vorhanden, kein pull: ${_img}"
-    else
-      echo "Pull: ${_img}"
-      docker pull "${_img}"
-    fi
-  }
-  pull_if_missing "${DOCKER_IMAGE_MONGO}"
-  pull_if_missing "${DOCKER_IMAGE_API}"
-  pull_if_missing "${DOCKER_IMAGE_FRONTEND}"
-  pull_if_missing "${DOCKER_IMAGE_RUNTIME}"
-  pull_if_missing "${DOCKER_IMAGE_EVENTSYSTEM}"
-  pull_if_missing "${DOCKER_IMAGE_EVENT_BROKER}"
-  pull_if_missing "${DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS}"
-  pull_if_missing "${DOCKER_IMAGE_PLUGIN_EMBEDDATA}"
-  pull_if_missing "${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN}"
-  pull_if_missing "${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN}"
-else
-  docker-compose -f docker-compose.yml build mongo api frontend worker eventsystem event-broker \
-    plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
+set +a
+
+: "${ECR_ENDPOINT?}"
+: "${ECR_REGION?}"
+: "${ECR_PULLTHROUGH_ENDPOINT?}"
+
+login_ecr() {
+  local endpoint="$1"
+  echo "Login ECR endpoint ${endpoint} (region ${ECR_REGION})"
+  aws ecr get-login-password --region "${ECR_REGION}" | docker login --username AWS --password-stdin "${endpoint}"
+}
+
+login_ecr "${ECR_ENDPOINT}"
+if [ "${ECR_PULLTHROUGH_ENDPOINT}" != "${ECR_ENDPOINT}" ]; then
+  login_ecr "${ECR_PULLTHROUGH_ENDPOINT}"
 fi
 '''
             }
         }
-        stage('Compose up (Mongo + App + Plugins)') {
+        stage('Prepare Buildx builder') {
+            steps {
+                sh '''set -euo pipefail
+RAW="dflowp-stack-${JOB_BASE_NAME:-job}"
+BUILDER_NAME=$(printf '%s' "${RAW}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9_.-' '-')
+echo "BUILDER_NAME=${BUILDER_NAME}" > .jenkins_buildx.env
+
+if ! docker buildx inspect "${BUILDER_NAME}" >/dev/null 2>&1; then
+  docker buildx create --name "${BUILDER_NAME}" --driver docker-container
+fi
+docker buildx use "${BUILDER_NAME}"
+docker buildx inspect --bootstrap
+'''
+            }
+        }
+        stage('Build images (buildx parallel + registry cache/push)') {
+            steps {
+                sh '''set -euo pipefail
+set -a
+. ./.jenkins_runtime.env
+. ./.jenkins_stack_images.env
+. ./.jenkins_buildx.env
+set +a
+
+: "${BUILDER_NAME?}"
+: "${SOFTWARE_VERSION?}"
+: "${ECR_CACHE_REPO?}"
+: "${IMAGE_REPO_BASE?}"
+: "${ECR_PULLTHROUGH_ENDPOINT?}"
+: "${ECR_PULLTHROUGH_PREFIX?}"
+
+GIT_REV=$(git rev-parse HEAD)
+MAX_PARALLEL=2
+PULL_PARALLEL="${PULL_PARALLEL:-15}"
+CHECK_PARALLEL="${CHECK_PARALLEL:-${PULL_PARALLEL}}"
+
+pullthrough_library_image_ref() {
+  local image_name="$1"
+  local image_tag="$2"
+  if [ -n "${ECR_PULLTHROUGH_PREFIX}" ]; then
+    printf '%s/%s/library/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${ECR_PULLTHROUGH_PREFIX}" "${image_name}" "${image_tag}"
+  else
+    printf '%s/library/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${image_name}" "${image_tag}"
+  fi
+}
+
+PYTHON_BASE_IMAGE="$(pullthrough_library_image_ref python 3.11-slim-bookworm)"
+MONGO_BASE_IMAGE="$(pullthrough_library_image_ref mongo 7)"
+echo "PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}"
+echo "MONGO_BASE_IMAGE=${MONGO_BASE_IMAGE}"
+
+declare -A GIT_HASH_CACHE=()
+
+normalize_repo_relative_path() {
+  local raw="$1"
+  local part
+  local -a in_parts out_parts
+  raw="${raw#./}"
+  IFS='/' read -r -a in_parts <<< "${raw}"
+  for part in "${in_parts[@]}"; do
+    case "${part}" in
+      ""|".")
+        continue
+        ;;
+      "..")
+        if [ "${#out_parts[@]}" -gt 0 ] && [ "${out_parts[${#out_parts[@]}-1]}" != ".." ]; then
+          unset 'out_parts[${#out_parts[@]}-1]'
+        else
+          out_parts+=("${part}")
+        fi
+        ;;
+      *)
+        out_parts+=("${part}")
+        ;;
+    esac
+  done
+  if [ "${#out_parts[@]}" -eq 0 ]; then
+    printf '.\n'
+  else
+    (IFS='/'; printf '%s\n' "${out_parts[*]}")
+  fi
+}
+
+git_hash_or_none() {
+  local path="$1"
+  local path_hash
+  if [ "${GIT_HASH_CACHE[${path}]+_}" = "_" ]; then
+    printf '%s\n' "${GIT_HASH_CACHE[${path}]}"
+    return
+  fi
+  if git cat-file -e "HEAD:${path}" >/dev/null 2>&1; then
+    path_hash="$(git rev-parse "HEAD:${path}")"
+  else
+    path_hash="none"
+  fi
+  GIT_HASH_CACHE["${path}"]="${path_hash}"
+  printf '%s\n' "${path_hash}"
+}
+
+editable_dependency_paths() {
+  local req_path="$1"
+  if [ ! -f "${req_path}" ]; then
+    return 0
+  fi
+  awk '
+    {
+      line=$0
+      sub(/\r$/, "", line)
+      sub(/#.*/, "", line)
+      if (line ~ /^[[:space:]]*-e[[:space:]]+/) {
+        sub(/^[[:space:]]*-e[[:space:]]+/, "", line)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        if (line != "") print line
+      }
+    }
+  ' "${req_path}"
+}
+
+resolve_dependency_path() {
+  local req_path="$1"
+  local dep_path="$2"
+  local req_dir rel
+  dep_path="${dep_path#./}"
+  if git cat-file -e "HEAD:${dep_path}" >/dev/null 2>&1; then
+    normalize_repo_relative_path "${dep_path}"
+    return
+  fi
+  req_dir="$(dirname "${req_path}")"
+  rel="$(normalize_repo_relative_path "${req_dir}/${dep_path}")"
+  printf '%s\n' "${rel}"
+}
+
+compute_lineage_w_deps() {
+  local svc="$1"
+  local service_path="$2"
+  local dockerfile="$3"
+  local req_path="$4"
+  local extra_paths_csv="$5"
+  local base_kind="$6"
+  local dep resolved tokens lineage base_image_ref
+  local -a extra_paths
+
+  base_image_ref=""
+  case "${base_kind}" in
+    python)
+      base_image_ref="${PYTHON_BASE_IMAGE}"
+      ;;
+    mongo)
+      base_image_ref="${MONGO_BASE_IMAGE}"
+      ;;
+  esac
+
+  tokens="$(
+    {
+      {
+        printf '%s\n' "Jenkinsfile.stack"
+        printf '%s\n' "$(normalize_repo_relative_path "${service_path}")"
+        printf '%s\n' "$(normalize_repo_relative_path "${dockerfile}")"
+        if [ -n "${req_path}" ]; then
+          printf '%s\n' "$(normalize_repo_relative_path "${req_path}")"
+          while IFS= read -r dep; do
+            [ -n "${dep}" ] || continue
+            resolved="$(resolve_dependency_path "${req_path}" "${dep}")"
+            [ -n "${resolved}" ] && printf '%s\n' "${resolved}"
+          done < <(editable_dependency_paths "${req_path}")
+        fi
+        if [ -n "${extra_paths_csv}" ]; then
+          IFS=',' read -r -a extra_paths <<< "${extra_paths_csv}"
+          for dep in "${extra_paths[@]}"; do
+            [ -n "${dep}" ] || continue
+            printf '%s\n' "$(normalize_repo_relative_path "${dep}")"
+          done
+        fi
+      } | awk 'NF' | sort -u | while IFS= read -r dep; do
+        printf '%s=%s\n' "${dep}" "$(git_hash_or_none "${dep}")"
+      done
+      if [ -n "${base_image_ref}" ]; then
+        printf '__base_image__%s=%s\n' "${base_kind}" "${base_image_ref}"
+      fi
+    } | sort | paste -sd';' -
+  )"
+  lineage="$(printf '%s' "${tokens}" | sha256sum | cut -c1-6 | tr 'A-Z' 'a-z')"
+  echo "[${svc}] LINEAGE_W_DEPS=${lineage}" >&2
+  printf '%s\n' "${lineage}"
+}
+
+pull_with_retry() {
+  local image_ref="$1"
+  local max_attempts=3
+  local attempt=1
+  while [ "${attempt}" -le "${max_attempts}" ]; do
+    if docker pull "${image_ref}"; then
+      return 0
+    fi
+    if [ "${attempt}" -eq "${max_attempts}" ]; then
+      return 1
+    fi
+    echo "Pull fehlgeschlagen (${attempt}/${max_attempts}) fuer ${image_ref}, retry..."
+    attempt=$((attempt + 1))
+    sleep 3
+  done
+}
+
+build_target_from_record() {
+  IFS='|' read -r svc dockerfile image_repo _ _ _ base_kind _ lineage <<< "$1"
+  local cache_ref image_lineage image_software
+  local -a build_args
+  cache_ref="${ECR_CACHE_REPO}:${svc}"
+  image_lineage="${image_repo}:${lineage}"
+  image_software="${image_repo}:${SOFTWARE_VERSION}"
+  build_args=()
+  case "${base_kind}" in
+    python)
+      build_args+=(--build-arg "PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}")
+      ;;
+    mongo)
+      build_args+=(--build-arg "MONGO_BASE_IMAGE=${MONGO_BASE_IMAGE}")
+      ;;
+  esac
+  echo "[${svc}] Registry-Miss -> buildx push ${image_lineage} + ${image_software}"
+  docker buildx build \
+    --builder "${BUILDER_NAME}" \
+    --file "${dockerfile}" \
+    --tag "${image_lineage}" \
+    --tag "${image_software}" \
+    --push \
+    --cache-from "type=registry,ref=${cache_ref}" \
+    --cache-to "type=registry,ref=${cache_ref},mode=max" \
+    --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
+    --label "org.opencontainers.image.revision=${GIT_REV}" \
+    "${build_args[@]}" \
+    .
+}
+
+pull_target_from_record() {
+  IFS='|' read -r svc _ image_repo _ _ _ _ _ lineage <<< "$1"
+  local image_lineage image_software
+  image_lineage="${image_repo}:${lineage}"
+  image_software="${image_repo}:${SOFTWARE_VERSION}"
+  echo "[${svc}] Pull Service-Image aus ECR ${image_lineage}"
+  pull_with_retry "${image_lineage}"
+  if docker manifest inspect "${image_software}" >/dev/null 2>&1; then
+    echo "[${svc}] Software-Tag vorhanden: ${image_software}"
+  else
+    echo "[${svc}] Software-Tag fehlt, mappe auf ${image_software}"
+    docker tag "${image_lineage}" "${image_software}"
+    docker push "${image_software}"
+  fi
+}
+
+check_registry_target_from_record() {
+  IFS='|' read -r svc _ image_repo _ _ _ _ _ lineage <<< "$1"
+  local image_lineage out_file
+  image_lineage="${image_repo}:${lineage}"
+  if docker manifest inspect "${image_lineage}" >/dev/null 2>&1; then
+    echo "[${svc}] Registry-Hit fuer ${image_lineage}"
+    out_file=".jenkins_registry_checks/${svc}.pull"
+  else
+    echo "[${svc}] Registry-Miss fuer ${image_lineage}"
+    out_file=".jenkins_registry_checks/${svc}.build"
+  fi
+  printf '%s\n' "$1" > "${out_file}"
+}
+
+run_jobs_from_file() {
+  local max_parallel="$1"
+  local worker_fn="$2"
+  local list_file="$3"
+  local running=0
+  local line
+
+  [ -s "${list_file}" ] || return 0
+  while IFS= read -r line; do
+    [ -n "${line}" ] || continue
+    "${worker_fn}" "${line}" &
+    running=$((running + 1))
+    if [ "${running}" -ge "${max_parallel}" ]; then
+      if ! wait -n; then
+        wait || true
+        return 1
+      fi
+      running=$((running - 1))
+    fi
+  done < "${list_file}"
+  wait
+}
+
+targets=(
+  "mongo|Dockerfile.mongo|${DOCKER_IMAGE_MONGO%:*}|dflowp|requirements.txt||mongo|DOCKER_IMAGE_MONGO"
+  "api|Dockerfile.api|${DOCKER_IMAGE_API%:*}|dflowp/api|dflowp/api/requirements.txt||python|DOCKER_IMAGE_API"
+  "worker|Dockerfile.worker|${DOCKER_IMAGE_RUNTIME%:*}|dflowp/worker|dflowp/worker/requirements.txt||python|DOCKER_IMAGE_RUNTIME"
+  "eventsystem|Dockerfile.eventsystem|${DOCKER_IMAGE_EVENTSYSTEM%:*}|dflowp/eventsystem|dflowp/eventsystem/requirements.txt||python|DOCKER_IMAGE_EVENTSYSTEM"
+  "event-broker|Dockerfile.event_broker|${DOCKER_IMAGE_EVENT_BROKER%:*}|dflowp/event_broker|dflowp/event_broker/requirements.txt||python|DOCKER_IMAGE_EVENT_BROKER"
+  "plugin-fetchfeeditems|Dockerfile.plugin_fetchfeeditems|${DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS%:*}|dflowp/plugin_fetchfeeditems|dflowp/plugin_fetchfeeditems/requirements.txt||python|DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS"
+  "plugin-embeddata|Dockerfile.plugin_embeddata|${DOCKER_IMAGE_PLUGIN_EMBEDDATA%:*}|dflowp/plugin_embeddata|dflowp/plugin_embeddata/requirements.txt||python|DOCKER_IMAGE_PLUGIN_EMBEDDATA"
+  "plugin-clustering-dbscan|Dockerfile.plugin_clustering_dbscan|${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN%:*}|dflowp/plugin_clustering_dbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|python|DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN"
+  "plugin-clustering-hdbscan|Dockerfile.plugin_clustering_hdbscan|${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN%:*}|dflowp/plugin_clustering_hdbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|python|DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
+)
+
+: > .jenkins_all_targets.list
+: > .jenkins_build_targets.list
+: > .jenkins_pull_targets.list
+
+for target in "${targets[@]}"; do
+  IFS='|' read -r svc dockerfile image_repo service_path req_path extra_paths base_kind image_var <<< "${target}"
+  lineage="$(compute_lineage_w_deps "${svc}" "${service_path}" "${dockerfile}" "${req_path}" "${extra_paths}" "${base_kind}")"
+  image_lineage="${image_repo}:${lineage}"
+  target_record="${target}|${lineage}"
+  printf '%s\n' "${target_record}" >> .jenkins_all_targets.list
+done
+
+rm -rf .jenkins_registry_checks
+mkdir -p .jenkins_registry_checks
+if [ "${CHECK_PARALLEL}" -le 0 ]; then
+  CHECK_PARALLEL=15
+fi
+echo "Starte Registry Hit/Miss-Checks parallel (CHECK_PARALLEL=${CHECK_PARALLEL})"
+run_jobs_from_file "${CHECK_PARALLEL}" check_registry_target_from_record .jenkins_all_targets.list
+
+for target in "${targets[@]}"; do
+  IFS='|' read -r svc _ <<< "${target}"
+  if [ -f ".jenkins_registry_checks/${svc}.pull" ]; then
+    cat ".jenkins_registry_checks/${svc}.pull" >> .jenkins_pull_targets.list
+  elif [ -f ".jenkins_registry_checks/${svc}.build" ]; then
+    cat ".jenkins_registry_checks/${svc}.build" >> .jenkins_build_targets.list
+  else
+    echo "[${svc}] Fehler: Kein Hit/Miss-Ergebnis vorhanden." >&2
+    exit 1
+  fi
+done
+rm -rf .jenkins_registry_checks
+
+if [ -s .jenkins_build_targets.list ]; then
+  echo "Starte Build-Jobs (MAX_PARALLEL=${MAX_PARALLEL})"
+  run_jobs_from_file "${MAX_PARALLEL}" build_target_from_record .jenkins_build_targets.list
+else
+  echo "Keine Build-Jobs notwendig."
+fi
+
+cat .jenkins_build_targets.list >> .jenkins_pull_targets.list
+
+if [ "${PULL_PARALLEL}" -le 0 ]; then
+  PULL_PARALLEL="${#targets[@]}"
+fi
+echo "Starte Pull-Jobs aus ECR Service-Repositories (PULL_PARALLEL=${PULL_PARALLEL})"
+run_jobs_from_file "${PULL_PARALLEL}" pull_target_from_record .jenkins_pull_targets.list
+
+rm -f .jenkins_stack_images.env
+while IFS='|' read -r _ _ image_repo _ _ _ _ image_var lineage; do
+  printf '%s=%s:%s\n' "${image_var}" "${image_repo}" "${lineage}" >> .jenkins_stack_images.env
+done < .jenkins_all_targets.list
+
+rm -f .jenkins_all_targets.list .jenkins_build_targets.list .jenkins_pull_targets.list
+'''
+            }
+        }
+        stage('Compose up') {
             steps {
                 withCredentials([
                     usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
@@ -255,85 +490,139 @@ fi
                     string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
                 ]) {
                     sh '''set -euo pipefail
+set -a
 . ./.jenkins_runtime.env
-. ./.jenkins_stack_mode.env
+. ./.jenkins_stack_images.env
+set +a
+
 unwrap_one() {
   _n="$1"; _v="$2"
   case "${_v}" in
-  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
-        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
-        ;;
-  *) printf %s "${_v}" ;; esac
+    "{")
+      printf %s "${_v}"
+      ;;
+    "{"*)
+      echo "${_v}" | jq -r --arg k "${_n}" 'if type == "object" then .[$k] // . else . end' 2>/dev/null | sed -n '1p'
+      ;;
+    *)
+      printf %s "${_v}"
+      ;;
+  esac
 }
+
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
 export SOFTWARE_VERSION
 
-want_for_svc() {
-  case "$1" in
-    mongo) printf %s "${DOCKER_IMAGE_MONGO}" ;;
-    api) printf %s "${DOCKER_IMAGE_API}" ;;
-    frontend) printf %s "${DOCKER_IMAGE_FRONTEND}" ;;
-    worker) printf %s "${DOCKER_IMAGE_RUNTIME}" ;;
-    eventsystem) printf %s "${DOCKER_IMAGE_EVENTSYSTEM}" ;;
-    event-broker) printf %s "${DOCKER_IMAGE_EVENT_BROKER}" ;;
-    plugin-fetchfeeditems) printf %s "${DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS}" ;;
-    plugin-embeddata) printf %s "${DOCKER_IMAGE_PLUGIN_EMBEDDATA}" ;;
-    plugin-clustering-dbscan) printf %s "${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN}" ;;
-    plugin-clustering-hdbscan) printf %s "${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN}" ;;
-    *) echo "unbekannter service $1" >&2; exit 1 ;;
-  esac
+pullthrough_library_image_ref() {
+  local image_name="$1"
+  local image_tag="$2"
+  if [ -n "${ECR_PULLTHROUGH_PREFIX:-}" ]; then
+    printf '%s/%s/library/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${ECR_PULLTHROUGH_PREFIX}" "${image_name}" "${image_tag}"
+  else
+    printf '%s/library/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${image_name}" "${image_tag}"
+  fi
 }
 
-needs_redeploy() {
-  _svc="$1"
-  _want="$2"
-  _cid=$(docker-compose -f docker-compose.yml ps -q "${_svc}" 2>/dev/null || true)
-  if [ -z "${_cid}" ]; then return 0; fi
-  _run=$(docker inspect -f '{{.State.Running}}' "${_cid}" 2>/dev/null || echo false)
-  if [ "${_run}" != "true" ]; then return 0; fi
-  if ! _wid=$(docker image inspect "${_want}" -f '{{.Id}}' 2>/dev/null); then return 0; fi
-  _rid=$(docker inspect -f '{{.Image}}' "${_cid}")
-  [ "${_rid}" != "${_wid}" ]
-}
+ALPINE_CHMOD_IMAGE="$(pullthrough_library_image_ref alpine 3.20)"
 
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
-  . ./.jenkins_stack_images.env
-  export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER
-  export DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN
-  # Abhängigkeiten: mongo zuerst, event-broker nach eventsystem; compose up ohne --no-deps erledigt Starts.
-  for _svc in mongo eventsystem api frontend worker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan event-broker; do
-    _w=$(want_for_svc "${_svc}")
-    if needs_redeploy "${_svc}" "${_w}"; then
-      echo "Start/Recreate ${_svc} -> ${_w}"
-      docker-compose -f docker-compose.yml up -d --force-recreate "${_svc}"
-    else
-      echo "Unverändert (Image-ID), überspringe ${_svc}"
+mkdir -p volumes/mongo
+if ! chmod a+rwx volumes/mongo 2>/dev/null && ! chmod 777 volumes/mongo 2>/dev/null; then
+  docker run --rm --user root -v "$(pwd)/volumes/mongo:/v:rw" "${ALPINE_CHMOD_IMAGE}" sh -ceu 'chmod -R 777 /v' || true
+fi
+
+docker-compose -f docker-compose.yml config -q
+compose_image_vars=(
+  DOCKER_IMAGE_MONGO
+  DOCKER_IMAGE_API
+  DOCKER_IMAGE_RUNTIME
+  DOCKER_IMAGE_EVENTSYSTEM
+  DOCKER_IMAGE_EVENT_BROKER
+  DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS
+  DOCKER_IMAGE_PLUGIN_EMBEDDATA
+  DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN
+  DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN
+)
+
+missing_images=()
+for image_var in "${compose_image_vars[@]}"; do
+  image_ref="${!image_var:-}"
+  if [ -z "${image_ref}" ]; then
+    echo "Pflichtvariable fehlt: ${image_var}" >&2
+    exit 1
+  fi
+  if docker image inspect "${image_ref}" >/dev/null 2>&1; then
+    echo "[compose] lokal vorhanden: ${image_ref}"
+  else
+    missing_images+=("${image_ref}")
+  fi
+done
+
+if [ "${#missing_images[@]}" -gt 0 ]; then
+  compose_pull_parallel="${PULL_PARALLEL:-15}"
+  if [ "${compose_pull_parallel}" -le 0 ]; then
+    compose_pull_parallel="${#missing_images[@]}"
+  fi
+  echo "[compose] ${#missing_images[@]} fehlende Images -> paralleler Pull (PULL_PARALLEL=${compose_pull_parallel})"
+  running=0
+  for image_ref in "${missing_images[@]}"; do
+    docker pull "${image_ref}" &
+    running=$((running + 1))
+    if [ "${running}" -ge "${compose_pull_parallel}" ]; then
+      if ! wait -n; then
+        wait || true
+        exit 1
+      fi
+      running=$((running - 1))
     fi
   done
+  wait
 else
-  # Feste container_name in compose: Rest-Container von Abbrüchen/anderen Läufen sonst „already in use“.
-  docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
-  # Frühere Frontend-CI (docker run --name dflowp-frontend) außerhalb von Compose → Namenskollision mit Compose-Service.
-  docker rm -f dflowp-frontend 2>/dev/null || true
-  docker-compose -f docker-compose.yml up -d
+  echo "[compose] Alle Images bereits lokal; kein serieller compose pull notwendig."
 fi
+
+docker-compose -f docker-compose.yml up -d --no-build mongo api worker eventsystem event-broker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
+
+compose_project="dflowp"
+compose_services=(
+  mongo
+  api
+  worker
+  eventsystem
+  event-broker
+  plugin-fetchfeeditems
+  plugin-embeddata
+  plugin-clustering-dbscan
+  plugin-clustering-hdbscan
+)
+
+duplicate_found=0
+for service_name in "${compose_services[@]}"; do
+  container_count=$(docker ps -a \
+    --filter "label=com.docker.compose.project=${compose_project}" \
+    --filter "label=com.docker.compose.service=${service_name}" \
+    --format '{{.ID}}' | wc -l | tr -d ' ')
+  if [ "${container_count}" -gt 1 ]; then
+    echo "[compose] Fehler: Doppelter Service-Container erkannt: Projekt=${compose_project} Service=${service_name} Count=${container_count}" >&2
+    docker ps -a \
+      --filter "label=com.docker.compose.project=${compose_project}" \
+      --filter "label=com.docker.compose.service=${service_name}" \
+      --format '  - {{.ID}} {{.Names}} {{.Status}}' >&2
+    duplicate_found=1
+  fi
+done
+
+if [ "${duplicate_found}" -ne 0 ]; then
+  echo "[compose] Abbruch wegen doppelter Compose-Service-Container im Projekt ${compose_project}." >&2
+  exit 1
+fi
+
 docker-compose -f docker-compose.yml ps
 '''
                 }
             }
         }
-        // Direkt nach erfolgreichem „Compose up“: Agent-Platz freimachen, bevor Test-`docker-compose run` zusätzliche Ephemeral-Container anlegt.
-        // Laufende Stack-Container: `container prune` betrifft nur gestoppte; `image prune -a` entfernt nur Images ohne Container-Referenz (kein `docker volume prune`).
-        stage('Docker: prune unused') {
-            steps {
-                sh '''set -euo pipefail
-docker container prune -f
-docker image prune -af
-'''
-            }
-        }
-        stage('Tests: API') {
+        stage('Integration tests (API, Runtime, Plugins, Events)') {
             steps {
                 withCredentials([
                     usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
@@ -341,105 +630,46 @@ docker image prune -af
                     string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
                 ]) {
                     sh '''set -euo pipefail
+set -a
 . ./.jenkins_runtime.env
-. ./.jenkins_stack_mode.env
+. ./.jenkins_stack_images.env
+set +a
+
 unwrap_one() {
   _n="$1"; _v="$2"
   case "${_v}" in
-  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
-        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
-        ;;
-  *) printf %s "${_v}" ;; esac
+    "{")
+      printf %s "${_v}"
+      ;;
+    "{"*)
+      echo "${_v}" | jq -r --arg k "${_n}" 'if type == "object" then .[$k] // . else . end' 2>/dev/null | sed -n '1p'
+      ;;
+    *)
+      printf %s "${_v}"
+      ;;
+  esac
 }
+
 export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
-docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" api \
+export SOFTWARE_VERSION
+
+docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=${MONGODB_TEST_DB}" api \
   pytest tests/api_test.py -v --tb=short
-'''
-                }
-            }
-        }
-        stage('Tests: Runtime/Worker') {
-            steps {
-                withCredentials([
-                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
-                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
-                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
-                ]) {
-                    sh '''set -euo pipefail
-. ./.jenkins_runtime.env
-. ./.jenkins_stack_mode.env
-unwrap_one() {
-  _n="$1"; _v="$2"
-  case "${_v}" in
-  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
-        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
-        ;;
-  *) printf %s "${_v}" ;; esac
-}
-export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
-export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
-docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" worker \
+
+docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=${MONGODB_TEST_DB}" worker \
   pytest tests/process_test.py tests/runtime_event_listener_test.py tests/logging_test.py tests/database_test.py -v --tb=short
-'''
-                }
-            }
-        }
-        stage('Tests: Plugins (Smoke)') {
-            steps {
-                withCredentials([
-                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
-                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
-                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
-                ]) {
-                    sh '''set -euo pipefail
-. ./.jenkins_runtime.env
-. ./.jenkins_stack_mode.env
-unwrap_one() {
-  _n="$1"; _v="$2"
-  case "${_v}" in
-  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
-        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
-        ;;
-  *) printf %s "${_v}" ;; esac
-}
-export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
-export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
+
 docker-compose -f docker-compose.yml run --rm plugin-fetchfeeditems \
   pytest tests/plugin_services_test.py::test_plugin_directories_exist tests/plugin_services_test.py::test_fetch_plugin_info_and_health -v --tb=short
+
 docker-compose -f docker-compose.yml run --rm plugin-embeddata \
   pytest tests/plugin_services_test.py::test_embed_plugin_info_and_health -v --tb=short
-'''
-                }
-            }
-        }
-        stage('Tests: Event broker + EventSystem') {
-            steps {
-                withCredentials([
-                    usernamePassword(credentialsId: 'mongodb-creds', usernameVariable: 'MONGODB_USERNAME', passwordVariable: 'MONGODB_PASSWORD'),
-                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
-                    string(credentialsId: 'DFlowP_API_Key', variable: 'DFlowP_API_Key')
-                ]) {
-                    sh '''set -euo pipefail
-. ./.jenkins_runtime.env
-. ./.jenkins_stack_mode.env
-unwrap_one() {
-  _n="$1"; _v="$2"
-  case "${_v}" in
-  "{"*) JF=$(printf '%s' 'if type == "object" then .[$k] // . else . end')
-        echo "${_v}" | jq -r --arg k "${_n}" "${JF}" 2>/dev/null | head -1
-        ;;
-  *) printf %s "${_v}" ;; esac
-}
-export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
-export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
-if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then . ./.jenkins_stack_images.env; export DOCKER_IMAGE_MONGO DOCKER_IMAGE_API DOCKER_IMAGE_FRONTEND DOCKER_IMAGE_RUNTIME DOCKER_IMAGE_EVENTSYSTEM DOCKER_IMAGE_EVENT_BROKER DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS DOCKER_IMAGE_PLUGIN_EMBEDDATA DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN; fi
-docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" event-broker \
+
+docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=${MONGODB_TEST_DB}" event-broker \
   pytest tests/event_broker_test.py -v --tb=short
-docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_DB" eventsystem \
+
+docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=${MONGODB_TEST_DB}" eventsystem \
   pytest tests/eventsystem_test.py -k "not with_persistence" -v --tb=short
 '''
                 }
@@ -448,9 +678,20 @@ docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_
     }
     post {
         always {
-            sh '''docker logout docker.io 2>/dev/null || true'''
+            sh '''set +e
+docker buildx use default >/dev/null 2>&1 || true
+rm -f .jenkins_buildx.env .jenkins_runtime.env .jenkins_stack_images.env
+docker logout "${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}" >/dev/null 2>&1 || true
+if [ "${ECR_PULLTHROUGH_ENDPOINT:-${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}}" != "${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}" ]; then
+  docker logout "${ECR_PULLTHROUGH_ENDPOINT}" >/dev/null 2>&1 || true
+fi
+'''
         }
-        failure { echo 'Stack-Pipeline fehlgeschlagen – Logs prüfen.' }
-        success { echo 'Stack-Pipeline OK – Container laufen weiter (kein automatisches compose down).' }
+        failure {
+            echo 'Stack-Pipeline fehlgeschlagen – Buildx/Compose/Test-Logs prüfen.'
+        }
+        success {
+            echo 'Stack-Pipeline OK – Buildx-Flow + Stack-Integrationstests erfolgreich.'
+        }
     }
 }

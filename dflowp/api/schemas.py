@@ -1,36 +1,51 @@
 """Pydantic-Schemas für API-Requests."""
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
-class ProcessCloneRequest(BaseModel):
-    """Request-Body zum Klonen eines Prozesses mit partieller Re-Execution."""
+class PipelineCloneRequest(BaseModel):
+    """
+    Pipeline klonen: optional neues dataflow-Definition-Dokument, optionale
+    ``plugin_config``-Ergänzung (erzeugt neues plugin_configuration-Dokument), optional
+    explizite Plugin-Worker-Knoten; sonst Auto-Logik (fehlgeschlagen/voll).
+    """
 
-    parent_subprocess_ids: list[str] = Field(default_factory=list, min_length=1)
-    new_process_id: Optional[str] = None
-    subprocess_config: Optional[dict[str, dict[str, Any]]] = Field(
+    new_pipeline_id: Optional[str] = None
+    dataflow_id: Optional[str] = Field(
         default=None,
-        description="Optional: Subprozess-Konfiguration überschreiben/ergänzen (pro subprocess_id).",
+        description="Anderes Dataflow-Dokument (ID) statt des Quelldatenflusses verwenden.",
+    )
+    plugin_config: Optional[dict[str, dict[str, Any]]] = Field(
+        default=None,
+        description="Pro plugin_worker_id überschreiben/mergen; betroffene Work und Nachfolger werden neu aufgesetzt.",
+    )
+    parent_plugin_worker_ids: Optional[list[str]] = Field(
+        default=None,
+        description="Wenn gesetzt: genau diese Plugin-Worker und alle transitiven Nachfolger neu. "
+        "Wenn weggelassen: automatisch (fehlgeschlagene Worker, sonst vollständiger Re-Run).",
     )
 
 
-class ProcessCreateRequest(BaseModel):
-    """Prozess anlegen: Konfiguration wie processconfig + optional Input-Zeilen."""
+class PipelineCreateRequest(BaseModel):
+    """Pipeline anlegen; Primärschlüssel: ``pipeline_id``."""
 
-    process_id: str = Field(..., min_length=1)
+    pipeline_id: str = Field(..., min_length=1)
     software_version: str = "0.1.0"
     input_dataset_id: str = Field(..., min_length=1)
     dataflow: dict[str, Any]
-    subprocess_config: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    plugin_config: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Pro plugin_worker_id Parameter (Plugin-Konfiguration).",
+    )
     input_data: Optional[list[dict[str, Any]]] = Field(
         default=None,
-        description="Optional: Liste von Input-Data-Objekten (content), wird als Dataset unter input_dataset_id gespeichert.",
+        description="Optional: Input-Zeilen als neues Dataset unter input_dataset_id.",
     )
     start_immediately: bool = Field(
         default=False,
-        description="Wenn true: status=running wie bei engine.start_process; sonst pending für Worker-Polling.",
+        description="true: status=running; false: pending für Worker.",
     )
 
 
@@ -40,27 +55,55 @@ class ProcessStopRequest(BaseModel):
     reason: Optional[str] = None
 
 
-class DataItemCreateRequest(BaseModel):
-    """Einzelnes Data-Dokument (data_items, doc_type=data)."""
+class DataDocumentCreateRequest(BaseModel):
+    """POST /data: entweder Data-Zeile oder Dataset (``doc_type`` in Mongo unverändert)."""
 
-    id: Optional[str] = Field(
-        default=None,
-        description="Optionale feste ID; sonst wird eine UUID vergeben.",
-    )
-    content: dict[str, Any] = Field(..., description="Nutzdaten (z. B. Feed-Zeile für FetchFeedItems).")
-    type: str = Field(default="input", description="Typ-Label (z. B. input, output).")
+    doc_type: Literal["data", "dataset"] = "data"
+    id: Optional[str] = None
+    content: Optional[dict[str, Any]] = None
+    type: str = Field(default="input", description="Nur für doc_type=data: Typ-Label.")
+    data_ids: Optional[list[str]] = None
+    rows: Optional[list[dict[str, Any]]] = None
+
+    @model_validator(mode="after")
+    def _check_dataset_id(self) -> "DataDocumentCreateRequest":
+        if self.doc_type == "dataset" and not self.id:
+            raise ValueError("Für doc_type=dataset ist id erforderlich.")
+        if self.doc_type == "data" and self.data_ids is not None and self.rows is not None:
+            raise ValueError("doc_type=data darf data_ids/rows nicht setzen (nur content).")
+        return self
 
 
-class DatasetCreateRequest(BaseModel):
-    """Dataset mit referenzierten Data-IDs oder eingebetteten Zeilen."""
+class DataflowCreateRequest(BaseModel):
+    """Dataflow-Definition; nur graph-strukturierende Inhalte (kein reiner Pipeline-Name)."""
 
-    id: str = Field(..., min_length=1, description="Eindeutige Dataset-ID.")
-    data_ids: Optional[list[str]] = Field(
-        default=None,
-        description="Bestehende Data-IDs; alternativ rows setzen.",
-    )
-    rows: Optional[list[dict[str, Any]]] = Field(
-        default=None,
-        description="Neue Data-Zeilen (pro Zeile ein Data-Dokument); IDs werden automatisch vergeben.",
-    )
+    dataflow_id: str = Field(..., min_length=1)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
 
+
+class DataflowStateCreateRequest(BaseModel):
+    """DataflowState-Dokument (Nodes inkl. io_transformation_states möglich)."""
+
+    dataflow_state_id: str = Field(..., min_length=1)
+    pipeline_id: str = Field(..., min_length=1)
+    dataflow_id: str = Field(..., min_length=1)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PluginConfigurationCreateRequest(BaseModel):
+    """Plugin-Konfiguration (kein in-place-Update; immer eigenes Dokument)."""
+
+    plugin_configuration_id: str = Field(..., min_length=1)
+    by_plugin_worker_id: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
+class EventCreateRequest(BaseModel):
+    """Event manuell speichern (i. d. R. nutzt die Engine den EventService)."""
+
+    pipeline_id: str = Field(..., min_length=1)
+    plugin_worker_id: str = Field(..., min_length=1)
+    event_type: str = Field(..., min_length=1)
+    plugin_worker_replica_id: int = Field(default=1, ge=0)
+    payload: Optional[dict[str, Any]] = None

@@ -13,37 +13,26 @@ from dflowp_core.eventinterfaces.event_types import (
 class EventService:
     """
     Zentraler Service zum Emitieren und Subscriben von Events.
-    Nutzt den Event-Bus und stellt eine einfache API bereit.
+    Persistierte Events nutzen ``pipeline_id``, ``plugin_worker_id``, ``plugin_worker_replica_id``.
     """
 
-    def __init__(self) -> None:
-        self._bus = get_event_bus()
+    def __init__(self, bus: Optional[EventBus] = None) -> None:
+        self._bus = bus or get_event_bus()
         self._event_repository: Optional[Any] = None
 
     async def emit(
         self,
-        process_id: str,
-        subprocess_id: str,
+        pipeline_id: str,
+        plugin_worker_id: str,
         event_type: str,
-        subprocess_instance_id: int = 1,
+        plugin_worker_replica_id: int = 1,
         payload: Optional[dict[str, Any]] = None,
         event_time: Optional[datetime] = None,
     ) -> None:
-        """
-        Sendet ein Event über den Event-Bus.
-
-        Args:
-            process_id: Eindeutige Prozess-ID
-            subprocess_id: Eindeutige Teilprozess-ID
-            event_type: EVENT_STARTED, EVENT_COMPLETED oder EVENT_FAILED
-            subprocess_instance_id: Standardmäßig 1 (für spätere Parallelisierung)
-            payload: Zusätzliche Event-Daten
-            event_time: Zeitpunkt des Events (Default: jetzt)
-        """
         event: dict[str, Any] = {
-            "process_id": process_id,
-            "subprocess_id": subprocess_id,
-            "subprocess_instance_id": subprocess_instance_id,
+            "pipeline_id": pipeline_id,
+            "plugin_worker_id": plugin_worker_id,
+            "plugin_worker_replica_id": plugin_worker_replica_id,
             "event_type": event_type,
             "event_time": event_time or datetime.now(timezone.utc),
         }
@@ -59,53 +48,50 @@ class EventService:
 
     async def emit_started(
         self,
-        process_id: str,
-        subprocess_id: str,
-        subprocess_instance_id: int = 1,
+        pipeline_id: str,
+        plugin_worker_id: str,
+        plugin_worker_replica_id: int = 1,
         payload: Optional[dict[str, Any]] = None,
     ) -> None:
-        """Emittiert EVENT_STARTED."""
         await self.emit(
-            process_id=process_id,
-            subprocess_id=subprocess_id,
+            pipeline_id=pipeline_id,
+            plugin_worker_id=plugin_worker_id,
             event_type=EVENT_STARTED,
-            subprocess_instance_id=subprocess_instance_id,
+            plugin_worker_replica_id=plugin_worker_replica_id,
             payload=payload,
         )
 
     async def emit_completed(
         self,
-        process_id: str,
-        subprocess_id: str,
-        subprocess_instance_id: int = 1,
+        pipeline_id: str,
+        plugin_worker_id: str,
+        plugin_worker_replica_id: int = 1,
         payload: Optional[dict[str, Any]] = None,
     ) -> None:
-        """Emittiert EVENT_COMPLETED."""
         await self.emit(
-            process_id=process_id,
-            subprocess_id=subprocess_id,
+            pipeline_id=pipeline_id,
+            plugin_worker_id=plugin_worker_id,
             event_type=EVENT_COMPLETED,
-            subprocess_instance_id=subprocess_instance_id,
+            plugin_worker_replica_id=plugin_worker_replica_id,
             payload=payload,
         )
 
     async def emit_failed(
         self,
-        process_id: str,
-        subprocess_id: str,
-        subprocess_instance_id: int = 1,
+        pipeline_id: str,
+        plugin_worker_id: str,
+        plugin_worker_replica_id: int = 1,
         payload: Optional[dict[str, Any]] = None,
         error: Optional[str] = None,
     ) -> None:
-        """Emittiert EVENT_FAILED."""
         p = payload or {}
         if error:
             p["error"] = error
         await self.emit(
-            process_id=process_id,
-            subprocess_id=subprocess_id,
+            pipeline_id=pipeline_id,
+            plugin_worker_id=plugin_worker_id,
             event_type=EVENT_FAILED,
-            subprocess_instance_id=subprocess_instance_id,
+            plugin_worker_replica_id=plugin_worker_replica_id,
             payload=p if p else None,
         )
 
@@ -114,19 +100,18 @@ class EventService:
         event_type: str,
         handler: Callable[[dict[str, Any]], Any],
     ) -> None:
-        """
-        Registriert einen Handler für einen Event-Typ.
-
-        Args:
-            event_type: EVENT_STARTED, EVENT_COMPLETED, EVENT_FAILED oder "*" für alle
-            handler: Async-Funktion(event: dict)
-        """
         self._bus.subscribe(event_type, handler)
 
     def set_event_repository(self, repository: Any) -> None:
-        """Aktiviert DB-first Event-Publish über das Event-Repository."""
         self._event_repository = repository
 
+
+_event_service_singleton: Optional[EventService] = None
+
+
 def get_event_service() -> EventService:
-    """Gibt eine Event-Service-Instanz zurück."""
-    return EventService()
+    """Gibt die globale EventService-Instanz (Runtime) zurück."""
+    global _event_service_singleton
+    if _event_service_singleton is None:
+        _event_service_singleton = EventService()
+    return _event_service_singleton

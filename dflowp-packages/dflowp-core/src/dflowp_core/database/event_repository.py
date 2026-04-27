@@ -18,13 +18,13 @@ class EventRepository:
 
     async def create_indexes(self) -> None:
         """Erstellt Indizes für effiziente Abfragen."""
-        await self._collection.create_index("process_id")
-        await self._collection.create_index("subprocess_id")
+        await self._collection.create_index("pipeline_id")
+        await self._collection.create_index("plugin_worker_id")
         await self._collection.create_index("event_time")
         await self._collection.create_index("timestamp_ms")
         await self._collection.create_index("delivered_at")
-        await self._collection.create_index([("process_id", 1), ("timestamp_ms", -1)])
-        await self._collection.create_index([("process_id", 1), ("event_time", 1)])
+        await self._collection.create_index([("pipeline_id", 1), ("timestamp_ms", -1)])
+        await self._collection.create_index([("pipeline_id", 1), ("event_time", 1)])
         await self._collection.create_index([("event_type", 1), ("event_time", 1)])
         await self._collection.create_index([("delivered_at", 1), ("timestamp_ms", 1)])
 
@@ -33,7 +33,7 @@ class EventRepository:
         Speichert ein Event in der Datenbank.
 
         Args:
-            event: Event-Dokument (mit process_id, subprocess_id, event_type, etc.)
+            event: Event-Dokument (mit ``pipeline_id``, ``plugin_worker_id``, ``event_type``).
 
         Returns:
             Die _id des eingefügten Dokuments als String
@@ -102,12 +102,12 @@ class EventRepository:
         *,
         page: int,
         page_size: int,
-        process_id: Optional[str] = None,
+        pipeline_id: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Liefert paginierte Event-Dokumente."""
+        """Liefert paginierte Event-Dokumente, optional Filter ``pipeline_id``."""
         query: dict[str, Any] = {}
-        if process_id:
-            query["process_id"] = process_id
+        if pipeline_id:
+            query = {"pipeline_id": pipeline_id}
 
         total_items = await self._collection.count_documents(query)
         skip = (page - 1) * page_size
@@ -141,21 +141,13 @@ class EventRepository:
             doc["_id"] = str(doc["_id"])
         return doc
 
-    async def find_by_process_id(
+    async def find_by_pipeline_id(
         self,
-        process_id: str,
+        pipeline_id: str,
         event_type: Optional[str] = None,
         limit: Optional[int] = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """
-        Findet alle Events für einen Prozess.
-
-        Args:
-            process_id: Die Prozess-ID
-            event_type: Optional - filtert nach Event-Typ
-            limit: Optional - maximale Anzahl zurückzugebender Events
-        """
-        query: dict[str, Any] = {"process_id": process_id}
+        query: dict[str, Any] = {"pipeline_id": pipeline_id}
         if event_type:
             query["event_type"] = event_type
 
@@ -167,16 +159,15 @@ class EventRepository:
             doc["_id"] = str(doc["_id"])
             yield doc
 
-    async def find_by_subprocess_id(
+    async def find_by_plugin_worker(
         self,
-        process_id: str,
-        subprocess_id: str,
+        pipeline_id: str,
+        plugin_worker_id: str,
         event_type: Optional[str] = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """Findet alle Events für einen bestimmten Teilprozess."""
         query: dict[str, Any] = {
-            "process_id": process_id,
-            "subprocess_id": subprocess_id,
+            "pipeline_id": pipeline_id,
+            "plugin_worker_id": plugin_worker_id,
         }
         if event_type:
             query["event_type"] = event_type
@@ -187,13 +178,12 @@ class EventRepository:
 
     async def get_latest_event(
         self,
-        process_id: str,
-        subprocess_id: Optional[str] = None,
+        pipeline_id: str,
+        plugin_worker_id: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """Holt das neueste Event für einen Prozess (ggf. spezifischen Teilprozess)."""
-        query: dict[str, Any] = {"process_id": process_id}
-        if subprocess_id:
-            query["subprocess_id"] = subprocess_id
+        query: dict[str, Any] = {"pipeline_id": pipeline_id}
+        if plugin_worker_id:
+            query["plugin_worker_id"] = plugin_worker_id
 
         doc = await self._collection.find_one(
             query,
@@ -203,6 +193,5 @@ class EventRepository:
             doc["_id"] = str(doc["_id"])
         return doc
 
-    async def count_by_process(self, process_id: str) -> int:
-        """Zählt alle Events eines Prozesses."""
-        return await self._collection.count_documents({"process_id": process_id})
+    async def count_by_pipeline(self, pipeline_id: str) -> int:
+        return await self._collection.count_documents({"pipeline_id": pipeline_id})

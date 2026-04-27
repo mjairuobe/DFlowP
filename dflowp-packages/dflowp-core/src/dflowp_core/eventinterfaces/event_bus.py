@@ -60,7 +60,7 @@ class EventBus:
         2. Ruft alle registrierten Handler auf
 
         Args:
-            event: Dict mit process_id, subprocess_id, event_type, event_time, etc.
+            event: Dict mit pipeline_id, plugin_worker_id, event_type, event_time, usw.
         """
         event_type = event.get("event_type")
         if not event_type:

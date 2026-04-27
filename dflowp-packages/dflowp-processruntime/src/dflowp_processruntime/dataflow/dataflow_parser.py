@@ -1,4 +1,4 @@
-"""Parser für DataFlow und DataflowState aus JSON."""
+"""Parser für DataFlow und DataflowState aus JSON (Legacy: subprocess_*-Schlüssel)."""
 
 from typing import Any
 
@@ -8,10 +8,18 @@ from dflowp_processruntime.dataflow.dataflow_node import DataflowNodeState
 from dflowp_processruntime.subprocesses.io_transformation_state import IOTransformationState
 
 
+def _node_id(n: dict[str, Any]) -> str:
+    return str(n.get("plugin_worker_id") or n.get("subprocess_id") or "")
+
+
+def _node_type(n: dict[str, Any]) -> str:
+    return str(n.get("plugin_type") or n.get("subprocess_type") or "")
+
+
 def parse_dataflow(obj: dict[str, Any]) -> DataFlow:
-    """Parst DataFlow aus JSON-ähnlichem Dict."""
+    """Parst DataFlow; akzeptiert ``plugin_worker_id``/``plugin_type`` oder Legacy ``subprocess_*``."""
     nodes = [
-        DataflowNodeDef(subprocess_id=n["subprocess_id"], subprocess_type=n["subprocess_type"])
+        DataflowNodeDef(plugin_worker_id=_node_id(n), plugin_type=_node_type(n))
         for n in obj.get("nodes", [])
     ]
     edges = [
@@ -22,7 +30,6 @@ def parse_dataflow(obj: dict[str, Any]) -> DataFlow:
 
 
 def parse_dataflow_state(obj: dict[str, Any]) -> DataflowState:
-    """Parst DataflowState aus JSON-ähnlichem Dict."""
     dataflow = obj.get("dataflow", obj)
     nodes_raw = dataflow.get("nodes", [])
 
@@ -34,8 +41,8 @@ def parse_dataflow_state(obj: dict[str, Any]) -> DataflowState:
         ]
         nodes.append(
             DataflowNodeState(
-                subprocess_id=n["subprocess_id"],
-                subprocess_type=n["subprocess_type"],
+                plugin_worker_id=_node_id(n),
+                plugin_type=_node_type(n),
                 event_status=n.get("event_status", "Not Started"),
                 io_transformation_states=io_states,
             )

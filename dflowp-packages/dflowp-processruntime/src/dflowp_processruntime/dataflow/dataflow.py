@@ -1,4 +1,4 @@
-"""DataFlow - Beschreibt den Ablauf (z.B. Scraping -> Embedding -> Clustering)."""
+"""DataFlow - beschreibt den Ablauf (DAG) über Plugin-Knoten."""
 
 from typing import Optional
 
@@ -6,14 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DataflowNodeDef(BaseModel):
-    """Definition eines Knotens im DataFlow."""
+    """Knotendefinition: ``plugin_worker_id`` + Plugin-Typ (Klasse/Remote-Name)."""
 
-    subprocess_id: str
-    subprocess_type: str
+    plugin_worker_id: str
+    plugin_type: str
 
 
 class DataflowEdge(BaseModel):
-    """Definition einer Kante im DataFlow."""
+    """Kante im Dataflow."""
 
     model_config = ConfigDict(populate_by_name=True)
     from_node: str = Field(..., alias="from")
@@ -22,38 +22,32 @@ class DataflowEdge(BaseModel):
 
 class DataFlow(BaseModel):
     """
-    Beschreibt welche Teilprozesse wann ausgeführt werden.
-    Unabhängig von einer konkreten Ausführung.
+    Statische Graph-Struktur (Knoten + Kanten), unabhängig von Laufzeit-State.
     """
 
     nodes: list[DataflowNodeDef] = Field(default_factory=list)
     edges: list[DataflowEdge] = Field(default_factory=list)
 
-    def get_node(self, subprocess_id: str) -> Optional[DataflowNodeDef]:
-        """Findet einen Knoten anhand der subprocess_id."""
+    def get_node(self, plugin_worker_id: str) -> Optional[DataflowNodeDef]:
         for n in self.nodes:
-            if n.subprocess_id == subprocess_id:
+            if n.plugin_worker_id == plugin_worker_id:
                 return n
         return None
 
-    def get_successors(self, subprocess_id: str) -> list[str]:
-        """Gibt die Nachfolger-Knoten einer subprocess_id zurück."""
-        return [e.to_node for e in self.edges if e.from_node == subprocess_id]
+    def get_successors(self, plugin_worker_id: str) -> list[str]:
+        return [e.to_node for e in self.edges if e.from_node == plugin_worker_id]
 
-    def get_predecessors(self, subprocess_id: str) -> list[str]:
-        """Gibt die Vorgänger-Knoten einer subprocess_id zurück."""
-        return [e.from_node for e in self.edges if e.to_node == subprocess_id]
+    def get_predecessors(self, plugin_worker_id: str) -> list[str]:
+        return [e.from_node for e in self.edges if e.to_node == plugin_worker_id]
 
     def get_root_nodes(self) -> list[str]:
-        """Knoten ohne Vorgänger (Startknoten)."""
-        all_nodes = {n.subprocess_id for n in self.nodes}
+        all_nodes = {n.plugin_worker_id for n in self.nodes}
         has_predecessor = {e.to_node for e in self.edges}
         return list(all_nodes - has_predecessor)
 
-    def get_descendants(self, subprocess_id: str) -> list[str]:
-        """Gibt alle transitiven Nachfolger einer subprocess_id zurück."""
+    def get_descendants(self, plugin_worker_id: str) -> list[str]:
         descendants: set[str] = set()
-        queue = list(self.get_successors(subprocess_id))
+        queue = list(self.get_successors(plugin_worker_id))
         while queue:
             node_id = queue.pop(0)
             if node_id in descendants:
@@ -62,10 +56,9 @@ class DataFlow(BaseModel):
             queue.extend(self.get_successors(node_id))
         return list(descendants)
 
-    def get_descendants_including_self(self, subprocess_id: str) -> set[str]:
-        """Liefert den Knoten selbst und alle transitiven Nachfolger."""
+    def get_descendants_including_self(self, plugin_worker_id: str) -> set[str]:
         visited: set[str] = set()
-        stack = [subprocess_id]
+        stack = [plugin_worker_id]
         while stack:
             current = stack.pop()
             if current in visited:

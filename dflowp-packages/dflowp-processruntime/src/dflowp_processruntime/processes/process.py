@@ -1,33 +1,30 @@
-"""Abstrakte Implementation eines Prozesses."""
+"""Abstrakte Pipeline (Prozess) – fachlich eine ausführbare Pipeline-Instanz."""
 
 from abc import ABC
 from typing import Any, Optional
 
-from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
-from dflowp_processruntime.processes.process_state import ProcessState
 from dflowp_processruntime.dataflow.dataflow_state import DataflowState
+from dflowp_processruntime.processes.process_configuration import PipelineConfiguration
+from dflowp_processruntime.processes.process_state import ProcessState
 
 
 class Process(ABC):
-    """
-    Abstrakte Basis eines Prozesses.
-    Zugriff auf DB ausschließlich über Repositories (Dependency Injection).
-    """
+    """Abstrakte Basis: Konfiguration + optionaler Laufzustand."""
 
     def __init__(
         self,
-        configuration: ProcessConfiguration,
+        configuration: PipelineConfiguration,
         state: Optional[ProcessState] = None,
     ) -> None:
         self.configuration = configuration
         self.state = state or ProcessState(
-            process_id=configuration.process_id,
+            pipeline_id=configuration.pipeline_id,
             dataflow_state=DataflowState.from_dataflow(configuration.dataflow),
         )
 
     @property
-    def process_id(self) -> str:
-        return self.configuration.process_id
+    def pipeline_id(self) -> str:
+        return self.configuration.pipeline_id
 
     @property
     def dataflow_state(self) -> DataflowState:

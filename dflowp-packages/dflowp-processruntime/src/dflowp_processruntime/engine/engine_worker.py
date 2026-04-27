@@ -57,7 +57,7 @@ async def run_worker() -> None:
         with open(CONFIG_PATH, encoding="utf-8") as file:
             config_dict = json.load(file)
 
-        config_dict["process_id"] = build_human_readable_document_id(
+        config_dict["pipeline_id"] = build_human_readable_document_id(
             domain="pipeline",
             document_type="proc",
         )
@@ -69,7 +69,7 @@ async def run_worker() -> None:
             input_json_path=INPUT_PATH,
         )
 
-        logger.info("Starte Prozess '%s' ...", config.process_id)
+        logger.info("Starte Pipeline '%s' ...", config.pipeline_id)
         await runtime.engine.start_process(config)
 
         poll_interval = float(os.environ.get("DFLOWP_POLL_INTERVAL", "5"))
@@ -86,9 +86,9 @@ async def run_worker() -> None:
 
             claimed = await runtime.process_repository.claim_next_pending()
             if claimed:
-                process_id = claimed["process_id"]
-                logger.info("Übernehme wartenden Prozess '%s' …", process_id)
-                await runtime.engine.activate_pending_process(process_id)
+                pl_id = claimed.get("pipeline_id") or claimed.get("process_id")
+                logger.info("Übernehme wartende Pipeline '%s' …", pl_id)
+                await runtime.engine.activate_pending_process(pl_id)
             else:
                 try:
                     await asyncio.wait_for(shutdown.wait(), timeout=poll_interval)
