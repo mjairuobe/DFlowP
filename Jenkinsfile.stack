@@ -38,24 +38,24 @@ else
   SOFTWARE_VERSION="v0.1.${BN}"
 fi
 GIT_SHORT=$(git rev-parse --short=12 HEAD)
-DOCKERHUB_REGISTRY="${DOCKERHUB_REGISTRY:-docker.io}"
-DOCKERHUB_NAMESPACE="${DOCKERHUB_NAMESPACE:-crawlabase}"
-IMAGE_REPO_BASE="${DOCKERHUB_REGISTRY}/${DOCKERHUB_NAMESPACE}"
-DOCKERHUB_CACHE_REPO="${DOCKERHUB_CACHE_REPO:-${IMAGE_REPO_BASE}/dflowp-buildcache}"
-ECR_PULLTHROUGH_ENDPOINT="${ECR_PULLTHROUGH_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}"
-ECR_PULLTHROUGH_REGION="${ECR_PULLTHROUGH_REGION:-eu-central-1}"
+ECR_ENDPOINT="${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}"
+ECR_REGION="${ECR_REGION:-eu-central-1}"
+ECR_NAMESPACE="${ECR_NAMESPACE:-crawlabase}"
+IMAGE_REPO_BASE="${ECR_ENDPOINT}/${ECR_NAMESPACE}"
+ECR_CACHE_REPO="${ECR_CACHE_REPO:-${IMAGE_REPO_BASE}/dflowp-buildcache}"
+ECR_PULLTHROUGH_ENDPOINT="${ECR_PULLTHROUGH_ENDPOINT:-${ECR_ENDPOINT}}"
 ECR_PULLTHROUGH_PREFIX="${ECR_PULLTHROUGH_PREFIX:-docker-hub}"
 PULL_PARALLEL="${PULL_PARALLEL:-15}"
 
 cat > .jenkins_runtime.env <<EOF
 SOFTWARE_VERSION=${SOFTWARE_VERSION}
 GIT_SHORT=${GIT_SHORT}
-DOCKERHUB_REGISTRY=${DOCKERHUB_REGISTRY}
-DOCKERHUB_NAMESPACE=${DOCKERHUB_NAMESPACE}
+ECR_ENDPOINT=${ECR_ENDPOINT}
+ECR_REGION=${ECR_REGION}
+ECR_NAMESPACE=${ECR_NAMESPACE}
 IMAGE_REPO_BASE=${IMAGE_REPO_BASE}
-DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}
+ECR_CACHE_REPO=${ECR_CACHE_REPO}
 ECR_PULLTHROUGH_ENDPOINT=${ECR_PULLTHROUGH_ENDPOINT}
-ECR_PULLTHROUGH_REGION=${ECR_PULLTHROUGH_REGION}
 ECR_PULLTHROUGH_PREFIX=${ECR_PULLTHROUGH_PREFIX}
 PULL_PARALLEL=${PULL_PARALLEL}
 EOF
@@ -75,35 +75,37 @@ EOF
 echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}"
 echo "GIT_SHORT=${GIT_SHORT}"
 echo "IMAGE_REPO_BASE=${IMAGE_REPO_BASE}"
-echo "DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}"
+echo "ECR_CACHE_REPO=${ECR_CACHE_REPO}"
+echo "ECR_ENDPOINT=${ECR_ENDPOINT}"
+echo "ECR_REGION=${ECR_REGION}"
+echo "ECR_NAMESPACE=${ECR_NAMESPACE}"
 echo "ECR_PULLTHROUGH_ENDPOINT=${ECR_PULLTHROUGH_ENDPOINT}"
-echo "ECR_PULLTHROUGH_REGION=${ECR_PULLTHROUGH_REGION}"
 echo "ECR_PULLTHROUGH_PREFIX=${ECR_PULLTHROUGH_PREFIX}"
 echo "PULL_PARALLEL=${PULL_PARALLEL}"
 '''
             }
         }
-        stage('Docker Hub login') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'HUBU', passwordVariable: 'HUBP')]) {
-                    sh '''set -euo pipefail
-echo "${HUBP}" | docker login -u "${HUBU}" --password-stdin docker.io
-'''
-                }
-            }
-        }
-        stage('ECR pull-through login') {
+        stage('ECR login') {
             steps {
                 sh '''set -euo pipefail
 set -a
 . ./.jenkins_runtime.env
 set +a
 
+: "${ECR_ENDPOINT?}"
+: "${ECR_REGION?}"
 : "${ECR_PULLTHROUGH_ENDPOINT?}"
-: "${ECR_PULLTHROUGH_REGION?}"
 
-echo "Login ECR pull-through endpoint ${ECR_PULLTHROUGH_ENDPOINT} (region ${ECR_PULLTHROUGH_REGION})"
-aws ecr get-login-password --region "${ECR_PULLTHROUGH_REGION}" | docker login --username AWS --password-stdin "${ECR_PULLTHROUGH_ENDPOINT}"
+login_ecr() {
+  local endpoint="$1"
+  echo "Login ECR endpoint ${endpoint} (region ${ECR_REGION})"
+  aws ecr get-login-password --region "${ECR_REGION}" | docker login --username AWS --password-stdin "${endpoint}"
+}
+
+login_ecr "${ECR_ENDPOINT}"
+if [ "${ECR_PULLTHROUGH_ENDPOINT}" != "${ECR_ENDPOINT}" ]; then
+  login_ecr "${ECR_PULLTHROUGH_ENDPOINT}"
+fi
 '''
             }
         }
@@ -133,15 +135,32 @@ set +a
 
 : "${BUILDER_NAME?}"
 : "${SOFTWARE_VERSION?}"
-: "${DOCKERHUB_CACHE_REPO?}"
+: "${ECR_CACHE_REPO?}"
 : "${IMAGE_REPO_BASE?}"
 : "${ECR_PULLTHROUGH_ENDPOINT?}"
-: "${ECR_PULLTHROUGH_REGION?}"
 : "${ECR_PULLTHROUGH_PREFIX?}"
 
 GIT_REV=$(git rev-parse HEAD)
 MAX_PARALLEL=2
 PULL_PARALLEL="${PULL_PARALLEL:-15}"
+CHECK_PARALLEL="${CHECK_PARALLEL:-${PULL_PARALLEL}}"
+
+pullthrough_library_image_ref() {
+  local image_name="$1"
+  local image_tag="$2"
+  if [ -n "${ECR_PULLTHROUGH_PREFIX}" ]; then
+    printf '%s/%s/library/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${ECR_PULLTHROUGH_PREFIX}" "${image_name}" "${image_tag}"
+  else
+    printf '%s/library/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${image_name}" "${image_tag}"
+  fi
+}
+
+PYTHON_BASE_IMAGE="$(pullthrough_library_image_ref python 3.11-slim-bookworm)"
+MONGO_BASE_IMAGE="$(pullthrough_library_image_ref mongo 7)"
+echo "PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}"
+echo "MONGO_BASE_IMAGE=${MONGO_BASE_IMAGE}"
+
+declare -A GIT_HASH_CACHE=()
 
 normalize_repo_relative_path() {
   local raw="$1"
@@ -175,11 +194,18 @@ normalize_repo_relative_path() {
 
 git_hash_or_none() {
   local path="$1"
-  if git cat-file -e "HEAD:${path}" >/dev/null 2>&1; then
-    git rev-parse "HEAD:${path}"
-  else
-    echo "none"
+  local path_hash
+  if [ "${GIT_HASH_CACHE[${path}]+_}" = "_" ]; then
+    printf '%s\n' "${GIT_HASH_CACHE[${path}]}"
+    return
   fi
+  if git cat-file -e "HEAD:${path}" >/dev/null 2>&1; then
+    path_hash="$(git rev-parse "HEAD:${path}")"
+  else
+    path_hash="none"
+  fi
+  GIT_HASH_CACHE["${path}"]="${path_hash}"
+  printf '%s\n' "${path_hash}"
 }
 
 editable_dependency_paths() {
@@ -221,69 +247,52 @@ compute_lineage_w_deps() {
   local dockerfile="$3"
   local req_path="$4"
   local extra_paths_csv="$5"
-  local dep resolved tokens lineage
+  local base_kind="$6"
+  local dep resolved tokens lineage base_image_ref
   local -a extra_paths
+
+  base_image_ref=""
+  case "${base_kind}" in
+    python)
+      base_image_ref="${PYTHON_BASE_IMAGE}"
+      ;;
+    mongo)
+      base_image_ref="${MONGO_BASE_IMAGE}"
+      ;;
+  esac
 
   tokens="$(
     {
-      printf '%s\n' "Jenkinsfile.stack"
-      printf '%s\n' "$(normalize_repo_relative_path "${service_path}")"
-      printf '%s\n' "$(normalize_repo_relative_path "${dockerfile}")"
-      if [ -n "${req_path}" ]; then
-        printf '%s\n' "$(normalize_repo_relative_path "${req_path}")"
-        while IFS= read -r dep; do
-          [ -n "${dep}" ] || continue
-          resolved="$(resolve_dependency_path "${req_path}" "${dep}")"
-          [ -n "${resolved}" ] && printf '%s\n' "${resolved}"
-        done < <(editable_dependency_paths "${req_path}")
+      {
+        printf '%s\n' "Jenkinsfile.stack"
+        printf '%s\n' "$(normalize_repo_relative_path "${service_path}")"
+        printf '%s\n' "$(normalize_repo_relative_path "${dockerfile}")"
+        if [ -n "${req_path}" ]; then
+          printf '%s\n' "$(normalize_repo_relative_path "${req_path}")"
+          while IFS= read -r dep; do
+            [ -n "${dep}" ] || continue
+            resolved="$(resolve_dependency_path "${req_path}" "${dep}")"
+            [ -n "${resolved}" ] && printf '%s\n' "${resolved}"
+          done < <(editable_dependency_paths "${req_path}")
+        fi
+        if [ -n "${extra_paths_csv}" ]; then
+          IFS=',' read -r -a extra_paths <<< "${extra_paths_csv}"
+          for dep in "${extra_paths[@]}"; do
+            [ -n "${dep}" ] || continue
+            printf '%s\n' "$(normalize_repo_relative_path "${dep}")"
+          done
+        fi
+      } | awk 'NF' | sort -u | while IFS= read -r dep; do
+        printf '%s=%s\n' "${dep}" "$(git_hash_or_none "${dep}")"
+      done
+      if [ -n "${base_image_ref}" ]; then
+        printf '__base_image__%s=%s\n' "${base_kind}" "${base_image_ref}"
       fi
-      if [ -n "${extra_paths_csv}" ]; then
-        IFS=',' read -r -a extra_paths <<< "${extra_paths_csv}"
-        for dep in "${extra_paths[@]}"; do
-          [ -n "${dep}" ] || continue
-          printf '%s\n' "$(normalize_repo_relative_path "${dep}")"
-        done
-      fi
-    } | awk 'NF' | sort -u | while IFS= read -r dep; do
-      printf '%s=%s\n' "${dep}" "$(git_hash_or_none "${dep}")"
-    done | sort | paste -sd';' -
+    } | sort | paste -sd';' -
   )"
   lineage="$(printf '%s' "${tokens}" | sha256sum | cut -c1-6 | tr 'A-Z' 'a-z')"
   echo "[${svc}] LINEAGE_W_DEPS=${lineage}" >&2
   printf '%s\n' "${lineage}"
-}
-
-pullthrough_repo_path_for_image_repo() {
-  local image_repo="$1"
-  local first_part
-  case "${image_repo}" in
-    docker.io/*)
-      printf '%s\n' "${image_repo#docker.io/}"
-      return
-      ;;
-    index.docker.io/*)
-      printf '%s\n' "${image_repo#index.docker.io/}"
-      return
-      ;;
-  esac
-  first_part="${image_repo%%/*}"
-  if [[ "${first_part}" == *.* || "${first_part}" == *:* || "${first_part}" == "localhost" ]]; then
-    printf '%s\n' "${image_repo#*/}"
-  else
-    printf '%s\n' "${image_repo}"
-  fi
-}
-
-pullthrough_image_ref() {
-  local image_repo="$1"
-  local image_tag="$2"
-  local repo_path
-  repo_path="$(pullthrough_repo_path_for_image_repo "${image_repo}")"
-  if [ -n "${ECR_PULLTHROUGH_PREFIX}" ]; then
-    printf '%s/%s/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${ECR_PULLTHROUGH_PREFIX}" "${repo_path}" "${image_tag}"
-  else
-    printf '%s/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${repo_path}" "${image_tag}"
-  fi
 }
 
 pull_with_retry() {
@@ -304,11 +313,21 @@ pull_with_retry() {
 }
 
 build_target_from_record() {
-  IFS='|' read -r svc dockerfile image_repo _ _ _ _ lineage <<< "$1"
+  IFS='|' read -r svc dockerfile image_repo _ _ _ base_kind _ lineage <<< "$1"
   local cache_ref image_lineage image_software
-  cache_ref="${DOCKERHUB_CACHE_REPO}:${svc}"
+  local -a build_args
+  cache_ref="${ECR_CACHE_REPO}:${svc}"
   image_lineage="${image_repo}:${lineage}"
   image_software="${image_repo}:${SOFTWARE_VERSION}"
+  build_args=()
+  case "${base_kind}" in
+    python)
+      build_args+=(--build-arg "PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}")
+      ;;
+    mongo)
+      build_args+=(--build-arg "MONGO_BASE_IMAGE=${MONGO_BASE_IMAGE}")
+      ;;
+  esac
   echo "[${svc}] Registry-Miss -> buildx push ${image_lineage} + ${image_software}"
   docker buildx build \
     --builder "${BUILDER_NAME}" \
@@ -320,25 +339,38 @@ build_target_from_record() {
     --cache-to "type=registry,ref=${cache_ref},mode=max" \
     --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
     --label "org.opencontainers.image.revision=${GIT_REV}" \
+    "${build_args[@]}" \
     .
 }
 
 pull_target_from_record() {
-  IFS='|' read -r svc _ image_repo _ _ _ _ lineage <<< "$1"
-  local image_lineage image_software image_lineage_pullthrough
+  IFS='|' read -r svc _ image_repo _ _ _ _ _ lineage <<< "$1"
+  local image_lineage image_software
   image_lineage="${image_repo}:${lineage}"
   image_software="${image_repo}:${SOFTWARE_VERSION}"
-  image_lineage_pullthrough="$(pullthrough_image_ref "${image_repo}" "${lineage}")"
-
-  echo "[${svc}] Pull ueber ECR Pull-Through ${image_lineage_pullthrough} (statt ${image_lineage})"
-  pull_with_retry "${image_lineage_pullthrough}"
+  echo "[${svc}] Pull Service-Image aus ECR ${image_lineage}"
+  pull_with_retry "${image_lineage}"
   if docker manifest inspect "${image_software}" >/dev/null 2>&1; then
     echo "[${svc}] Software-Tag vorhanden: ${image_software}"
   else
     echo "[${svc}] Software-Tag fehlt, mappe auf ${image_software}"
-    docker tag "${image_lineage_pullthrough}" "${image_software}"
+    docker tag "${image_lineage}" "${image_software}"
     docker push "${image_software}"
   fi
+}
+
+check_registry_target_from_record() {
+  IFS='|' read -r svc _ image_repo _ _ _ _ _ lineage <<< "$1"
+  local image_lineage out_file
+  image_lineage="${image_repo}:${lineage}"
+  if docker manifest inspect "${image_lineage}" >/dev/null 2>&1; then
+    echo "[${svc}] Registry-Hit fuer ${image_lineage}"
+    out_file=".jenkins_registry_checks/${svc}.pull"
+  else
+    echo "[${svc}] Registry-Miss fuer ${image_lineage}"
+    out_file=".jenkins_registry_checks/${svc}.build"
+  fi
+  printf '%s\n' "$1" > "${out_file}"
 }
 
 run_jobs_from_file() {
@@ -365,15 +397,15 @@ run_jobs_from_file() {
 }
 
 targets=(
-  "mongo|Dockerfile.mongo|${IMAGE_REPO_BASE}/dflowp-mongo|dflowp|requirements.txt||DOCKER_IMAGE_MONGO"
-  "api|Dockerfile.api|${IMAGE_REPO_BASE}/dflowp-api|dflowp/api|dflowp/api/requirements.txt||DOCKER_IMAGE_API"
-  "worker|Dockerfile.worker|${IMAGE_REPO_BASE}/dflowp-runtime|dflowp/worker|dflowp/worker/requirements.txt||DOCKER_IMAGE_RUNTIME"
-  "eventsystem|Dockerfile.eventsystem|${IMAGE_REPO_BASE}/dflowp-eventsystem|dflowp/eventsystem|dflowp/eventsystem/requirements.txt||DOCKER_IMAGE_EVENTSYSTEM"
-  "event-broker|Dockerfile.event_broker|${IMAGE_REPO_BASE}/dflowp-event-broker|dflowp/event_broker|dflowp/event_broker/requirements.txt||DOCKER_IMAGE_EVENT_BROKER"
-  "plugin-fetchfeeditems|Dockerfile.plugin_fetchfeeditems|${IMAGE_REPO_BASE}/dflowp-plugin-fetchfeeditems|dflowp/plugin_fetchfeeditems|dflowp/plugin_fetchfeeditems/requirements.txt||DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS"
-  "plugin-embeddata|Dockerfile.plugin_embeddata|${IMAGE_REPO_BASE}/dflowp-plugin-embeddata|dflowp/plugin_embeddata|dflowp/plugin_embeddata/requirements.txt||DOCKER_IMAGE_PLUGIN_EMBEDDATA"
-  "plugin-clustering-dbscan|Dockerfile.plugin_clustering_dbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-dbscan|dflowp/plugin_clustering_dbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN"
-  "plugin-clustering-hdbscan|Dockerfile.plugin_clustering_hdbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan|dflowp/plugin_clustering_hdbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
+  "mongo|Dockerfile.mongo|${IMAGE_REPO_BASE}/dflowp-mongo|dflowp|requirements.txt||mongo|DOCKER_IMAGE_MONGO"
+  "api|Dockerfile.api|${IMAGE_REPO_BASE}/dflowp-api|dflowp/api|dflowp/api/requirements.txt||python|DOCKER_IMAGE_API"
+  "worker|Dockerfile.worker|${IMAGE_REPO_BASE}/dflowp-runtime|dflowp/worker|dflowp/worker/requirements.txt||python|DOCKER_IMAGE_RUNTIME"
+  "eventsystem|Dockerfile.eventsystem|${IMAGE_REPO_BASE}/dflowp-eventsystem|dflowp/eventsystem|dflowp/eventsystem/requirements.txt||python|DOCKER_IMAGE_EVENTSYSTEM"
+  "event-broker|Dockerfile.event_broker|${IMAGE_REPO_BASE}/dflowp-event-broker|dflowp/event_broker|dflowp/event_broker/requirements.txt||python|DOCKER_IMAGE_EVENT_BROKER"
+  "plugin-fetchfeeditems|Dockerfile.plugin_fetchfeeditems|${IMAGE_REPO_BASE}/dflowp-plugin-fetchfeeditems|dflowp/plugin_fetchfeeditems|dflowp/plugin_fetchfeeditems/requirements.txt||python|DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS"
+  "plugin-embeddata|Dockerfile.plugin_embeddata|${IMAGE_REPO_BASE}/dflowp-plugin-embeddata|dflowp/plugin_embeddata|dflowp/plugin_embeddata/requirements.txt||python|DOCKER_IMAGE_PLUGIN_EMBEDDATA"
+  "plugin-clustering-dbscan|Dockerfile.plugin_clustering_dbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-dbscan|dflowp/plugin_clustering_dbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|python|DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN"
+  "plugin-clustering-hdbscan|Dockerfile.plugin_clustering_hdbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan|dflowp/plugin_clustering_hdbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|python|DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
 )
 
 : > .jenkins_all_targets.list
@@ -381,19 +413,33 @@ targets=(
 : > .jenkins_pull_targets.list
 
 for target in "${targets[@]}"; do
-  IFS='|' read -r svc dockerfile image_repo service_path req_path extra_paths image_var <<< "${target}"
-  lineage="$(compute_lineage_w_deps "${svc}" "${service_path}" "${dockerfile}" "${req_path}" "${extra_paths}")"
+  IFS='|' read -r svc dockerfile image_repo service_path req_path extra_paths base_kind image_var <<< "${target}"
+  lineage="$(compute_lineage_w_deps "${svc}" "${service_path}" "${dockerfile}" "${req_path}" "${extra_paths}" "${base_kind}")"
   image_lineage="${image_repo}:${lineage}"
   target_record="${target}|${lineage}"
   printf '%s\n' "${target_record}" >> .jenkins_all_targets.list
-  if docker manifest inspect "${image_lineage}" >/dev/null 2>&1; then
-    echo "[${svc}] Registry-Hit fuer ${image_lineage}"
-    printf '%s\n' "${target_record}" >> .jenkins_pull_targets.list
+done
+
+rm -rf .jenkins_registry_checks
+mkdir -p .jenkins_registry_checks
+if [ "${CHECK_PARALLEL}" -le 0 ]; then
+  CHECK_PARALLEL=15
+fi
+echo "Starte Registry Hit/Miss-Checks parallel (CHECK_PARALLEL=${CHECK_PARALLEL})"
+run_jobs_from_file "${CHECK_PARALLEL}" check_registry_target_from_record .jenkins_all_targets.list
+
+for target in "${targets[@]}"; do
+  IFS='|' read -r svc _ <<< "${target}"
+  if [ -f ".jenkins_registry_checks/${svc}.pull" ]; then
+    cat ".jenkins_registry_checks/${svc}.pull" >> .jenkins_pull_targets.list
+  elif [ -f ".jenkins_registry_checks/${svc}.build" ]; then
+    cat ".jenkins_registry_checks/${svc}.build" >> .jenkins_build_targets.list
   else
-    echo "[${svc}] Registry-Miss fuer ${image_lineage}"
-    printf '%s\n' "${target_record}" >> .jenkins_build_targets.list
+    echo "[${svc}] Fehler: Kein Hit/Miss-Ergebnis vorhanden." >&2
+    exit 1
   fi
 done
+rm -rf .jenkins_registry_checks
 
 if [ -s .jenkins_build_targets.list ]; then
   echo "Starte Build-Jobs (MAX_PARALLEL=${MAX_PARALLEL})"
@@ -407,13 +453,12 @@ cat .jenkins_build_targets.list >> .jenkins_pull_targets.list
 if [ "${PULL_PARALLEL}" -le 0 ]; then
   PULL_PARALLEL="${#targets[@]}"
 fi
-echo "Starte Pull-Jobs ueber ECR Pull-Through (PULL_PARALLEL=${PULL_PARALLEL})"
+echo "Starte Pull-Jobs aus ECR Service-Repositories (PULL_PARALLEL=${PULL_PARALLEL})"
 run_jobs_from_file "${PULL_PARALLEL}" pull_target_from_record .jenkins_pull_targets.list
 
 rm -f .jenkins_stack_images.env
-while IFS='|' read -r _ _ image_repo _ _ _ image_var lineage; do
-  image_lineage_pullthrough="$(pullthrough_image_ref "${image_repo}" "${lineage}")"
-  printf '%s=%s\n' "${image_var}" "${image_lineage_pullthrough}" >> .jenkins_stack_images.env
+while IFS='|' read -r _ _ image_repo _ _ _ _ image_var lineage; do
+  printf '%s=%s:%s\n' "${image_var}" "${image_repo}" "${lineage}" >> .jenkins_stack_images.env
 done < .jenkins_all_targets.list
 
 rm -f .jenkins_all_targets.list .jenkins_build_targets.list .jenkins_pull_targets.list
@@ -452,9 +497,21 @@ export OPENAI_API_KEY=$(unwrap_one "OPENAI_API_KEY" "${OPENAI_API_KEY:-}")
 export DFlowP_API_Key=$(unwrap_one "DFlowP_API_Key" "${DFlowP_API_Key:-}")
 export SOFTWARE_VERSION
 
+pullthrough_library_image_ref() {
+  local image_name="$1"
+  local image_tag="$2"
+  if [ -n "${ECR_PULLTHROUGH_PREFIX:-}" ]; then
+    printf '%s/%s/library/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${ECR_PULLTHROUGH_PREFIX}" "${image_name}" "${image_tag}"
+  else
+    printf '%s/library/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${image_name}" "${image_tag}"
+  fi
+}
+
+ALPINE_CHMOD_IMAGE="$(pullthrough_library_image_ref alpine 3.20)"
+
 mkdir -p volumes/mongo
 if ! chmod a+rwx volumes/mongo 2>/dev/null && ! chmod 777 volumes/mongo 2>/dev/null; then
-  docker run --rm --user root -v "$(pwd)/volumes/mongo:/v:rw" alpine:3.20 sh -ceu 'chmod -R 777 /v' || true
+  docker run --rm --user root -v "$(pwd)/volumes/mongo:/v:rw" "${ALPINE_CHMOD_IMAGE}" sh -ceu 'chmod -R 777 /v' || true
 fi
 
 docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
@@ -574,8 +631,10 @@ docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=${MONGODB_TEST
 docker-compose -f docker-compose.yml down --remove-orphans
 docker buildx use default >/dev/null 2>&1 || true
 rm -f .jenkins_buildx.env .jenkins_runtime.env .jenkins_stack_images.env
-docker logout docker.io >/dev/null 2>&1 || true
-docker logout "${ECR_PULLTHROUGH_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}" >/dev/null 2>&1 || true
+docker logout "${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}" >/dev/null 2>&1 || true
+if [ "${ECR_PULLTHROUGH_ENDPOINT:-${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}}" != "${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}" ]; then
+  docker logout "${ECR_PULLTHROUGH_ENDPOINT}" >/dev/null 2>&1 || true
+fi
 '''
         }
         failure {

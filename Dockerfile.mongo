@@ -1,5 +1,6 @@
 # Thin wrapper on official mongo:7 (pin + optional DFlowP-only labels/init later).
-# Image name typically: docker.io/crawlabase/dflowp-mongo
-FROM mongo:7
+# Image name typically: <registry>/<namespace>/dflowp-mongo
+ARG MONGO_BASE_IMAGE=mongo:7
+FROM ${MONGO_BASE_IMAGE}
 
 LABEL org.opencontainers.image.description="DFlowP MongoDB (mongo:7 base)"
