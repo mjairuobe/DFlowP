@@ -40,9 +40,26 @@ fi
 GIT_SHORT=$(git rev-parse --short=12 HEAD)
 ECR_ENDPOINT="${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}"
 ECR_REGION="${ECR_REGION:-eu-central-1}"
-ECR_NAMESPACE="${ECR_NAMESPACE:-crawlabase}"
-IMAGE_REPO_BASE="${ECR_ENDPOINT}/${ECR_NAMESPACE}"
-ECR_CACHE_REPO="${ECR_CACHE_REPO:-${IMAGE_REPO_BASE}/dflowp-buildcache}"
+ECR_REPO_PREFIX="${ECR_REPO_PREFIX:-${ECR_NAMESPACE:-dflowp}}"
+IMAGE_REPO_BASE="${ECR_ENDPOINT}"
+service_image_repo() {
+  local service_name="$1"
+  if [ -n "${ECR_REPO_PREFIX}" ]; then
+    printf '%s/%s-%s\n' "${IMAGE_REPO_BASE}" "${ECR_REPO_PREFIX}" "${service_name}"
+  else
+    printf '%s/%s\n' "${IMAGE_REPO_BASE}" "${service_name}"
+  fi
+}
+IMAGE_REPO_MONGO="$(service_image_repo mongo)"
+IMAGE_REPO_API="$(service_image_repo api)"
+IMAGE_REPO_RUNTIME="$(service_image_repo runtime)"
+IMAGE_REPO_EVENTSYSTEM="$(service_image_repo eventsystem)"
+IMAGE_REPO_EVENT_BROKER="$(service_image_repo event-broker)"
+IMAGE_REPO_PLUGIN_FETCHFEEDITEMS="$(service_image_repo plugin-fetchfeeditems)"
+IMAGE_REPO_PLUGIN_EMBEDDATA="$(service_image_repo plugin-embeddata)"
+IMAGE_REPO_PLUGIN_CLUSTERING_DBSCAN="$(service_image_repo plugin-clustering-dbscan)"
+IMAGE_REPO_PLUGIN_CLUSTERING_HDBSCAN="$(service_image_repo plugin-clustering-hdbscan)"
+ECR_CACHE_REPO="${ECR_CACHE_REPO:-$(service_image_repo buildcache)}"
 ECR_PULLTHROUGH_ENDPOINT="${ECR_PULLTHROUGH_ENDPOINT:-${ECR_ENDPOINT}}"
 ECR_PULLTHROUGH_PREFIX="${ECR_PULLTHROUGH_PREFIX:-docker-hub}"
 PULL_PARALLEL="${PULL_PARALLEL:-15}"
@@ -52,7 +69,7 @@ SOFTWARE_VERSION=${SOFTWARE_VERSION}
 GIT_SHORT=${GIT_SHORT}
 ECR_ENDPOINT=${ECR_ENDPOINT}
 ECR_REGION=${ECR_REGION}
-ECR_NAMESPACE=${ECR_NAMESPACE}
+ECR_REPO_PREFIX=${ECR_REPO_PREFIX}
 IMAGE_REPO_BASE=${IMAGE_REPO_BASE}
 ECR_CACHE_REPO=${ECR_CACHE_REPO}
 ECR_PULLTHROUGH_ENDPOINT=${ECR_PULLTHROUGH_ENDPOINT}
@@ -61,15 +78,15 @@ PULL_PARALLEL=${PULL_PARALLEL}
 EOF
 
 cat > .jenkins_stack_images.env <<EOF
-DOCKER_IMAGE_MONGO=${IMAGE_REPO_BASE}/dflowp-mongo:${SOFTWARE_VERSION}
-DOCKER_IMAGE_API=${IMAGE_REPO_BASE}/dflowp-api:${SOFTWARE_VERSION}
-DOCKER_IMAGE_RUNTIME=${IMAGE_REPO_BASE}/dflowp-runtime:${SOFTWARE_VERSION}
-DOCKER_IMAGE_EVENTSYSTEM=${IMAGE_REPO_BASE}/dflowp-eventsystem:${SOFTWARE_VERSION}
-DOCKER_IMAGE_EVENT_BROKER=${IMAGE_REPO_BASE}/dflowp-event-broker:${SOFTWARE_VERSION}
-DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS=${IMAGE_REPO_BASE}/dflowp-plugin-fetchfeeditems:${SOFTWARE_VERSION}
-DOCKER_IMAGE_PLUGIN_EMBEDDATA=${IMAGE_REPO_BASE}/dflowp-plugin-embeddata:${SOFTWARE_VERSION}
-DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN=${IMAGE_REPO_BASE}/dflowp-plugin-clustering-dbscan:${SOFTWARE_VERSION}
-DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan:${SOFTWARE_VERSION}
+DOCKER_IMAGE_MONGO=${IMAGE_REPO_MONGO}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_API=${IMAGE_REPO_API}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_RUNTIME=${IMAGE_REPO_RUNTIME}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_EVENTSYSTEM=${IMAGE_REPO_EVENTSYSTEM}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_EVENT_BROKER=${IMAGE_REPO_EVENT_BROKER}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS=${IMAGE_REPO_PLUGIN_FETCHFEEDITEMS}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_EMBEDDATA=${IMAGE_REPO_PLUGIN_EMBEDDATA}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN=${IMAGE_REPO_PLUGIN_CLUSTERING_DBSCAN}:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=${IMAGE_REPO_PLUGIN_CLUSTERING_HDBSCAN}:${SOFTWARE_VERSION}
 EOF
 
 echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}"
@@ -78,7 +95,7 @@ echo "IMAGE_REPO_BASE=${IMAGE_REPO_BASE}"
 echo "ECR_CACHE_REPO=${ECR_CACHE_REPO}"
 echo "ECR_ENDPOINT=${ECR_ENDPOINT}"
 echo "ECR_REGION=${ECR_REGION}"
-echo "ECR_NAMESPACE=${ECR_NAMESPACE}"
+echo "ECR_REPO_PREFIX=${ECR_REPO_PREFIX}"
 echo "ECR_PULLTHROUGH_ENDPOINT=${ECR_PULLTHROUGH_ENDPOINT}"
 echo "ECR_PULLTHROUGH_PREFIX=${ECR_PULLTHROUGH_PREFIX}"
 echo "PULL_PARALLEL=${PULL_PARALLEL}"
@@ -397,15 +414,15 @@ run_jobs_from_file() {
 }
 
 targets=(
-  "mongo|Dockerfile.mongo|${IMAGE_REPO_BASE}/dflowp-mongo|dflowp|requirements.txt||mongo|DOCKER_IMAGE_MONGO"
-  "api|Dockerfile.api|${IMAGE_REPO_BASE}/dflowp-api|dflowp/api|dflowp/api/requirements.txt||python|DOCKER_IMAGE_API"
-  "worker|Dockerfile.worker|${IMAGE_REPO_BASE}/dflowp-runtime|dflowp/worker|dflowp/worker/requirements.txt||python|DOCKER_IMAGE_RUNTIME"
-  "eventsystem|Dockerfile.eventsystem|${IMAGE_REPO_BASE}/dflowp-eventsystem|dflowp/eventsystem|dflowp/eventsystem/requirements.txt||python|DOCKER_IMAGE_EVENTSYSTEM"
-  "event-broker|Dockerfile.event_broker|${IMAGE_REPO_BASE}/dflowp-event-broker|dflowp/event_broker|dflowp/event_broker/requirements.txt||python|DOCKER_IMAGE_EVENT_BROKER"
-  "plugin-fetchfeeditems|Dockerfile.plugin_fetchfeeditems|${IMAGE_REPO_BASE}/dflowp-plugin-fetchfeeditems|dflowp/plugin_fetchfeeditems|dflowp/plugin_fetchfeeditems/requirements.txt||python|DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS"
-  "plugin-embeddata|Dockerfile.plugin_embeddata|${IMAGE_REPO_BASE}/dflowp-plugin-embeddata|dflowp/plugin_embeddata|dflowp/plugin_embeddata/requirements.txt||python|DOCKER_IMAGE_PLUGIN_EMBEDDATA"
-  "plugin-clustering-dbscan|Dockerfile.plugin_clustering_dbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-dbscan|dflowp/plugin_clustering_dbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|python|DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN"
-  "plugin-clustering-hdbscan|Dockerfile.plugin_clustering_hdbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan|dflowp/plugin_clustering_hdbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|python|DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
+  "mongo|Dockerfile.mongo|${DOCKER_IMAGE_MONGO%:*}|dflowp|requirements.txt||mongo|DOCKER_IMAGE_MONGO"
+  "api|Dockerfile.api|${DOCKER_IMAGE_API%:*}|dflowp/api|dflowp/api/requirements.txt||python|DOCKER_IMAGE_API"
+  "worker|Dockerfile.worker|${DOCKER_IMAGE_RUNTIME%:*}|dflowp/worker|dflowp/worker/requirements.txt||python|DOCKER_IMAGE_RUNTIME"
+  "eventsystem|Dockerfile.eventsystem|${DOCKER_IMAGE_EVENTSYSTEM%:*}|dflowp/eventsystem|dflowp/eventsystem/requirements.txt||python|DOCKER_IMAGE_EVENTSYSTEM"
+  "event-broker|Dockerfile.event_broker|${DOCKER_IMAGE_EVENT_BROKER%:*}|dflowp/event_broker|dflowp/event_broker/requirements.txt||python|DOCKER_IMAGE_EVENT_BROKER"
+  "plugin-fetchfeeditems|Dockerfile.plugin_fetchfeeditems|${DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS%:*}|dflowp/plugin_fetchfeeditems|dflowp/plugin_fetchfeeditems/requirements.txt||python|DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS"
+  "plugin-embeddata|Dockerfile.plugin_embeddata|${DOCKER_IMAGE_PLUGIN_EMBEDDATA%:*}|dflowp/plugin_embeddata|dflowp/plugin_embeddata/requirements.txt||python|DOCKER_IMAGE_PLUGIN_EMBEDDATA"
+  "plugin-clustering-dbscan|Dockerfile.plugin_clustering_dbscan|${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN%:*}|dflowp/plugin_clustering_dbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|python|DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN"
+  "plugin-clustering-hdbscan|Dockerfile.plugin_clustering_hdbscan|${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN%:*}|dflowp/plugin_clustering_hdbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|python|DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
 )
 
 : > .jenkins_all_targets.list
