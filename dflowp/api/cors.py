@@ -20,8 +20,7 @@ from fastapi import FastAPI
 DFLOWP_CORS_ALLOW_ORIGIN_REGEX = r"^https?://(?:(?:[a-z0-9-]+)\.)*dflowp\.online(?::\d+)?$"
 
 # Feste Origins (falls benötigt) separat über allow_origins konfigurieren.
-DFLOWP_CORS_ALLOW_ORIGINS: list[str] = []
-
+DFLOWP_CORS_ALLOW_ORIGINS: list[str] = [r"http://localhost:5173"]
 
 def add_cors_middleware(app: FastAPI) -> None:
     """Registriert ``CORSMiddleware`` an der FastAPI-App (vor Route-Handlern)."""
