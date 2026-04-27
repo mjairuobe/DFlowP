@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from math import ceil
 
-from dflowp.api.app import app, get_data_item_repository, get_process_repository
+from dflowp.api.app import app
+from dflowp.api.deps import get_data_item_repository, get_event_repository, get_process_repository
 from dflowp_core.database.data_item_repository import summarize_for_list_view
 
 # Für zustandsbehaftete Fake-Repos (create/update/delete)
@@ -188,6 +189,33 @@ class _FakeProcessRepository:
             }
         return None
 
+    async def list_pipelines(self, *, page: int, page_size: int) -> dict:
+        return await self.list_processes(page=page, page_size=page_size)
+
+    async def list_plugin_workers(self, *, page: int, page_size: int) -> dict:
+        return await self.list_subprocesses(page=page, page_size=page_size)
+
+    async def find_plugin_worker(self, pipeline_id: str, plugin_worker_id: str) -> dict | None:
+        if pipeline_id != "proc_001":
+            return None
+        return await self.find_subprocess_by_id(plugin_worker_id)
+
+    async def copy_pipeline_with_reexecution(
+        self,
+        *,
+        source_pipeline_id: str,
+        target_pipeline_id: str,
+        parent_plugin_worker_ids: list[str] | None = None,
+        plugin_config_override: dict | None = None,
+        dataflow_id_override: str | None = None,
+    ) -> dict | None:
+        return await self.copy_process_with_reexecution(
+            source_process_id=source_pipeline_id,
+            target_process_id=target_pipeline_id,
+            parent_subprocess_ids=list(parent_plugin_worker_ids or []),
+            subprocess_config_override=plugin_config_override,
+        )
+
     async def copy_process_with_reexecution(
         self,
         *,
@@ -201,6 +229,7 @@ class _FakeProcessRepository:
         cfg = {"process_id": target_process_id}
         if subprocess_config_override:
             cfg["subprocess_config"] = subprocess_config_override
+            cfg["plugin_config"] = subprocess_config_override
         return {
             "pipeline_id": target_process_id,
             "process_id": target_process_id,
@@ -275,8 +304,6 @@ class _FakeEventRepository:
 
 
 def _create_client() -> TestClient:
-    from dflowp.api.app import get_event_repository
-
     _reset_fake_stores()
     os.environ["DFLOWP_SKIP_DB_INIT"] = "1"
     os.environ["DFlowP_API_Key"] = "test-key"
@@ -325,7 +352,7 @@ def test_get_data_not_found() -> None:
 
 def test_list_processes_with_pagination() -> None:
     client = _create_client()
-    response = client.get("/api/v1/processes?page=1&page_size=2", headers=_auth_headers())
+    response = client.get("/api/v1/pipelines?page=1&page_size=2", headers=_auth_headers())
     assert response.status_code == 200
     payload = response.json()
     assert payload["page"] == 1
@@ -337,20 +364,20 @@ def test_list_processes_with_pagination() -> None:
 
 def test_get_process_detail() -> None:
     client = _create_client()
-    response = client.get("/api/v1/processes/proc_001", headers=_auth_headers())
+    response = client.get("/api/v1/pipelines/proc_001", headers=_auth_headers())
     assert response.status_code == 200
     assert response.json()["pipeline_id"] == "proc_001"
 
 
 def test_get_process_detail_not_found() -> None:
     client = _create_client()
-    response = client.get("/api/v1/processes/not_found", headers=_auth_headers())
+    response = client.get("/api/v1/pipelines/not_found", headers=_auth_headers())
     assert response.status_code == 404
 
 
 def test_list_subprocesses_with_pagination() -> None:
     client = _create_client()
-    response = client.get("/api/v1/subprocesses?page=1&page_size=1", headers=_auth_headers())
+    response = client.get("/api/v1/plugin-workers?page=1&page_size=1", headers=_auth_headers())
     assert response.status_code == 200
     payload = response.json()
     assert payload["page"] == 1
@@ -362,7 +389,9 @@ def test_list_subprocesses_with_pagination() -> None:
 
 def test_get_subprocess_detail() -> None:
     client = _create_client()
-    response = client.get("/api/v1/subprocesses/sub_001", headers=_auth_headers())
+    response = client.get(
+        "/api/v1/pipelines/proc_001/plugin-workers/sub_001", headers=_auth_headers()
+    )
     assert response.status_code == 200
     body = response.json()
     assert body.get("plugin_worker_id") == "sub_001" or body.get("subprocess_id") == "sub_001"
@@ -370,7 +399,9 @@ def test_get_subprocess_detail() -> None:
 
 def test_get_subprocess_detail_not_found() -> None:
     client = _create_client()
-    response = client.get("/api/v1/subprocesses/not_found", headers=_auth_headers())
+    response = client.get(
+        "/api/v1/pipelines/proc_001/plugin-workers/not_found", headers=_auth_headers()
+    )
     assert response.status_code == 404
 
 
@@ -446,9 +477,10 @@ def test_create_data_item() -> None:
 def test_create_dataset_with_rows() -> None:
     client = _create_client()
     response = client.post(
-        "/api/v1/datasets",
+        "/api/v1/data",
         headers=_auth_headers(),
         json={
+            "doc_type": "dataset",
             "id": "ds_feed_batch",
             "rows": [
                 {"title": "A", "text": "x", "xmlUrl": "https://a/feed", "htmlUrl": "https://a/"},
@@ -476,9 +508,13 @@ def test_create_dataset_with_data_ids() -> None:
         json={"id": "d_ref_b", "content": {"x": 2}, "type": "input"},
     )
     response = client.post(
-        "/api/v1/datasets",
+        "/api/v1/data",
         headers=_auth_headers(),
-        json={"id": "ds_from_refs", "data_ids": ["d_ref_a", "d_ref_b"]},
+        json={
+            "doc_type": "dataset",
+            "id": "ds_from_refs",
+            "data_ids": ["d_ref_a", "d_ref_b"],
+        },
     )
     assert response.status_code == 201
     assert response.json()["data_ids"] == ["d_ref_a", "d_ref_b"]
@@ -487,15 +523,15 @@ def test_create_dataset_with_data_ids() -> None:
 def test_create_dataset_conflict_existing_id() -> None:
     client = _create_client()
     r1 = client.post(
-        "/api/v1/datasets",
+        "/api/v1/data",
         headers=_auth_headers(),
-        json={"id": "ds_dup", "rows": [{"a": 1}]},
+        json={"doc_type": "dataset", "id": "ds_dup", "rows": [{"a": 1}]},
     )
     assert r1.status_code == 201
     r2 = client.post(
-        "/api/v1/datasets",
+        "/api/v1/data",
         headers=_auth_headers(),
-        json={"id": "ds_dup", "rows": [{"a": 2}]},
+        json={"doc_type": "dataset", "id": "ds_dup", "rows": [{"a": 2}]},
     )
     assert r2.status_code == 409
 
@@ -528,10 +564,10 @@ def test_get_event_detail_not_found() -> None:
 def test_clone_process_with_reexecution() -> None:
     client = _create_client()
     response = client.post(
-        "/api/v1/processes/proc_001/clone",
+        "/api/v1/pipelines/proc_001/clone",
         headers=_auth_headers(),
         json={
-            "parent_subprocess_ids": ["sub_001"],
+            "parent_plugin_worker_ids": ["sub_001"],
         },
     )
     assert response.status_code == 201
@@ -547,10 +583,10 @@ def test_clone_process_with_reexecution() -> None:
 def test_clone_process_source_not_found() -> None:
     client = _create_client()
     response = client.post(
-        "/api/v1/processes/proc_404/clone",
+        "/api/v1/pipelines/proc_404/clone",
         headers=_auth_headers(),
         json={
-            "parent_subprocess_ids": ["sub_001"],
+            "parent_plugin_worker_ids": ["sub_001"],
         },
     )
     assert response.status_code == 404
@@ -559,10 +595,10 @@ def test_clone_process_source_not_found() -> None:
 def test_create_process_pending_with_input_data() -> None:
     client = _create_client()
     response = client.post(
-        "/api/v1/processes",
+        "/api/v1/pipelines",
         headers=_auth_headers(),
         json={
-            "process_id": "proc_api_create_1",
+            "pipeline_id": "proc_api_create_1",
             "software_version": "0.1.0",
             "input_dataset_id": "ds_api_feed",
             "dataflow": {
@@ -572,7 +608,7 @@ def test_create_process_pending_with_input_data() -> None:
                 ],
                 "edges": [{"from": "F1", "to": "E1"}],
             },
-            "subprocess_config": {"F1": {}, "E1": {"model": "text-embedding-3-small"}},
+            "plugin_config": {"F1": {}, "E1": {"model": "text-embedding-3-small"}},
             "input_data": [{"title": "A", "summary": "B", "url": "https://example.com"}],
             "start_immediately": False,
         },
@@ -589,30 +625,30 @@ def test_create_process_pending_with_input_data() -> None:
 def test_create_process_conflict_existing_id() -> None:
     client = _create_client()
     r1 = client.post(
-        "/api/v1/processes",
+        "/api/v1/pipelines",
         headers=_auth_headers(),
         json={
-            "process_id": "proc_dup",
+            "pipeline_id": "proc_dup",
             "input_dataset_id": "ds_x",
             "dataflow": {
                 "nodes": [{"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"}],
                 "edges": [],
             },
-            "subprocess_config": {},
+            "plugin_config": {},
         },
     )
     assert r1.status_code == 201
     r2 = client.post(
-        "/api/v1/processes",
+        "/api/v1/pipelines",
         headers=_auth_headers(),
         json={
-            "process_id": "proc_dup",
+            "pipeline_id": "proc_dup",
             "input_dataset_id": "ds_y",
             "dataflow": {
                 "nodes": [{"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"}],
                 "edges": [],
             },
-            "subprocess_config": {},
+            "plugin_config": {},
         },
     )
     assert r2.status_code == 409
@@ -621,20 +657,20 @@ def test_create_process_conflict_existing_id() -> None:
 def test_stop_process() -> None:
     client = _create_client()
     client.post(
-        "/api/v1/processes",
+        "/api/v1/pipelines",
         headers=_auth_headers(),
         json={
-            "process_id": "proc_stop_me",
+            "pipeline_id": "proc_stop_me",
             "input_dataset_id": "ds_z",
             "dataflow": {
                 "nodes": [{"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"}],
                 "edges": [],
             },
-            "subprocess_config": {},
+            "plugin_config": {},
         },
     )
     r = client.post(
-        "/api/v1/processes/proc_stop_me/stop",
+        "/api/v1/pipelines/proc_stop_me/stop",
         headers=_auth_headers(),
         json={"reason": "test"},
     )
@@ -646,19 +682,19 @@ def test_stop_process() -> None:
 def test_delete_process() -> None:
     client = _create_client()
     client.post(
-        "/api/v1/processes",
+        "/api/v1/pipelines",
         headers=_auth_headers(),
         json={
-            "process_id": "proc_del",
+            "pipeline_id": "proc_del",
             "input_dataset_id": "ds_z",
             "dataflow": {
                 "nodes": [{"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"}],
                 "edges": [],
             },
-            "subprocess_config": {},
+            "plugin_config": {},
         },
     )
-    r = client.delete("/api/v1/processes/proc_del", headers=_auth_headers())
+    r = client.delete("/api/v1/pipelines/proc_del", headers=_auth_headers())
     assert r.status_code == 204
     assert "proc_del" not in _FAKE_PROCESS_DOCS
 
@@ -666,12 +702,12 @@ def test_delete_process() -> None:
 def test_clone_with_subprocess_config_override() -> None:
     client = _create_client()
     response = client.post(
-        "/api/v1/processes/proc_001/clone",
+        "/api/v1/pipelines/proc_001/clone",
         headers=_auth_headers(),
         json={
-            "parent_subprocess_ids": ["sub_001"],
-            "new_process_id": "proc_cloned_cfg",
-            "subprocess_config": {"EmbedData1": {"model": "text-embedding-3-large"}},
+            "parent_plugin_worker_ids": ["sub_001"],
+            "new_pipeline_id": "proc_cloned_cfg",
+            "plugin_config": {"EmbedData1": {"model": "text-embedding-3-large"}},
         },
     )
     assert response.status_code == 201
