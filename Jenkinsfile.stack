@@ -111,7 +111,7 @@ set +a
 : "${DOCKERHUB_CACHE_REPO?}"
 
 GIT_REV=$(git rev-parse HEAD)
-MAX_PARALLEL="${BUILDX_MAX_PARALLEL:-4}"
+MAX_PARALLEL=2
 
 build_target() {
   IFS='|' read -r svc dockerfile image <<< "$1"
