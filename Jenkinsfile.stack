@@ -38,7 +38,6 @@ else
   SOFTWARE_VERSION="v0.1.${BN}"
 fi
 GIT_SHORT=$(git rev-parse --short=12 HEAD)
-STACK_TAG="stack-${GIT_SHORT}"
 DOCKERHUB_REGISTRY="${DOCKERHUB_REGISTRY:-docker.io}"
 DOCKERHUB_NAMESPACE="${DOCKERHUB_NAMESPACE:-crawlabase}"
 IMAGE_REPO_BASE="${DOCKERHUB_REGISTRY}/${DOCKERHUB_NAMESPACE}"
@@ -46,7 +45,7 @@ DOCKERHUB_CACHE_REPO="${DOCKERHUB_CACHE_REPO:-${IMAGE_REPO_BASE}/dflowp-buildcac
 
 cat > .jenkins_runtime.env <<EOF
 SOFTWARE_VERSION=${SOFTWARE_VERSION}
-STACK_TAG=${STACK_TAG}
+GIT_SHORT=${GIT_SHORT}
 DOCKERHUB_REGISTRY=${DOCKERHUB_REGISTRY}
 DOCKERHUB_NAMESPACE=${DOCKERHUB_NAMESPACE}
 IMAGE_REPO_BASE=${IMAGE_REPO_BASE}
@@ -54,19 +53,19 @@ DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}
 EOF
 
 cat > .jenkins_stack_images.env <<EOF
-DOCKER_IMAGE_MONGO=${IMAGE_REPO_BASE}/dflowp-mongo:${STACK_TAG}
-DOCKER_IMAGE_API=${IMAGE_REPO_BASE}/dflowp-api:${STACK_TAG}
-DOCKER_IMAGE_RUNTIME=${IMAGE_REPO_BASE}/dflowp-runtime:${STACK_TAG}
-DOCKER_IMAGE_EVENTSYSTEM=${IMAGE_REPO_BASE}/dflowp-eventsystem:${STACK_TAG}
-DOCKER_IMAGE_EVENT_BROKER=${IMAGE_REPO_BASE}/dflowp-event-broker:${STACK_TAG}
-DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS=${IMAGE_REPO_BASE}/dflowp-plugin-fetchfeeditems:${STACK_TAG}
-DOCKER_IMAGE_PLUGIN_EMBEDDATA=${IMAGE_REPO_BASE}/dflowp-plugin-embeddata:${STACK_TAG}
-DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN=${IMAGE_REPO_BASE}/dflowp-plugin-clustering-dbscan:${STACK_TAG}
-DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan:${STACK_TAG}
+DOCKER_IMAGE_MONGO=${IMAGE_REPO_BASE}/dflowp-mongo:${SOFTWARE_VERSION}
+DOCKER_IMAGE_API=${IMAGE_REPO_BASE}/dflowp-api:${SOFTWARE_VERSION}
+DOCKER_IMAGE_RUNTIME=${IMAGE_REPO_BASE}/dflowp-runtime:${SOFTWARE_VERSION}
+DOCKER_IMAGE_EVENTSYSTEM=${IMAGE_REPO_BASE}/dflowp-eventsystem:${SOFTWARE_VERSION}
+DOCKER_IMAGE_EVENT_BROKER=${IMAGE_REPO_BASE}/dflowp-event-broker:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS=${IMAGE_REPO_BASE}/dflowp-plugin-fetchfeeditems:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_EMBEDDATA=${IMAGE_REPO_BASE}/dflowp-plugin-embeddata:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN=${IMAGE_REPO_BASE}/dflowp-plugin-clustering-dbscan:${SOFTWARE_VERSION}
+DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan:${SOFTWARE_VERSION}
 EOF
 
 echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}"
-echo "STACK_TAG=${STACK_TAG}"
+echo "GIT_SHORT=${GIT_SHORT}"
 echo "IMAGE_REPO_BASE=${IMAGE_REPO_BASE}"
 echo "DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}"
 '''
@@ -108,41 +107,173 @@ set +a
 : "${BUILDER_NAME?}"
 : "${SOFTWARE_VERSION?}"
 : "${DOCKERHUB_CACHE_REPO?}"
+: "${IMAGE_REPO_BASE?}"
 
 GIT_REV=$(git rev-parse HEAD)
 MAX_PARALLEL=2
 
-build_target() {
-  IFS='|' read -r svc dockerfile image <<< "$1"
+normalize_repo_relative_path() {
+  local raw="$1"
+  local part
+  local -a in_parts out_parts
+  raw="${raw#./}"
+  IFS='/' read -r -a in_parts <<< "${raw}"
+  for part in "${in_parts[@]}"; do
+    case "${part}" in
+      ""|".")
+        continue
+        ;;
+      "..")
+        if [ "${#out_parts[@]}" -gt 0 ] && [ "${out_parts[${#out_parts[@]}-1]}" != ".." ]; then
+          unset 'out_parts[${#out_parts[@]}-1]'
+        else
+          out_parts+=("${part}")
+        fi
+        ;;
+      *)
+        out_parts+=("${part}")
+        ;;
+    esac
+  done
+  if [ "${#out_parts[@]}" -eq 0 ]; then
+    printf '.\n'
+  else
+    (IFS='/'; printf '%s\n' "${out_parts[*]}")
+  fi
+}
+
+git_hash_or_none() {
+  local path="$1"
+  if git cat-file -e "HEAD:${path}" >/dev/null 2>&1; then
+    git rev-parse "HEAD:${path}"
+  else
+    echo "none"
+  fi
+}
+
+editable_dependency_paths() {
+  local req_path="$1"
+  if [ ! -f "${req_path}" ]; then
+    return 0
+  fi
+  awk '
+    {
+      line=$0
+      sub(/\r$/, "", line)
+      sub(/#.*/, "", line)
+      if (line ~ /^[[:space:]]*-e[[:space:]]+/) {
+        sub(/^[[:space:]]*-e[[:space:]]+/, "", line)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        if (line != "") print line
+      }
+    }
+  ' "${req_path}"
+}
+
+resolve_dependency_path() {
+  local req_path="$1"
+  local dep_path="$2"
+  local req_dir rel
+  dep_path="${dep_path#./}"
+  if git cat-file -e "HEAD:${dep_path}" >/dev/null 2>&1; then
+    normalize_repo_relative_path "${dep_path}"
+    return
+  fi
+  req_dir="$(dirname "${req_path}")"
+  rel="$(normalize_repo_relative_path "${req_dir}/${dep_path}")"
+  printf '%s\n' "${rel}"
+}
+
+compute_lineage_w_deps() {
+  local svc="$1"
+  local service_path="$2"
+  local dockerfile="$3"
+  local req_path="$4"
+  local extra_paths_csv="$5"
+  local dep resolved tokens lineage
+  local -a extra_paths
+
+  tokens="$(
+    {
+      printf '%s\n' "Jenkinsfile.stack"
+      printf '%s\n' "$(normalize_repo_relative_path "${service_path}")"
+      printf '%s\n' "$(normalize_repo_relative_path "${dockerfile}")"
+      if [ -n "${req_path}" ]; then
+        printf '%s\n' "$(normalize_repo_relative_path "${req_path}")"
+        while IFS= read -r dep; do
+          [ -n "${dep}" ] || continue
+          resolved="$(resolve_dependency_path "${req_path}" "${dep}")"
+          [ -n "${resolved}" ] && printf '%s\n' "${resolved}"
+        done < <(editable_dependency_paths "${req_path}")
+      fi
+      if [ -n "${extra_paths_csv}" ]; then
+        IFS=',' read -r -a extra_paths <<< "${extra_paths_csv}"
+        for dep in "${extra_paths[@]}"; do
+          [ -n "${dep}" ] || continue
+          printf '%s\n' "$(normalize_repo_relative_path "${dep}")"
+        done
+      fi
+    } | awk 'NF' | sort -u | while IFS= read -r dep; do
+      printf '%s=%s\n' "${dep}" "$(git_hash_or_none "${dep}")"
+    done | sort | paste -sd';' -
+  )"
+  lineage="$(printf '%s' "${tokens}" | sha256sum | cut -c1-6 | tr 'A-Z' 'a-z')"
+  echo "[${svc}] LINEAGE_W_DEPS=${lineage}" >&2
+  printf '%s\n' "${lineage}"
+}
+
+build_or_pull_target() {
+  IFS='|' read -r svc dockerfile image_repo service_path req_path extra_paths image_var <<< "$1"
+  local cache_ref lineage image_lineage image_software temp_file
   cache_ref="${DOCKERHUB_CACHE_REPO}:${svc}"
-  echo "=== buildx ${svc} (${dockerfile} -> ${image}) ==="
-  docker buildx build \
-    --builder "${BUILDER_NAME}" \
-    --file "${dockerfile}" \
-    --tag "${image}" \
-    --push \
-    --cache-from "type=registry,ref=${cache_ref}" \
-    --cache-to "type=registry,ref=${cache_ref},mode=max" \
-    --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
-    --label "org.opencontainers.image.revision=${GIT_REV}" \
-    .
+  lineage="$(compute_lineage_w_deps "${svc}" "${service_path}" "${dockerfile}" "${req_path}" "${extra_paths}")"
+  image_lineage="${image_repo}:${lineage}"
+  image_software="${image_repo}:${SOFTWARE_VERSION}"
+
+  if docker manifest inspect "${image_lineage}" >/dev/null 2>&1; then
+    echo "[${svc}] Registry-Hit -> pull ${image_lineage}"
+    docker pull "${image_lineage}"
+    if docker manifest inspect "${image_software}" >/dev/null 2>&1; then
+      echo "[${svc}] Software-Tag vorhanden: ${image_software}"
+    else
+      echo "[${svc}] Software-Tag fehlt, mappe auf ${image_software}"
+      docker tag "${image_lineage}" "${image_software}"
+      docker push "${image_software}"
+    fi
+  else
+    echo "[${svc}] Registry-Miss -> buildx push ${image_lineage} + ${image_software}"
+    docker buildx build \
+      --builder "${BUILDER_NAME}" \
+      --file "${dockerfile}" \
+      --tag "${image_lineage}" \
+      --tag "${image_software}" \
+      --push \
+      --cache-from "type=registry,ref=${cache_ref}" \
+      --cache-to "type=registry,ref=${cache_ref},mode=max" \
+      --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
+      --label "org.opencontainers.image.revision=${GIT_REV}" \
+      .
+  fi
+
+  temp_file=".jenkins_image_${svc}.env"
+  printf '%s=%s\n' "${image_var}" "${image_lineage}" > "${temp_file}"
 }
 
 targets=(
-  "mongo|Dockerfile.mongo|${DOCKER_IMAGE_MONGO}"
-  "api|Dockerfile.api|${DOCKER_IMAGE_API}"
-  "worker|Dockerfile.worker|${DOCKER_IMAGE_RUNTIME}"
-  "eventsystem|Dockerfile.eventsystem|${DOCKER_IMAGE_EVENTSYSTEM}"
-  "event-broker|Dockerfile.event_broker|${DOCKER_IMAGE_EVENT_BROKER}"
-  "plugin-fetchfeeditems|Dockerfile.plugin_fetchfeeditems|${DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS}"
-  "plugin-embeddata|Dockerfile.plugin_embeddata|${DOCKER_IMAGE_PLUGIN_EMBEDDATA}"
-  "plugin-clustering-dbscan|Dockerfile.plugin_clustering_dbscan|${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN}"
-  "plugin-clustering-hdbscan|Dockerfile.plugin_clustering_hdbscan|${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN}"
+  "mongo|Dockerfile.mongo|${IMAGE_REPO_BASE}/dflowp-mongo|dflowp|requirements.txt||DOCKER_IMAGE_MONGO"
+  "api|Dockerfile.api|${IMAGE_REPO_BASE}/dflowp-api|dflowp/api|dflowp/api/requirements.txt||DOCKER_IMAGE_API"
+  "worker|Dockerfile.worker|${IMAGE_REPO_BASE}/dflowp-runtime|dflowp/worker|dflowp/worker/requirements.txt||DOCKER_IMAGE_RUNTIME"
+  "eventsystem|Dockerfile.eventsystem|${IMAGE_REPO_BASE}/dflowp-eventsystem|dflowp/eventsystem|dflowp/eventsystem/requirements.txt||DOCKER_IMAGE_EVENTSYSTEM"
+  "event-broker|Dockerfile.event_broker|${IMAGE_REPO_BASE}/dflowp-event-broker|dflowp/event_broker|dflowp/event_broker/requirements.txt||DOCKER_IMAGE_EVENT_BROKER"
+  "plugin-fetchfeeditems|Dockerfile.plugin_fetchfeeditems|${IMAGE_REPO_BASE}/dflowp-plugin-fetchfeeditems|dflowp/plugin_fetchfeeditems|dflowp/plugin_fetchfeeditems/requirements.txt||DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS"
+  "plugin-embeddata|Dockerfile.plugin_embeddata|${IMAGE_REPO_BASE}/dflowp-plugin-embeddata|dflowp/plugin_embeddata|dflowp/plugin_embeddata/requirements.txt||DOCKER_IMAGE_PLUGIN_EMBEDDATA"
+  "plugin-clustering-dbscan|Dockerfile.plugin_clustering_dbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-dbscan|dflowp/plugin_clustering_dbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN"
+  "plugin-clustering-hdbscan|Dockerfile.plugin_clustering_hdbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan|dflowp/plugin_clustering_hdbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
 )
 
 running=0
 for target in "${targets[@]}"; do
-  build_target "${target}" &
+  build_or_pull_target "${target}" &
   running=$((running + 1))
   if [ "${running}" -ge "${MAX_PARALLEL}" ]; then
     if ! wait -n; then
@@ -153,6 +284,13 @@ for target in "${targets[@]}"; do
   fi
 done
 wait
+
+rm -f .jenkins_stack_images.env
+for target in "${targets[@]}"; do
+  IFS='|' read -r svc _ <<< "${target}"
+  cat ".jenkins_image_${svc}.env" >> .jenkins_stack_images.env
+done
+rm -f .jenkins_image_*.env
 '''
             }
         }
