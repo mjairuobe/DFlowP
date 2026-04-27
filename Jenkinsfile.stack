@@ -42,6 +42,10 @@ DOCKERHUB_REGISTRY="${DOCKERHUB_REGISTRY:-docker.io}"
 DOCKERHUB_NAMESPACE="${DOCKERHUB_NAMESPACE:-crawlabase}"
 IMAGE_REPO_BASE="${DOCKERHUB_REGISTRY}/${DOCKERHUB_NAMESPACE}"
 DOCKERHUB_CACHE_REPO="${DOCKERHUB_CACHE_REPO:-${IMAGE_REPO_BASE}/dflowp-buildcache}"
+ECR_PULLTHROUGH_ENDPOINT="${ECR_PULLTHROUGH_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}"
+ECR_PULLTHROUGH_REGION="${ECR_PULLTHROUGH_REGION:-eu-central-1}"
+ECR_PULLTHROUGH_PREFIX="${ECR_PULLTHROUGH_PREFIX:-docker-hub}"
+PULL_PARALLEL="${PULL_PARALLEL:-15}"
 
 cat > .jenkins_runtime.env <<EOF
 SOFTWARE_VERSION=${SOFTWARE_VERSION}
@@ -50,6 +54,10 @@ DOCKERHUB_REGISTRY=${DOCKERHUB_REGISTRY}
 DOCKERHUB_NAMESPACE=${DOCKERHUB_NAMESPACE}
 IMAGE_REPO_BASE=${IMAGE_REPO_BASE}
 DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}
+ECR_PULLTHROUGH_ENDPOINT=${ECR_PULLTHROUGH_ENDPOINT}
+ECR_PULLTHROUGH_REGION=${ECR_PULLTHROUGH_REGION}
+ECR_PULLTHROUGH_PREFIX=${ECR_PULLTHROUGH_PREFIX}
+PULL_PARALLEL=${PULL_PARALLEL}
 EOF
 
 cat > .jenkins_stack_images.env <<EOF
@@ -68,6 +76,10 @@ echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}"
 echo "GIT_SHORT=${GIT_SHORT}"
 echo "IMAGE_REPO_BASE=${IMAGE_REPO_BASE}"
 echo "DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}"
+echo "ECR_PULLTHROUGH_ENDPOINT=${ECR_PULLTHROUGH_ENDPOINT}"
+echo "ECR_PULLTHROUGH_REGION=${ECR_PULLTHROUGH_REGION}"
+echo "ECR_PULLTHROUGH_PREFIX=${ECR_PULLTHROUGH_PREFIX}"
+echo "PULL_PARALLEL=${PULL_PARALLEL}"
 '''
             }
         }
@@ -78,6 +90,21 @@ echo "DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}"
 echo "${HUBP}" | docker login -u "${HUBU}" --password-stdin docker.io
 '''
                 }
+            }
+        }
+        stage('ECR pull-through login') {
+            steps {
+                sh '''set -euo pipefail
+set -a
+. ./.jenkins_runtime.env
+set +a
+
+: "${ECR_PULLTHROUGH_ENDPOINT?}"
+: "${ECR_PULLTHROUGH_REGION?}"
+
+echo "Login ECR pull-through endpoint ${ECR_PULLTHROUGH_ENDPOINT} (region ${ECR_PULLTHROUGH_REGION})"
+aws ecr get-login-password --region "${ECR_PULLTHROUGH_REGION}" | docker login --username AWS --password-stdin "${ECR_PULLTHROUGH_ENDPOINT}"
+'''
             }
         }
         stage('Prepare Buildx builder') {
@@ -108,9 +135,13 @@ set +a
 : "${SOFTWARE_VERSION?}"
 : "${DOCKERHUB_CACHE_REPO?}"
 : "${IMAGE_REPO_BASE?}"
+: "${ECR_PULLTHROUGH_ENDPOINT?}"
+: "${ECR_PULLTHROUGH_REGION?}"
+: "${ECR_PULLTHROUGH_PREFIX?}"
 
 GIT_REV=$(git rev-parse HEAD)
 MAX_PARALLEL=2
+PULL_PARALLEL="${PULL_PARALLEL:-15}"
 
 normalize_repo_relative_path() {
   local raw="$1"
@@ -222,41 +253,115 @@ compute_lineage_w_deps() {
   printf '%s\n' "${lineage}"
 }
 
-build_or_pull_target() {
-  IFS='|' read -r svc dockerfile image_repo service_path req_path extra_paths image_var <<< "$1"
-  local cache_ref lineage image_lineage image_software temp_file
+pullthrough_repo_path_for_image_repo() {
+  local image_repo="$1"
+  local first_part
+  case "${image_repo}" in
+    docker.io/*)
+      printf '%s\n' "${image_repo#docker.io/}"
+      return
+      ;;
+    index.docker.io/*)
+      printf '%s\n' "${image_repo#index.docker.io/}"
+      return
+      ;;
+  esac
+  first_part="${image_repo%%/*}"
+  if [[ "${first_part}" == *.* || "${first_part}" == *:* || "${first_part}" == "localhost" ]]; then
+    printf '%s\n' "${image_repo#*/}"
+  else
+    printf '%s\n' "${image_repo}"
+  fi
+}
+
+pullthrough_image_ref() {
+  local image_repo="$1"
+  local image_tag="$2"
+  local repo_path
+  repo_path="$(pullthrough_repo_path_for_image_repo "${image_repo}")"
+  if [ -n "${ECR_PULLTHROUGH_PREFIX}" ]; then
+    printf '%s/%s/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${ECR_PULLTHROUGH_PREFIX}" "${repo_path}" "${image_tag}"
+  else
+    printf '%s/%s:%s\n' "${ECR_PULLTHROUGH_ENDPOINT}" "${repo_path}" "${image_tag}"
+  fi
+}
+
+pull_with_retry() {
+  local image_ref="$1"
+  local max_attempts=3
+  local attempt=1
+  while [ "${attempt}" -le "${max_attempts}" ]; do
+    if docker pull "${image_ref}"; then
+      return 0
+    fi
+    if [ "${attempt}" -eq "${max_attempts}" ]; then
+      return 1
+    fi
+    echo "Pull fehlgeschlagen (${attempt}/${max_attempts}) fuer ${image_ref}, retry..."
+    attempt=$((attempt + 1))
+    sleep 3
+  done
+}
+
+build_target_from_record() {
+  IFS='|' read -r svc dockerfile image_repo _ _ _ _ lineage <<< "$1"
+  local cache_ref image_lineage image_software
   cache_ref="${DOCKERHUB_CACHE_REPO}:${svc}"
-  lineage="$(compute_lineage_w_deps "${svc}" "${service_path}" "${dockerfile}" "${req_path}" "${extra_paths}")"
   image_lineage="${image_repo}:${lineage}"
   image_software="${image_repo}:${SOFTWARE_VERSION}"
+  echo "[${svc}] Registry-Miss -> buildx push ${image_lineage} + ${image_software}"
+  docker buildx build \
+    --builder "${BUILDER_NAME}" \
+    --file "${dockerfile}" \
+    --tag "${image_lineage}" \
+    --tag "${image_software}" \
+    --push \
+    --cache-from "type=registry,ref=${cache_ref}" \
+    --cache-to "type=registry,ref=${cache_ref},mode=max" \
+    --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
+    --label "org.opencontainers.image.revision=${GIT_REV}" \
+    .
+}
 
-  if docker manifest inspect "${image_lineage}" >/dev/null 2>&1; then
-    echo "[${svc}] Registry-Hit -> pull ${image_lineage}"
-    docker pull "${image_lineage}"
-    if docker manifest inspect "${image_software}" >/dev/null 2>&1; then
-      echo "[${svc}] Software-Tag vorhanden: ${image_software}"
-    else
-      echo "[${svc}] Software-Tag fehlt, mappe auf ${image_software}"
-      docker tag "${image_lineage}" "${image_software}"
-      docker push "${image_software}"
-    fi
+pull_target_from_record() {
+  IFS='|' read -r svc _ image_repo _ _ _ _ lineage <<< "$1"
+  local image_lineage image_software image_lineage_pullthrough
+  image_lineage="${image_repo}:${lineage}"
+  image_software="${image_repo}:${SOFTWARE_VERSION}"
+  image_lineage_pullthrough="$(pullthrough_image_ref "${image_repo}" "${lineage}")"
+
+  echo "[${svc}] Pull ueber ECR Pull-Through ${image_lineage_pullthrough} (statt ${image_lineage})"
+  pull_with_retry "${image_lineage_pullthrough}"
+  if docker manifest inspect "${image_software}" >/dev/null 2>&1; then
+    echo "[${svc}] Software-Tag vorhanden: ${image_software}"
   else
-    echo "[${svc}] Registry-Miss -> buildx push ${image_lineage} + ${image_software}"
-    docker buildx build \
-      --builder "${BUILDER_NAME}" \
-      --file "${dockerfile}" \
-      --tag "${image_lineage}" \
-      --tag "${image_software}" \
-      --push \
-      --cache-from "type=registry,ref=${cache_ref}" \
-      --cache-to "type=registry,ref=${cache_ref},mode=max" \
-      --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
-      --label "org.opencontainers.image.revision=${GIT_REV}" \
-      .
+    echo "[${svc}] Software-Tag fehlt, mappe auf ${image_software}"
+    docker tag "${image_lineage_pullthrough}" "${image_software}"
+    docker push "${image_software}"
   fi
+}
 
-  temp_file=".jenkins_image_${svc}.env"
-  printf '%s=%s\n' "${image_var}" "${image_lineage}" > "${temp_file}"
+run_jobs_from_file() {
+  local max_parallel="$1"
+  local worker_fn="$2"
+  local list_file="$3"
+  local running=0
+  local line
+
+  [ -s "${list_file}" ] || return 0
+  while IFS= read -r line; do
+    [ -n "${line}" ] || continue
+    "${worker_fn}" "${line}" &
+    running=$((running + 1))
+    if [ "${running}" -ge "${max_parallel}" ]; then
+      if ! wait -n; then
+        wait || true
+        return 1
+      fi
+      running=$((running - 1))
+    fi
+  done < "${list_file}"
+  wait
 }
 
 targets=(
@@ -271,26 +376,47 @@ targets=(
   "plugin-clustering-hdbscan|Dockerfile.plugin_clustering_hdbscan|${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan|dflowp/plugin_clustering_hdbscan||dflowp-packages/dflowp-core,dflowp-packages/dflowp-processruntime|DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN"
 )
 
-running=0
+: > .jenkins_all_targets.list
+: > .jenkins_build_targets.list
+: > .jenkins_pull_targets.list
+
 for target in "${targets[@]}"; do
-  build_or_pull_target "${target}" &
-  running=$((running + 1))
-  if [ "${running}" -ge "${MAX_PARALLEL}" ]; then
-    if ! wait -n; then
-      wait || true
-      exit 1
-    fi
-    running=$((running - 1))
+  IFS='|' read -r svc dockerfile image_repo service_path req_path extra_paths image_var <<< "${target}"
+  lineage="$(compute_lineage_w_deps "${svc}" "${service_path}" "${dockerfile}" "${req_path}" "${extra_paths}")"
+  image_lineage="${image_repo}:${lineage}"
+  target_record="${target}|${lineage}"
+  printf '%s\n' "${target_record}" >> .jenkins_all_targets.list
+  if docker manifest inspect "${image_lineage}" >/dev/null 2>&1; then
+    echo "[${svc}] Registry-Hit fuer ${image_lineage}"
+    printf '%s\n' "${target_record}" >> .jenkins_pull_targets.list
+  else
+    echo "[${svc}] Registry-Miss fuer ${image_lineage}"
+    printf '%s\n' "${target_record}" >> .jenkins_build_targets.list
   fi
 done
-wait
+
+if [ -s .jenkins_build_targets.list ]; then
+  echo "Starte Build-Jobs (MAX_PARALLEL=${MAX_PARALLEL})"
+  run_jobs_from_file "${MAX_PARALLEL}" build_target_from_record .jenkins_build_targets.list
+else
+  echo "Keine Build-Jobs notwendig."
+fi
+
+cat .jenkins_build_targets.list >> .jenkins_pull_targets.list
+
+if [ "${PULL_PARALLEL}" -le 0 ]; then
+  PULL_PARALLEL="${#targets[@]}"
+fi
+echo "Starte Pull-Jobs ueber ECR Pull-Through (PULL_PARALLEL=${PULL_PARALLEL})"
+run_jobs_from_file "${PULL_PARALLEL}" pull_target_from_record .jenkins_pull_targets.list
 
 rm -f .jenkins_stack_images.env
-for target in "${targets[@]}"; do
-  IFS='|' read -r svc _ <<< "${target}"
-  cat ".jenkins_image_${svc}.env" >> .jenkins_stack_images.env
-done
-rm -f .jenkins_image_*.env
+while IFS='|' read -r _ _ image_repo _ _ _ image_var lineage; do
+  image_lineage_pullthrough="$(pullthrough_image_ref "${image_repo}" "${lineage}")"
+  printf '%s=%s\n' "${image_var}" "${image_lineage_pullthrough}" >> .jenkins_stack_images.env
+done < .jenkins_all_targets.list
+
+rm -f .jenkins_all_targets.list .jenkins_build_targets.list .jenkins_pull_targets.list
 '''
             }
         }
@@ -333,7 +459,55 @@ fi
 
 docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
 docker-compose -f docker-compose.yml config -q
-docker-compose -f docker-compose.yml pull mongo api worker eventsystem event-broker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
+compose_image_vars=(
+  DOCKER_IMAGE_MONGO
+  DOCKER_IMAGE_API
+  DOCKER_IMAGE_RUNTIME
+  DOCKER_IMAGE_EVENTSYSTEM
+  DOCKER_IMAGE_EVENT_BROKER
+  DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS
+  DOCKER_IMAGE_PLUGIN_EMBEDDATA
+  DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN
+  DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN
+)
+
+missing_images=()
+for image_var in "${compose_image_vars[@]}"; do
+  image_ref="${!image_var:-}"
+  if [ -z "${image_ref}" ]; then
+    echo "Pflichtvariable fehlt: ${image_var}" >&2
+    exit 1
+  fi
+  if docker image inspect "${image_ref}" >/dev/null 2>&1; then
+    echo "[compose] lokal vorhanden: ${image_ref}"
+  else
+    missing_images+=("${image_ref}")
+  fi
+done
+
+if [ "${#missing_images[@]}" -gt 0 ]; then
+  compose_pull_parallel="${PULL_PARALLEL:-15}"
+  if [ "${compose_pull_parallel}" -le 0 ]; then
+    compose_pull_parallel="${#missing_images[@]}"
+  fi
+  echo "[compose] ${#missing_images[@]} fehlende Images -> paralleler Pull (PULL_PARALLEL=${compose_pull_parallel})"
+  running=0
+  for image_ref in "${missing_images[@]}"; do
+    docker pull "${image_ref}" &
+    running=$((running + 1))
+    if [ "${running}" -ge "${compose_pull_parallel}" ]; then
+      if ! wait -n; then
+        wait || true
+        exit 1
+      fi
+      running=$((running - 1))
+    fi
+  done
+  wait
+else
+  echo "[compose] Alle Images bereits lokal; kein serieller compose pull notwendig."
+fi
+
 docker-compose -f docker-compose.yml up -d --no-build mongo api worker eventsystem event-broker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
 docker-compose -f docker-compose.yml ps
 '''
@@ -401,6 +575,7 @@ docker-compose -f docker-compose.yml down --remove-orphans
 docker buildx use default >/dev/null 2>&1 || true
 rm -f .jenkins_buildx.env .jenkins_runtime.env .jenkins_stack_images.env
 docker logout docker.io >/dev/null 2>&1 || true
+docker logout "${ECR_PULLTHROUGH_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}" >/dev/null 2>&1 || true
 '''
         }
         failure {
