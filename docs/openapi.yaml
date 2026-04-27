@@ -1,0 +1,1410 @@
+openapi: 3.1.0
+info:
+  title: DFlowP API Referenz
+  version: "1.0.0"
+  description: |
+    OpenAPI-Referenz fuer die DFlowP API unter `/api/v1`.
+    Grundlage ist die Implementierung in `dflowp/api/kebab_routes.py`.
+servers:
+  - url: "{baseUrl}"
+    description: API-Server
+    variables:
+      baseUrl:
+        default: "http://localhost:8000"
+tags:
+  - name: data
+    description: Data- und Dataset-Dokumente
+  - name: pipelines
+    description: Pipelines und Pipeline-Operationen
+  - name: plugin-workers
+    description: Plugin-Worker-Views
+  - name: dataflows
+    description: Dataflow-Definitionen
+  - name: dataflow-states
+    description: Dataflow-State-Dokumente
+  - name: plugin-configurations
+    description: Plugin-Konfigurationen
+  - name: events
+    description: Events
+security:
+  - ApiKeyAuth: []
+paths:
+  /api/v1/data:
+    get:
+      tags: [data]
+      summary: Data-/Dataset-Liste
+      description: |
+        Paginierte Liste aus `data_items`.
+        Listenansicht entfernt top-level `content`.
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/DocTypeParam"
+      responses:
+        "200":
+          description: Erfolgreiche Liste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataPageResponse"
+              examples:
+                default:
+                  value:
+                    items:
+                      - _id: "680de53e9d8f6ac6a2ecaf71"
+                        id: "data_001"
+                        doc_type: "data"
+                        type: "input"
+                        timestamp_ms: 1777000001001
+                        timestamp_human: "27_04_2026_12:40_UTC+2"
+                      - _id: "680de53e9d8f6ac6a2ecaf72"
+                        id: "ds_news_input_001"
+                        doc_type: "dataset"
+                        data_ids: ["data_001", "data_002"]
+                        timestamp_ms: 1777000001005
+                        timestamp_human: "27_04_2026_12:40_UTC+2"
+                    page: 1
+                    page_size: 20
+                    total_items: 2
+                    total_pages: 1
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    post:
+      tags: [data]
+      summary: Data- oder Dataset-Dokument anlegen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataDocumentCreateRequest"
+            examples:
+              data:
+                summary: Data-Dokument
+                value:
+                  doc_type: data
+                  id: data_manual_001
+                  content:
+                    title: Artikel A
+                    url: https://example.org/a
+                  type: input
+              datasetRows:
+                summary: Dataset aus Rows
+                value:
+                  doc_type: dataset
+                  id: ds_news_input_001
+                  rows:
+                    - title: A
+                      url: https://example.org/a
+                    - title: B
+                      url: https://example.org/b
+      responses:
+        "201":
+          description: Dokument erstellt
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/DataDetailData"
+                  - $ref: "#/components/schemas/DataDetailDataset"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/data/{item_id}:
+    get:
+      tags: [data]
+      summary: Data-/Dataset-Detail lesen
+      parameters:
+        - $ref: "#/components/parameters/ItemIdPath"
+      responses:
+        "200":
+          description: Detaildokument
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/DataDetailData"
+                  - $ref: "#/components/schemas/DataDetailDataset"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+  /api/v1/pipelines:
+    get:
+      tags: [pipelines]
+      summary: Pipeline-Liste
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginierte Pipeline-Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelinePageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    post:
+      tags: [pipelines]
+      summary: Pipeline anlegen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineCreateRequest"
+      responses:
+        "201":
+          description: Pipeline erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineDetail"
+              examples:
+                created:
+                  value:
+                    _id: "680de53e9d8f6ac6a2ecaf21"
+                    pipeline_id: news_ingest_001
+                    software_version: "0.1.0"
+                    input_dataset_id: ds_news_input_001
+                    dataflow_id: df_f87c4d98a2e1
+                    plugin_configuration_id: pcfg_21c6ee18af33
+                    dataflow_state_id: dfs_8b93f7a54f19
+                    status: pending
+                    timestamp_ms: 1777000000123
+                    timestamp_human: "27_04_2026_12:40_UTC+2"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/pipelines/{pipeline_id}:
+    get:
+      tags: [pipelines]
+      summary: Pipeline-Detail
+      parameters:
+        - $ref: "#/components/parameters/PipelineIdPath"
+      responses:
+        "200":
+          description: Pipeline-Dokument
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    delete:
+      tags: [pipelines]
+      summary: Pipeline loeschen
+      parameters:
+        - $ref: "#/components/parameters/PipelineIdPath"
+      responses:
+        "204":
+          description: Pipeline geloescht
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+  /api/v1/pipelines/{pipeline_id}/stop:
+    post:
+      tags: [pipelines]
+      summary: Pipeline stoppen
+      parameters:
+        - $ref: "#/components/parameters/PipelineIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineStopRequest"
+      responses:
+        "200":
+          description: Pipeline aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+  /api/v1/pipelines/{pipeline_id}/clone:
+    post:
+      tags: [pipelines]
+      summary: Pipeline klonen
+      description: |
+        Legt eine neue Pipeline an und erzeugt immer ein neues Dataflow-State-Dokument.
+        Optional koennen Reexecution-Seeds, Dataflow-Override und Plugin-Config-Override gesetzt werden.
+      parameters:
+        - $ref: "#/components/parameters/PipelineIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineCloneRequest"
+      responses:
+        "201":
+          description: Clone erfolgreich erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineDetail"
+              examples:
+                cloned:
+                  value:
+                    _id: "680de6ba9d8f6ac6a2ecb102"
+                    pipeline_id: news_ingest_001_copy
+                    software_version: "0.1.0"
+                    input_dataset_id: ds_news_input_001
+                    dataflow_id: df_f87c4d98a2e1
+                    plugin_configuration_id: pcfg_b0f06cc8a3aa
+                    dataflow_state_id: dfs_127c4dbabe21
+                    status: pending
+                    timestamp_ms: 1777000500123
+                    timestamp_human: "27_04_2026_12:48_UTC+2"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/pipelines/{pipeline_id}/plugin-workers/{plugin_worker_id}:
+    get:
+      tags: [plugin-workers]
+      summary: Plugin-Worker-Detail einer Pipeline
+      parameters:
+        - $ref: "#/components/parameters/PipelineIdPath"
+        - $ref: "#/components/parameters/PluginWorkerIdPath"
+      responses:
+        "200":
+          description: Plugin-Worker gefunden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginWorkerView"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+  /api/v1/plugin-workers:
+    get:
+      tags: [plugin-workers]
+      summary: Plugin-Worker-Liste ueber alle Pipelines
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginierte Worker-Liste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginWorkerPageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+  /api/v1/dataflows:
+    get:
+      tags: [dataflows]
+      summary: Dataflow-Liste
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginierte Dataflow-Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataflowPageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    post:
+      tags: [dataflows]
+      summary: Dataflow anlegen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataflowCreateRequest"
+      responses:
+        "201":
+          description: Dataflow erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataflowDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/dataflows/{dataflow_id}:
+    get:
+      tags: [dataflows]
+      summary: Dataflow-Detail
+      parameters:
+        - $ref: "#/components/parameters/DataflowIdPath"
+      responses:
+        "200":
+          description: Dataflow-Dokument
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataflowDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    put:
+      tags: [dataflows]
+      summary: Dataflow ersetzen
+      parameters:
+        - $ref: "#/components/parameters/DataflowIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataflowCreateRequest"
+      responses:
+        "200":
+          description: Ersetzter Dataflow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataflowDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [dataflows]
+      summary: Dataflow loeschen
+      parameters:
+        - $ref: "#/components/parameters/DataflowIdPath"
+      responses:
+        "204":
+          description: Dataflow geloescht
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+  /api/v1/dataflow-states:
+    get:
+      tags: [dataflow-states]
+      summary: Dataflow-State-Liste
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/PipelineIdQueryParam"
+        - $ref: "#/components/parameters/DataflowIdQueryParam"
+      responses:
+        "200":
+          description: Paginierte Dataflow-State-Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataflowStatePageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    post:
+      tags: [dataflow-states]
+      summary: Dataflow-State anlegen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataflowStateCreateRequest"
+      responses:
+        "201":
+          description: Dataflow-State erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataflowStateDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/dataflow-states/{dataflow_state_id}:
+    get:
+      tags: [dataflow-states]
+      summary: Dataflow-State-Detail
+      parameters:
+        - $ref: "#/components/parameters/DataflowStateIdPath"
+      responses:
+        "200":
+          description: Dataflow-State inklusive plugin_worker_summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataflowStateDetail"
+              examples:
+                detail:
+                  value:
+                    _id: "680de53e9d8f6ac6a2ecaf45"
+                    dataflow_state_id: dfs_8b93f7a54f19
+                    pipeline_id: news_ingest_001
+                    dataflow_id: df_f87c4d98a2e1
+                    nodes:
+                      - plugin_worker_id: EmbedData1
+                        plugin_type: EmbedData
+                        event_status: Not Started
+                        io_transformation_states: []
+                    edges:
+                      - from: FetchFeedItems1
+                        to: EmbedData1
+                    dataflow_state:
+                      nodes:
+                        - plugin_worker_id: EmbedData1
+                          plugin_type: EmbedData
+                          event_status: Not Started
+                          io_transformation_states: []
+                      edges:
+                        - from: FetchFeedItems1
+                          to: EmbedData1
+                    plugin_worker_summary:
+                      - plugin_worker_id: EmbedData1
+                        plugin_type: EmbedData
+                        event_status: Not Started
+                        quality:
+                          min: null
+                          max: null
+                          avg: null
+                          median: null
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    patch:
+      tags: [dataflow-states]
+      summary: Dataflow-State partiell aktualisieren
+      parameters:
+        - $ref: "#/components/parameters/DataflowStateIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataflowStatePatchRequest"
+      responses:
+        "200":
+          description: Aktualisierter Dataflow-State
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataflowStateDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [dataflow-states]
+      summary: Dataflow-State loeschen
+      parameters:
+        - $ref: "#/components/parameters/DataflowStateIdPath"
+      responses:
+        "204":
+          description: Dataflow-State geloescht
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+  /api/v1/plugin-configurations:
+    get:
+      tags: [plugin-configurations]
+      summary: Plugin-Configuration-Liste
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginierte Configuration-Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginConfigurationPageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    post:
+      tags: [plugin-configurations]
+      summary: Plugin-Configuration anlegen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PluginConfigurationCreateRequest"
+      responses:
+        "201":
+          description: Plugin-Configuration erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginConfigurationDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/plugin-configurations/{plugin_configuration_id}:
+    get:
+      tags: [plugin-configurations]
+      summary: Plugin-Configuration-Detail
+      parameters:
+        - $ref: "#/components/parameters/PluginConfigurationIdPath"
+      responses:
+        "200":
+          description: Detaildokument
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginConfigurationDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    delete:
+      tags: [plugin-configurations]
+      summary: Plugin-Configuration loeschen
+      parameters:
+        - $ref: "#/components/parameters/PluginConfigurationIdPath"
+      responses:
+        "204":
+          description: Plugin-Configuration geloescht
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+  /api/v1/events:
+    get:
+      tags: [events]
+      summary: Event-Liste
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/PipelineIdQueryParam"
+      responses:
+        "200":
+          description: Paginierte Event-Liste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+    post:
+      tags: [events]
+      summary: Event manuell speichern
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventCreateRequest"
+      responses:
+        "201":
+          description: Event erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetail"
+              examples:
+                created:
+                  value:
+                    _id: "680de53e9d8f6ac6a2ecaf66"
+                    pipeline_id: news_ingest_001
+                    plugin_worker_id: EmbedData1
+                    event_type: EVENT_COMPLETED
+                    event_time: "2026-04-27T10:40:10.123Z"
+                    timestamp_ms: 1777000010123
+                    timestamp_human: "27_04_2026_12:40_UTC+2"
+                    plugin_worker_replica_id: 1
+                    payload:
+                      processed: 123
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/events/{event_id}:
+    get:
+      tags: [events]
+      summary: Event-Detail
+      parameters:
+        - $ref: "#/components/parameters/EventIdPath"
+      responses:
+        "200":
+          description: Event gefunden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/ServerConfigError"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Seitennummer (>=1)
+    PageSizeParam:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Seitengroesse (1..100)
+    DocTypeParam:
+      name: doc_type
+      in: query
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [data, dataset]
+      description: |
+        Mehrfachparameter fuer Typfilter, z.B.
+        `doc_type=data&doc_type=dataset`.
+    PipelineIdQueryParam:
+      name: pipeline_id
+      in: query
+      required: false
+      schema:
+        type: string
+    DataflowIdQueryParam:
+      name: dataflow_id
+      in: query
+      required: false
+      schema:
+        type: string
+    ItemIdPath:
+      name: item_id
+      in: path
+      required: true
+      schema:
+        type: string
+    PipelineIdPath:
+      name: pipeline_id
+      in: path
+      required: true
+      schema:
+        type: string
+    PluginWorkerIdPath:
+      name: plugin_worker_id
+      in: path
+      required: true
+      schema:
+        type: string
+    DataflowIdPath:
+      name: dataflow_id
+      in: path
+      required: true
+      schema:
+        type: string
+    DataflowStateIdPath:
+      name: dataflow_state_id
+      in: path
+      required: true
+      schema:
+        type: string
+    PluginConfigurationIdPath:
+      name: plugin_configuration_id
+      in: path
+      required: true
+      schema:
+        type: string
+    EventIdPath:
+      name: event_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: MongoDB ObjectId als String
+
+  responses:
+    UnauthorizedError:
+      description: Ungueltiger API-Key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            detail: "Ungültiger API-Key."
+    ServerConfigError:
+      description: Fehlende API-Key-Serverkonfiguration
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            detail: "Serverkonfiguration unvollständig: DFlowP_API_Key fehlt."
+    ValidationError:
+      description: Validierungsfehler
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFoundError:
+      description: Dokument nicht gefunden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ConflictError:
+      description: Ressource existiert bereits
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequestError:
+      description: Fachlich ungueltige Anfrage
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: Interner Fehler
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: object
+            - type: array
+      required: [detail]
+
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        page_size: { type: integer }
+        total_items: { type: integer }
+        total_pages: { type: integer }
+      required: [page, page_size, total_items, total_pages]
+
+    GenericNode:
+      type: object
+      additionalProperties: true
+      properties:
+        plugin_worker_id: { type: string }
+        plugin_type: { type: string }
+        event_status: { type: string }
+        io_transformation_states:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    GenericEdge:
+      type: object
+      additionalProperties: true
+      properties:
+        from: { type: string }
+        to: { type: string }
+      required: [from, to]
+
+    DataDocumentCreateRequest:
+      type: object
+      properties:
+        doc_type:
+          type: string
+          enum: [data, dataset]
+          default: data
+        id:
+          type: [string, "null"]
+        content:
+          type: [object, "null"]
+          additionalProperties: true
+        type:
+          type: string
+          default: input
+        data_ids:
+          type: [array, "null"]
+          items:
+            type: string
+        rows:
+          type: [array, "null"]
+          items:
+            type: object
+            additionalProperties: true
+
+    DataDetailData:
+      type: object
+      properties:
+        _id: { type: string }
+        id: { type: string }
+        doc_type:
+          type: string
+          enum: [data]
+        type: { type: string }
+        content:
+          type: object
+          additionalProperties: true
+        timestamp_ms: { type: integer }
+        timestamp_human: { type: string }
+      required: [id, doc_type, content]
+      additionalProperties: true
+
+    DataDetailDataset:
+      type: object
+      properties:
+        _id: { type: string }
+        id: { type: string }
+        doc_type:
+          type: string
+          enum: [dataset]
+        data_ids:
+          type: array
+          items:
+            type: string
+        timestamp_ms: { type: integer }
+        timestamp_human: { type: string }
+      required: [id, doc_type, data_ids]
+      additionalProperties: true
+
+    DataListItem:
+      oneOf:
+        - allOf:
+            - $ref: "#/components/schemas/DataDetailData"
+            - type: object
+              properties:
+                content:
+                  description: In Listenantworten entfernt
+                  readOnly: true
+        - $ref: "#/components/schemas/DataDetailDataset"
+
+    DataPageResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DataListItem"
+          required: [items]
+
+    PipelineCreateRequest:
+      type: object
+      properties:
+        pipeline_id:
+          type: string
+          minLength: 1
+        software_version:
+          type: string
+          default: "0.1.0"
+        input_dataset_id:
+          type: string
+          minLength: 1
+        dataflow:
+          type: object
+          additionalProperties: true
+          properties:
+            nodes:
+              type: array
+              items:
+                $ref: "#/components/schemas/GenericNode"
+            edges:
+              type: array
+              items:
+                $ref: "#/components/schemas/GenericEdge"
+        plugin_config:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        input_data:
+          type: [array, "null"]
+          items:
+            type: object
+            additionalProperties: true
+        start_immediately:
+          type: boolean
+          default: false
+      required: [pipeline_id, input_dataset_id, dataflow]
+
+    PipelineCloneRequest:
+      type: object
+      properties:
+        new_pipeline_id:
+          type: [string, "null"]
+        dataflow_id:
+          type: [string, "null"]
+        plugin_config:
+          type: [object, "null"]
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        parent_plugin_worker_ids:
+          type: [array, "null"]
+          items:
+            type: string
+
+    PipelineStopRequest:
+      type: object
+      properties:
+        reason:
+          type: [string, "null"]
+
+    PipelineListItem:
+      type: object
+      properties:
+        pipeline_id: { type: [string, "null"] }
+        software_version: { type: [string, "null"] }
+        input_dataset_id: { type: [string, "null"] }
+        dataflow_id: { type: [string, "null"] }
+        plugin_configuration_id: { type: [string, "null"] }
+        dataflow_state_id: { type: [string, "null"] }
+        status: { type: [string, "null"] }
+        timestamp_ms: { type: [integer, "null"] }
+      additionalProperties: false
+
+    PipelineDetail:
+      type: object
+      properties:
+        _id: { type: string }
+        pipeline_id: { type: string }
+        software_version: { type: [string, "null"] }
+        input_dataset_id: { type: [string, "null"] }
+        dataflow_id: { type: [string, "null"] }
+        plugin_configuration_id: { type: [string, "null"] }
+        dataflow_state_id: { type: [string, "null"] }
+        status: { type: [string, "null"] }
+        cancelled_reason: { type: [string, "null"] }
+        timestamp_ms: { type: [integer, "null"] }
+        timestamp_human: { type: [string, "null"] }
+      required: [pipeline_id]
+      additionalProperties: true
+
+    PipelinePageResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/PipelineListItem"
+          required: [items]
+
+    PluginWorkerView:
+      type: object
+      properties:
+        producer_pipeline_id: { type: [string, "null"] }
+        plugin_worker_id: { type: [string, "null"] }
+        plugin_type: { type: [string, "null"] }
+        event_status: { type: [string, "null"] }
+        io_transformation_states:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [plugin_worker_id]
+      additionalProperties: true
+
+    PluginWorkerPageResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/PluginWorkerView"
+          required: [items]
+
+    DataflowCreateRequest:
+      type: object
+      properties:
+        dataflow_id:
+          type: string
+          minLength: 1
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        edges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [dataflow_id]
+
+    DataflowDetail:
+      type: object
+      properties:
+        _id: { type: string }
+        dataflow_id: { type: string }
+        name: { type: [string, "null"] }
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        edges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        timestamp_ms: { type: [integer, "null"] }
+        timestamp_human: { type: [string, "null"] }
+      required: [dataflow_id]
+      additionalProperties: true
+
+    DataflowListItem:
+      type: object
+      properties:
+        dataflow_id: { type: [string, "null"] }
+        name: { type: [string, "null"] }
+        node_count: { type: integer }
+        edge_count: { type: integer }
+        timestamp_ms: { type: [integer, "null"] }
+      required: [node_count, edge_count]
+      additionalProperties: false
+
+    DataflowPageResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DataflowListItem"
+          required: [items]
+
+    DataflowStateCreateRequest:
+      type: object
+      properties:
+        dataflow_state_id:
+          type: string
+          minLength: 1
+        pipeline_id:
+          type: string
+          minLength: 1
+        dataflow_id:
+          type: string
+          minLength: 1
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        edges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [dataflow_state_id, pipeline_id, dataflow_id]
+
+    DataflowStatePatchRequest:
+      anyOf:
+        - type: object
+          properties:
+            dataflow_state:
+              type: object
+              additionalProperties: true
+          required: [dataflow_state]
+        - type: object
+          properties:
+            nodes:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            edges:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+          minProperties: 1
+
+    PluginWorkerSummaryEntry:
+      type: object
+      properties:
+        plugin_worker_id: { type: [string, "null"] }
+        plugin_type: { type: [string, "null"] }
+        event_status: { type: [string, "null"] }
+        quality:
+          type: object
+          properties:
+            min: { type: [number, "null"] }
+            max: { type: [number, "null"] }
+            avg: { type: [number, "null"] }
+            median: { type: [number, "null"] }
+          required: [min, max, avg, median]
+      additionalProperties: false
+
+    DataflowStateDetail:
+      type: object
+      properties:
+        _id: { type: string }
+        dataflow_state_id: { type: string }
+        pipeline_id: { type: string }
+        dataflow_id: { type: string }
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        edges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        dataflow_state:
+          type: object
+          additionalProperties: true
+        plugin_worker_summary:
+          type: array
+          items:
+            $ref: "#/components/schemas/PluginWorkerSummaryEntry"
+        timestamp_ms: { type: [integer, "null"] }
+        timestamp_human: { type: [string, "null"] }
+      required: [dataflow_state_id, pipeline_id, dataflow_id]
+      additionalProperties: true
+
+    DataflowStateListItem:
+      type: object
+      properties:
+        dataflow_state_id: { type: [string, "null"] }
+        pipeline_id: { type: [string, "null"] }
+        dataflow_id: { type: [string, "null"] }
+        node_count: { type: integer }
+        timestamp_ms: { type: [integer, "null"] }
+      required: [node_count]
+      additionalProperties: false
+
+    DataflowStatePageResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DataflowStateListItem"
+          required: [items]
+
+    PluginConfigurationCreateRequest:
+      type: object
+      properties:
+        plugin_configuration_id:
+          type: string
+          minLength: 1
+        by_plugin_worker_id:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+      required: [plugin_configuration_id]
+
+    PluginConfigurationDetail:
+      type: object
+      properties:
+        _id: { type: string }
+        plugin_configuration_id: { type: string }
+        by_plugin_worker_id:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        timestamp_ms: { type: [integer, "null"] }
+        timestamp_human: { type: [string, "null"] }
+      required: [plugin_configuration_id]
+      additionalProperties: true
+
+    PluginConfigurationListItem:
+      type: object
+      properties:
+        plugin_configuration_id: { type: [string, "null"] }
+        plugin_worker_ids:
+          type: array
+          items: { type: string }
+        plugin_worker_count: { type: integer }
+        timestamp_ms: { type: [integer, "null"] }
+      required: [plugin_worker_ids, plugin_worker_count]
+      additionalProperties: false
+
+    PluginConfigurationPageResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/PluginConfigurationListItem"
+          required: [items]
+
+    EventCreateRequest:
+      type: object
+      properties:
+        pipeline_id:
+          type: string
+          minLength: 1
+        plugin_worker_id:
+          type: string
+          minLength: 1
+        event_type:
+          type: string
+          minLength: 1
+        plugin_worker_replica_id:
+          type: integer
+          minimum: 0
+          default: 1
+        payload:
+          type: [object, "null"]
+          additionalProperties: true
+      required: [pipeline_id, plugin_worker_id, event_type]
+
+    EventDetail:
+      type: object
+      properties:
+        _id: { type: string }
+        pipeline_id: { type: string }
+        plugin_worker_id: { type: string }
+        event_type: { type: string }
+        event_time:
+          type: string
+          format: date-time
+        timestamp_ms: { type: [integer, "null"] }
+        timestamp_human: { type: [string, "null"] }
+        delivered_at:
+          type: [string, "null"]
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+        plugin_worker_replica_id:
+          type: integer
+      required:
+        - pipeline_id
+        - plugin_worker_id
+        - event_type
+        - plugin_worker_replica_id
+      additionalProperties: false
+
+    EventPageResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/EventDetail"
+          required: [items]

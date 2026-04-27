@@ -49,13 +49,13 @@ app = FastAPI(
         "REST-API für Pipelines, Data-Items, Datasets, Events, Dataflows, Dataflow-States und "
         "Plugin-Konfigurationen. Authentifizierung: Header `X-API-Key` auf allen Endpunkten. "
         "Vollständige Endpunktliste, cURL-Beispiele pro Route und beispielhafte JSON-Responses für "
-        "Detail-GETs: Repository-Datei `docs/API-DBDoc-Restructure-Plan.md`."
+        "Detail-GETs: Repository-Datei `docs/api-reference.md`."
     ),
     openapi_tags=[
         {
             "name": "v1",
             "description": (
-                "API unter /api/v1. Doku: `docs/API-DBDoc-Restructure-Plan.md`."
+                "API unter /api/v1. Doku: `docs/api-reference.md`."
             ),
         },
     ],
