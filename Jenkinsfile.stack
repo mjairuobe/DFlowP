@@ -241,8 +241,12 @@ if [ "${STACK_SKIP_BUILD:-0}" = "1" ]; then
   pull_if_missing "${DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN}"
   pull_if_missing "${DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN}"
 else
-  docker-compose -f docker-compose.yml build mongo api frontend worker eventsystem event-broker \
-    plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
+  # Seriell bauen: parallele Builds (pip+npm) sprengen schnell die Platte (ENOSPC in /tmp o. Ä.).
+  for _svc in mongo api frontend worker eventsystem event-broker \
+    plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan; do
+    echo "=== docker-compose build ${_svc} ==="
+    docker-compose -f docker-compose.yml build "${_svc}"
+  done
 fi
 '''
             }
@@ -321,16 +325,6 @@ fi
 docker-compose -f docker-compose.yml ps
 '''
                 }
-            }
-        }
-        // Direkt nach erfolgreichem „Compose up“: Agent-Platz freimachen, bevor Test-`docker-compose run` zusätzliche Ephemeral-Container anlegt.
-        // Laufende Stack-Container: `container prune` betrifft nur gestoppte; `image prune -a` entfernt nur Images ohne Container-Referenz (kein `docker volume prune`).
-        stage('Docker: prune unused') {
-            steps {
-                sh '''set -euo pipefail
-docker container prune -f
-docker image prune -af
-'''
             }
         }
         stage('Tests: API') {
@@ -448,7 +442,12 @@ docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=$MONGODB_TEST_
     }
     post {
         always {
-            sh '''docker logout docker.io 2>/dev/null || true'''
+            // Erst ganz am Ende: gestoppte Container + unreferenzierte Images (laufende Stack-Images bleiben). Hilft dem nächsten Lauf, ohne Build zu beeinflussen.
+            sh '''set +e
+docker container prune -f
+docker image prune -af
+docker logout docker.io 2>/dev/null || true
+'''
         }
         failure { echo 'Stack-Pipeline fehlgeschlagen – Logs prüfen.' }
         success { echo 'Stack-Pipeline OK – Container laufen weiter (kein automatisches compose down).' }
