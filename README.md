@@ -1,7 +1,7 @@
 # DFlowP
 
 ## Framework für datenflussorientierte Programmierung
-
+.
 Bitte hilf mir, mein Python‑Framework zu entwickeln. Das Framework soll datenflussorientierte Programmierung (DFlowP) heißen.
 
 Die datenflussorientierte Programmierung (DFlowP) soll helfen, daten-, rechen- und damit kostenintensive Anwendungen zukunftsfähig zu gestalten, indem die Daten migrierbar und bei Softwarefehlern neukalkulierbar sind.
