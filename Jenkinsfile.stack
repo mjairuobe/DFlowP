@@ -531,7 +531,6 @@ if ! chmod a+rwx volumes/mongo 2>/dev/null && ! chmod 777 volumes/mongo 2>/dev/n
   docker run --rm --user root -v "$(pwd)/volumes/mongo:/v:rw" "${ALPINE_CHMOD_IMAGE}" sh -ceu 'chmod -R 777 /v' || true
 fi
 
-docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
 docker-compose -f docker-compose.yml config -q
 compose_image_vars=(
   DOCKER_IMAGE_MONGO
@@ -583,6 +582,41 @@ else
 fi
 
 docker-compose -f docker-compose.yml up -d --no-build mongo api worker eventsystem event-broker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
+
+compose_project="dflowp"
+compose_services=(
+  mongo
+  api
+  worker
+  eventsystem
+  event-broker
+  plugin-fetchfeeditems
+  plugin-embeddata
+  plugin-clustering-dbscan
+  plugin-clustering-hdbscan
+)
+
+duplicate_found=0
+for service_name in "${compose_services[@]}"; do
+  container_count=$(docker ps -a \
+    --filter "label=com.docker.compose.project=${compose_project}" \
+    --filter "label=com.docker.compose.service=${service_name}" \
+    --format '{{.ID}}' | wc -l | tr -d ' ')
+  if [ "${container_count}" -gt 1 ]; then
+    echo "[compose] Fehler: Doppelter Service-Container erkannt: Projekt=${compose_project} Service=${service_name} Count=${container_count}" >&2
+    docker ps -a \
+      --filter "label=com.docker.compose.project=${compose_project}" \
+      --filter "label=com.docker.compose.service=${service_name}" \
+      --format '  - {{.ID}} {{.Names}} {{.Status}}' >&2
+    duplicate_found=1
+  fi
+done
+
+if [ "${duplicate_found}" -ne 0 ]; then
+  echo "[compose] Abbruch wegen doppelter Compose-Service-Container im Projekt ${compose_project}." >&2
+  exit 1
+fi
+
 docker-compose -f docker-compose.yml ps
 '''
                 }
@@ -645,7 +679,6 @@ docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=${MONGODB_TEST
     post {
         always {
             sh '''set +e
-docker-compose -f docker-compose.yml down --remove-orphans
 docker buildx use default >/dev/null 2>&1 || true
 rm -f .jenkins_buildx.env .jenkins_runtime.env .jenkins_stack_images.env
 docker logout "${ECR_ENDPOINT:-423623826655.dkr.ecr.eu-central-1.amazonaws.com}" >/dev/null 2>&1 || true
