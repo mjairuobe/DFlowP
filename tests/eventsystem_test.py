@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from dflowp_core.eventinterfaces.event_bus import EventBus
-from dflowp_core.eventinterfaces.event_service import EventService, get_event_service
+from dflowp_core.eventinterfaces.event_service import EventService
 from dflowp_core.eventinterfaces.event_types import (
     EVENT_COMPLETED,
     EVENT_FAILED,
@@ -36,15 +36,15 @@ async def test_event_bus_publish_subscribe(event_bus_fresh):
 
     bus.subscribe(EVENT_STARTED, handler)
     await bus.publish({
-        "process_id": "p1",
-        "subprocess_id": "s1",
+        "pipeline_id": "p1",
+        "plugin_worker_id": "s1",
         "event_type": EVENT_STARTED,
         "event_time": datetime.now(timezone.utc),
     })
 
     assert len(received) == 1
-    assert received[0]["process_id"] == "p1"
-    assert received[0]["subprocess_id"] == "s1"
+    assert received[0]["pipeline_id"] == "p1"
+    assert received[0]["plugin_worker_id"] == "s1"
     assert received[0]["event_type"] == EVENT_STARTED
 
 
@@ -65,8 +65,8 @@ async def test_event_bus_multiple_handlers(event_bus_fresh):
     bus.subscribe(EVENT_COMPLETED, h2)
 
     await bus.publish({
-        "process_id": "p2",
-        "subprocess_id": "s2",
+        "pipeline_id": "p2",
+        "plugin_worker_id": "s2",
         "event_type": EVENT_COMPLETED,
         "event_time": datetime.now(timezone.utc),
     })
@@ -88,8 +88,8 @@ async def test_event_bus_wildcard_subscribe(event_bus_fresh):
 
     bus.subscribe("*", handler)
     await bus.publish({
-        "process_id": "p3",
-        "subprocess_id": "s3",
+        "pipeline_id": "p3",
+        "plugin_worker_id": "s3",
         "event_type": EVENT_FAILED,
         "event_time": datetime.now(timezone.utc),
     })
@@ -101,7 +101,7 @@ async def test_event_bus_wildcard_subscribe(event_bus_fresh):
 @pytest.mark.asyncio
 async def test_event_service_emit_started():
     """Testet EventService.emit_started."""
-    svc = get_event_service()
+    svc = EventService(EventBus())
     received: list[dict] = []
 
     def handler(evt: dict):
@@ -110,14 +110,14 @@ async def test_event_service_emit_started():
     svc.subscribe(EVENT_STARTED, handler)
 
     await svc.emit_started(
-        process_id="proc_svc_1",
-        subprocess_id="sub_svc_1",
+        pipeline_id="proc_svc_1",
+        plugin_worker_id="sub_svc_1",
         payload={"extra": "data"},
     )
 
     assert len(received) == 1
-    assert received[0]["process_id"] == "proc_svc_1"
-    assert received[0]["subprocess_id"] == "sub_svc_1"
+    assert received[0]["pipeline_id"] == "proc_svc_1"
+    assert received[0]["plugin_worker_id"] == "sub_svc_1"
     assert received[0]["event_type"] == EVENT_STARTED
     assert received[0].get("payload", {}).get("extra") == "data"
     assert "event_time" in received[0]
@@ -126,14 +126,14 @@ async def test_event_service_emit_started():
 @pytest.mark.asyncio
 async def test_event_service_emit_completed():
     """Testet EventService.emit_completed."""
-    svc = get_event_service()
+    svc = EventService(EventBus())
     received: list[dict] = []
 
     svc.subscribe(EVENT_COMPLETED, lambda e: received.append(e))
 
     await svc.emit_completed(
-        process_id="proc_svc_2",
-        subprocess_id="sub_svc_2",
+        pipeline_id="proc_svc_2",
+        plugin_worker_id="sub_svc_2",
     )
 
     assert len(received) == 1
@@ -143,14 +143,14 @@ async def test_event_service_emit_completed():
 @pytest.mark.asyncio
 async def test_event_service_emit_failed():
     """Testet EventService.emit_failed mit Fehlermeldung."""
-    svc = get_event_service()
+    svc = EventService(EventBus())
     received: list[dict] = []
 
     svc.subscribe(EVENT_FAILED, lambda e: received.append(e))
 
     await svc.emit_failed(
-        process_id="proc_svc_3",
-        subprocess_id="sub_svc_3",
+        pipeline_id="proc_svc_3",
+        plugin_worker_id="sub_svc_3",
         error="Test-Fehler",
     )
 
@@ -173,20 +173,20 @@ async def test_event_bus_with_persistence(mongodb_connection):
     bus.subscribe(EVENT_STARTED, lambda e: received.append(e))
 
     await bus.publish({
-        "process_id": "proc_persist_1",
-        "subprocess_id": "sub_persist_1",
+        "pipeline_id": "proc_persist_1",
+        "plugin_worker_id": "sub_persist_1",
         "event_type": EVENT_STARTED,
-        "subprocess_instance_id": 1,
+        "plugin_worker_replica_id": 1,
     })
 
     assert len(received) == 1
 
     # Prüfen ob in DB gespeichert
-    count = await repo.count_by_process("proc_persist_1")
+    count = await repo.count_by_pipeline("proc_persist_1")
     assert count >= 1
 
     events_from_db = []
-    async for e in repo.find_by_process_id("proc_persist_1"):
+    async for e in repo.find_by_pipeline_id("proc_persist_1"):
         events_from_db.append(e)
     assert len(events_from_db) >= 1
     assert events_from_db[0]["event_type"] == EVENT_STARTED
@@ -218,11 +218,11 @@ def test_eventsystem_subscription_and_ingest_endpoints() -> None:
     response = client.post(
         "/internal/events",
         json={
-            "process_id": "proc_evt",
-            "subprocess_id": "sub_evt",
+            "pipeline_id": "proc_evt",
+            "plugin_worker_id": "sub_evt",
             "event_type": EVENT_STARTED,
             "event_time": "2026-04-08T10:00:00Z",
-            "subprocess_instance_id": 1,
+            "plugin_worker_replica_id": 1,
         },
     )
     assert response.status_code == 204
@@ -260,13 +260,15 @@ async def test_event_service_db_first_emits_to_repo_and_local_subscribers() -> N
             self.inserted.append(event)
             return "evt_1"
 
-    svc = EventService()
+    svc = EventService(EventBus())
     repo = _FakeRepo()
     svc.set_event_repository(repo)
     received: list[dict] = []
     svc.subscribe(EVENT_STARTED, lambda e: received.append(e))
 
-    await svc.emit_started(process_id="proc_db_first", subprocess_id="sub_db_first")
+    await svc.emit_started(
+        pipeline_id="proc_db_first", plugin_worker_id="sub_db_first"
+    )
 
     assert len(repo.inserted) == 1
     assert repo.inserted[0]["event_type"] == EVENT_STARTED

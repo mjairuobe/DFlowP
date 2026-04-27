@@ -258,19 +258,19 @@ async def test_event_repository_crud(db_session):
     await repo.create_indexes()
 
     event = {
-        "process_id": "proc_evt_001",
-        "subprocess_id": "sub_evt_001",
+        "pipeline_id": "proc_evt_001",
+        "plugin_worker_id": "sub_evt_001",
         "event_type": "EVENT_STARTED",
-        "subprocess_instance_id": 1,
+        "plugin_worker_replica_id": 1,
     }
     inserted_id = await repo.insert(event)
     assert inserted_id
 
-    count = await repo.count_by_process("proc_evt_001")
+    count = await repo.count_by_pipeline("proc_evt_001")
     assert count >= 1
 
     events = []
-    async for e in repo.find_by_process_id("proc_evt_001"):
+    async for e in repo.find_by_pipeline_id("proc_evt_001"):
         events.append(e)
     assert len(events) >= 1
     assert events[0]["event_type"] == "EVENT_STARTED"
@@ -284,9 +284,9 @@ async def test_event_repository_crud(db_session):
 
     if should_delete():
         await db_session[EventRepository.COLLECTION_NAME].delete_many(
-            {"process_id": "proc_evt_001"}
+            {"pipeline_id": "proc_evt_001"}
         )
 
     await db_session[EventRepository.COLLECTION_NAME].delete_many(
-        {"process_id": "proc_evt_001"}
+        {"pipeline_id": "proc_evt_001"}
     )

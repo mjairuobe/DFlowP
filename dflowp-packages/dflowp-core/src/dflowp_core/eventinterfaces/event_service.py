@@ -13,11 +13,11 @@ from dflowp_core.eventinterfaces.event_types import (
 class EventService:
     """
     Zentraler Service zum Emitieren und Subscriben von Events.
-    Persistierte Events nutzen ``pipeline_id`` und ``plugin_worker_id``.
+    Persistierte Events nutzen ``pipeline_id``, ``plugin_worker_id``, ``plugin_worker_replica_id``.
     """
 
-    def __init__(self) -> None:
-        self._bus = get_event_bus()
+    def __init__(self, bus: Optional[EventBus] = None) -> None:
+        self._bus = bus or get_event_bus()
         self._event_repository: Optional[Any] = None
 
     async def emit(
@@ -25,18 +25,16 @@ class EventService:
         pipeline_id: str,
         plugin_worker_id: str,
         event_type: str,
-        subprocess_instance_id: int = 1,
+        plugin_worker_replica_id: int = 1,
         payload: Optional[dict[str, Any]] = None,
         event_time: Optional[datetime] = None,
     ) -> None:
         event: dict[str, Any] = {
             "pipeline_id": pipeline_id,
             "plugin_worker_id": plugin_worker_id,
-            "subprocess_instance_id": subprocess_instance_id,
+            "plugin_worker_replica_id": plugin_worker_replica_id,
             "event_type": event_type,
             "event_time": event_time or datetime.now(timezone.utc),
-            "process_id": pipeline_id,
-            "subprocess_id": plugin_worker_id,
         }
         if payload:
             event["payload"] = payload
@@ -50,71 +48,50 @@ class EventService:
 
     async def emit_started(
         self,
-        pipeline_id: str | None = None,
-        plugin_worker_id: str | None = None,
-        subprocess_instance_id: int = 1,
+        pipeline_id: str,
+        plugin_worker_id: str,
+        plugin_worker_replica_id: int = 1,
         payload: Optional[dict[str, Any]] = None,
-        *,
-        process_id: str | None = None,
-        subprocess_id: str | None = None,
     ) -> None:
-        pid = pipeline_id or process_id
-        wid = plugin_worker_id or subprocess_id
-        if not pid or not wid:
-            raise ValueError("pipeline_id/process_id und plugin_worker_id/subprocess_id erforderlich")
         await self.emit(
-            pipeline_id=pid,
-            plugin_worker_id=wid,
+            pipeline_id=pipeline_id,
+            plugin_worker_id=plugin_worker_id,
             event_type=EVENT_STARTED,
-            subprocess_instance_id=subprocess_instance_id,
+            plugin_worker_replica_id=plugin_worker_replica_id,
             payload=payload,
         )
 
     async def emit_completed(
         self,
-        pipeline_id: str | None = None,
-        plugin_worker_id: str | None = None,
-        subprocess_instance_id: int = 1,
+        pipeline_id: str,
+        plugin_worker_id: str,
+        plugin_worker_replica_id: int = 1,
         payload: Optional[dict[str, Any]] = None,
-        *,
-        process_id: str | None = None,
-        subprocess_id: str | None = None,
     ) -> None:
-        pid = pipeline_id or process_id
-        wid = plugin_worker_id or subprocess_id
-        if not pid or not wid:
-            raise ValueError("pipeline_id/process_id und plugin_worker_id/subprocess_id erforderlich")
         await self.emit(
-            pipeline_id=pid,
-            plugin_worker_id=wid,
+            pipeline_id=pipeline_id,
+            plugin_worker_id=plugin_worker_id,
             event_type=EVENT_COMPLETED,
-            subprocess_instance_id=subprocess_instance_id,
+            plugin_worker_replica_id=plugin_worker_replica_id,
             payload=payload,
         )
 
     async def emit_failed(
         self,
-        pipeline_id: str | None = None,
-        plugin_worker_id: str | None = None,
-        subprocess_instance_id: int = 1,
+        pipeline_id: str,
+        plugin_worker_id: str,
+        plugin_worker_replica_id: int = 1,
         payload: Optional[dict[str, Any]] = None,
         error: Optional[str] = None,
-        *,
-        process_id: str | None = None,
-        subprocess_id: str | None = None,
     ) -> None:
-        pid = pipeline_id or process_id
-        wid = plugin_worker_id or subprocess_id
-        if not pid or not wid:
-            raise ValueError("pipeline_id/process_id und plugin_worker_id/subprocess_id erforderlich")
         p = payload or {}
         if error:
             p["error"] = error
         await self.emit(
-            pipeline_id=pid,
-            plugin_worker_id=wid,
+            pipeline_id=pipeline_id,
+            plugin_worker_id=plugin_worker_id,
             event_type=EVENT_FAILED,
-            subprocess_instance_id=subprocess_instance_id,
+            plugin_worker_replica_id=plugin_worker_replica_id,
             payload=p if p else None,
         )
 
@@ -129,5 +106,12 @@ class EventService:
         self._event_repository = repository
 
 
+_event_service_singleton: Optional[EventService] = None
+
+
 def get_event_service() -> EventService:
-    return EventService()
+    """Gibt die globale EventService-Instanz (Runtime) zurück."""
+    global _event_service_singleton
+    if _event_service_singleton is None:
+        _event_service_singleton = EventService()
+    return _event_service_singleton

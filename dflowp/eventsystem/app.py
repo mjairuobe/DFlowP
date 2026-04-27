@@ -35,10 +35,10 @@ def _event_time_human(event: dict[str, Any]) -> str:
     return "?"
 
 
-def _subprocess_type(event: dict[str, Any]) -> str:
+def _plugin_type_from_event(event: dict[str, Any]) -> str:
     payload = event.get("payload")
     if isinstance(payload, dict):
-        st = payload.get("subprocess_type")
+        st = payload.get("plugin_type")
         if st is not None:
             return str(st)
     return "-"
@@ -48,9 +48,9 @@ def _event_context_line(prefix: str, event: dict[str, Any], *, event_id: Optiona
     eid = event_id if event_id is not None else event.get("event_id", "?")
     return (
         f"{prefix} "
-        f"process_id={event.get('process_id')!r} "
-        f"subprocess_id={event.get('subprocess_id')!r} "
-        f"subprocess_type={_subprocess_type(event)!r} "
+        f"pipeline_id={event.get('pipeline_id')!r} "
+        f"plugin_worker_id={event.get('plugin_worker_id')!r} "
+        f"plugin_type={_plugin_type_from_event(event)!r} "
         f"event_type={event.get('event_type')!r} "
         f"event_time={_event_time_human(event)!r} "
         f"event_id={eid!r}"

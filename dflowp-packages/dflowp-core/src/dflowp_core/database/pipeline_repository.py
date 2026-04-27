@@ -12,6 +12,7 @@ from dflowp_core.database.dataflow_repository import DataflowRepository
 from dflowp_core.database.dataflow_state_repository import DataflowStateRepository, _node_id_key
 from dflowp_core.database.mongo import get_database
 from dflowp_core.database.plugin_configuration_repository import PluginConfigurationRepository
+from dflowp_core.eventinterfaces.event_types import EVENT_FAILED
 from dflowp_core.utils.logger import get_logger
 from dflowp_core.utils.timestamps import enrich_document_timestamps
 
@@ -124,7 +125,7 @@ class PipelineRepository:
             {
                 "$project": {
                     "_id": 0,
-                    "pipeline_id": 1,
+                    "producer_pipeline_id": "$pipeline_id",
                     "plugin_worker_id": {
                         "$ifNull": ["$nodes.plugin_worker_id", "$nodes.subprocess_id"],
                     },
@@ -135,7 +136,7 @@ class PipelineRepository:
                     "io_transformation_states": "$nodes.io_transformation_states",
                 }
             },
-            {"$sort": {"pipeline_id": 1, "plugin_worker_id": 1}},
+            {"$sort": {"producer_pipeline_id": 1, "plugin_worker_id": 1}},
         ]
         col = self._db[DataflowStateRepository.COLLECTION_NAME]
         count_pipeline = pipeline + [{"$count": "count"}]
@@ -176,7 +177,7 @@ class PipelineRepository:
             {
                 "$project": {
                     "_id": 0,
-                    "pipeline_id": 1,
+                    "producer_pipeline_id": "$pipeline_id",
                     "plugin_worker_id": {
                         "$ifNull": ["$nodes.plugin_worker_id", "$nodes.subprocess_id"],
                     },
@@ -206,7 +207,7 @@ class PipelineRepository:
         for n in inner.get("nodes", []) or []:
             if _node_id_key(n) == plugin_worker_id:
                 return {
-                    "pipeline_id": pipeline_id,
+                    "producer_pipeline_id": pipeline_id,
                     "plugin_worker_id": _node_id_key(n),
                     "plugin_type": n.get("plugin_type") or n.get("subprocess_type"),
                     "event_status": n.get("event_status"),
@@ -219,12 +220,14 @@ class PipelineRepository:
         *,
         source_pipeline_id: str,
         target_pipeline_id: str,
-        parent_plugin_worker_ids: list[str],
+        parent_plugin_worker_ids: Optional[list[str]] = None,
         plugin_config_override: Optional[dict[str, dict[str, Any]]] = None,
+        dataflow_id_override: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """
-        Klont eine Pipeline: neue pipeline_id, neuer dataflow_state; dataflow_id und
-        plugin_configuration_id nur bei fachlicher Änderung (Graph bzw. Konfig) neu/anders.
+        Klont eine Pipeline. Optional: anderes Dataflow-Definition-Dokument,
+        zusammengeführte ``plugin_config`` (neues pcfg-Dokument bei Inhalts-Änderung),
+        explizite Plugin-Worker-Seeds oder Auto (fehlgeschlagen → Nachfolger; sonst voll).
         """
         source = await self.find_by_id(source_pipeline_id)
         if not source:
@@ -244,12 +247,16 @@ class PipelineRepository:
             return None
 
         by_src = (pcfg_src.get("by_plugin_worker_id") or {})
-        merged_cfg = {**by_src}
+        merged_cfg: dict[str, Any] = {**by_src}
         if plugin_config_override:
             for wid, ovr in plugin_config_override.items():
                 merged_cfg[wid] = {**(merged_cfg.get(wid) or {}), **ovr}
 
-        new_df_id = s_df_id
+        new_df_id = dataflow_id_override or s_df_id
+        df_effective = await self._dataflows.find_by_id(new_df_id) if new_df_id else None
+        if not df_effective:
+            return None
+
         new_pc_id = s_pc_id
         if _plugin_config_fingerprint({"by_plugin_worker_id": merged_cfg}) != _plugin_config_fingerprint(
             pcfg_src
@@ -262,15 +269,18 @@ class PipelineRepository:
                 }
             )
 
-        st_inner = st_src.get("dataflow_state") or {
+        st_inner_0 = st_src.get("dataflow_state") or {
             "nodes": st_src.get("nodes", []),
             "edges": st_src.get("edges", []),
         }
-        st_copy = copy.deepcopy(
-            st_inner
-            if st_inner
-            else {"nodes": [], "edges": []}
-        )
+        if new_df_id != s_df_id:
+            st_copy = self._state_template_from_dataflow_doc(df_effective)
+        else:
+            st_copy = copy.deepcopy(
+                st_inner_0
+                if st_inner_0
+                else {"nodes": [], "edges": []}
+            )
         nodes = st_copy.get("nodes", []) or []
         edges = st_copy.get("edges", []) or []
         successors: dict[str, list[str]] = {}
@@ -280,19 +290,35 @@ class PipelineRepository:
             if not fn or not tn:
                 continue
             successors.setdefault(str(fn), []).append(str(tn))
+        all_wids = {str(w) for w in (_node_id_key(n) for n in nodes) if w}
 
         to_reset: set[str] = set()
-        stack = list(parent_plugin_worker_ids)
+        if parent_plugin_worker_ids is not None and len(parent_plugin_worker_ids) > 0:
+            stack = list(parent_plugin_worker_ids)
+        elif plugin_config_override and new_df_id == s_df_id:
+            stack = list(plugin_config_override.keys())
+        else:
+            failed: list[str] = []
+            for n in st_inner_0.get("nodes", []) or []:
+                wid = _node_id_key(n)
+                if not wid:
+                    continue
+                ev = n.get("event_status") or ""
+                if ev in (EVENT_FAILED, "EVENT_FAILED", "Failed") or "FAIL" in str(ev).upper():
+                    failed.append(wid)
+            if failed:
+                stack = list(failed)
+            else:
+                stack = list(all_wids)
         while stack:
             nid = stack.pop()
             if nid in to_reset:
                 continue
             to_reset.add(nid)
             stack.extend(successors.get(nid, []))
-
         for n in nodes:
             wid = _node_id_key(n)
-            if wid in to_reset:
+            if wid and wid in to_reset:
                 n["io_transformation_states"] = []
                 n["event_status"] = "Not Started"
 
@@ -319,6 +345,25 @@ class PipelineRepository:
         enrich_document_timestamps(new_pl)
         await self.insert(new_pl)
         return await self.find_by_id(target_pipeline_id)
+
+    @staticmethod
+    def _state_template_from_dataflow_doc(df: dict[str, Any]) -> dict[str, Any]:
+        """Neuer Lauf-Graph (leere IO-States) aus Dataflow-Definition-Dokument."""
+        out_nodes: list[dict[str, Any]] = []
+        for n in df.get("nodes", []) or []:
+            wid = n.get("plugin_worker_id") or n.get("subprocess_id")
+            ptype = n.get("plugin_type") or n.get("subprocess_type")
+            if not wid:
+                continue
+            out_nodes.append(
+                {
+                    "plugin_worker_id": wid,
+                    "plugin_type": ptype,
+                    "event_status": "Not Started",
+                    "io_transformation_states": [],
+                }
+            )
+        return {"nodes": out_nodes, "edges": list(df.get("edges") or [])}
 
     async def update(
         self,
@@ -357,7 +402,6 @@ class PipelineRepository:
         cfg = configuration
         dfd: dict[str, Any] = {
             "dataflow_id": dataflow_id,
-            "name": cfg.pipeline_id,
             "nodes": [
                 {"plugin_worker_id": n.plugin_worker_id, "plugin_type": n.plugin_type}
                 for n in cfg.dataflow.nodes

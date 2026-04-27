@@ -1,4 +1,4 @@
-"""REST-Routen gemäß Plan: kebab-case-Pfade (pipelines, dataflows, …)."""
+"""REST unter /api/v1 (Pipelines, Data, Dataflows, Events, …)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from typing import Annotated, Any, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 from dflowp.api.auth import require_api_key
+from dflowp.api.dataflow_state_api import build_dataflow_state_api_view
+from dflowp.api.data_handlers import create_data_document
 from dflowp.api.deps import (
     get_dataflow_repository,
     get_dataflow_state_repository,
@@ -16,6 +18,7 @@ from dflowp.api.deps import (
     get_plugin_configuration_repository,
     get_process_repository,
 )
+from dflowp.api.event_format import format_event_for_api, format_event_page
 from dflowp.api.list_summaries import (
     apply_summary_to_page,
     summarize_dataflow_list_item,
@@ -25,13 +28,14 @@ from dflowp.api.list_summaries import (
 )
 from dflowp.api.pipeline_handlers import create_pipeline_document
 from dflowp.api.schemas import (
+    DataDocumentCreateRequest,
     DataflowCreateRequest,
     DataflowStateCreateRequest,
     EventCreateRequest,
+    PipelineCloneRequest,
     PipelineCreateRequest,
-    PluginConfigurationCreateRequest,
-    ProcessCloneRequest,
     ProcessStopRequest,
+    PluginConfigurationCreateRequest,
 )
 from dflowp_core.database.dataflow_repository import DataflowRepository
 from dflowp_core.database.dataflow_state_repository import DataflowStateRepository
@@ -54,7 +58,59 @@ def _pagination(
     return page, page_size
 
 
-# --- Pipelines (Parität zu /processes, primäre Namen) ---
+_DATA_DOC_TYPES = frozenset({"data", "dataset"})
+
+
+# --- Data & Datasets: ein Endpunkt (doc_type in Mongo) ---
+
+
+@router.get("/data")
+async def list_data(
+    pagination: tuple[int, int] = Depends(_pagination),
+    doc_type: Annotated[list[str] | None, Query()] = None,
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict[str, Any]:
+    page, page_size = pagination
+    doc_types: list[str] | None = None
+    if doc_type is not None:
+        for dt in doc_type:
+            if dt not in _DATA_DOC_TYPES:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"Ungültiger Wert für doc_type: '{dt}'. "
+                        "Erlaubt sind nur 'data' und 'dataset'."
+                    ),
+                )
+        doc_types = list(dict.fromkeys(doc_type))
+    return await data_item_repo.list_data_items(
+        page=page, page_size=page_size, doc_types=doc_types
+    )
+
+
+@router.get("/data/{item_id}")
+async def get_data_document(
+    item_id: str,
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict[str, Any]:
+    item = await data_item_repo.find_data_item_by_id(item_id)
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"DataItem '{item_id}' wurde nicht gefunden.",
+        )
+    return item
+
+
+@router.post("/data", status_code=status.HTTP_201_CREATED)
+async def post_data(
+    request: DataDocumentCreateRequest = Body(...),
+    data_item_repo: DataItemRepository = Depends(get_data_item_repository),
+) -> dict[str, Any]:
+    return await create_data_document(request, data_item_repo)
+
+
+# --- Pipelines ---
 
 
 @router.get("/pipelines")
@@ -122,7 +178,7 @@ async def stop_pipeline(
 @router.post("/pipelines/{pipeline_id}/clone", status_code=status.HTTP_201_CREATED)
 async def clone_pipeline(
     pipeline_id: str,
-    request: ProcessCloneRequest = Body(...),
+    request: PipelineCloneRequest = Body(...),
     process_repo: ProcessRepository = Depends(get_process_repository),
 ) -> dict[str, Any]:
     source = await process_repo.find_by_id(pipeline_id)
@@ -131,17 +187,18 @@ async def clone_pipeline(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pipeline '{pipeline_id}' wurde nicht gefunden.",
         )
-    target = request.new_process_id or f"{pipeline_id}_copy"
-    if not request.new_process_id:
+    target = request.new_pipeline_id or f"{pipeline_id}_copy"
+    if not request.new_pipeline_id:
         counter = 1
         while await process_repo.find_by_id(target):
             counter += 1
             target = f"{pipeline_id}_copy_{counter}"
-    copied = await process_repo.copy_process_with_reexecution(
-        source_process_id=pipeline_id,
-        target_process_id=target,
-        parent_subprocess_ids=request.parent_subprocess_ids,
-        subprocess_config_override=request.subprocess_config,
+    copied = await process_repo.copy_pipeline_with_reexecution(
+        source_pipeline_id=pipeline_id,
+        target_pipeline_id=target,
+        parent_plugin_worker_ids=request.parent_plugin_worker_ids,
+        plugin_config_override=request.plugin_config,
+        dataflow_id_override=request.dataflow_id,
     )
     if not copied:
         raise HTTPException(
@@ -163,7 +220,22 @@ async def delete_pipeline(
         )
 
 
-# --- Plugin-Worker-Liste (Alias zu Subprozessen) ---
+@router.get("/pipelines/{pipeline_id}/plugin-workers/{plugin_worker_id}")
+async def get_plugin_worker_for_pipeline(
+    pipeline_id: str,
+    plugin_worker_id: str,
+    process_repo: ProcessRepository = Depends(get_process_repository),
+) -> dict[str, Any]:
+    doc = await process_repo.find_plugin_worker(pipeline_id, plugin_worker_id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plugin-Worker nicht gefunden.",
+        )
+    return doc
+
+
+# --- Plugin-Worker-Liste (alle Pipelines) ---
 
 
 @router.get("/plugin-workers")
@@ -208,7 +280,6 @@ async def post_dataflow(
         raise HTTPException(status_code=409, detail="Dataflow-ID existiert bereits.")
     doc: dict[str, Any] = {
         "dataflow_id": request.dataflow_id,
-        "name": request.name,
         "nodes": request.nodes,
         "edges": request.edges,
     }
@@ -229,7 +300,6 @@ async def put_dataflow(
         raise HTTPException(422, detail="dataflow_id im Body muss dem Pfad entsprechen.")
     doc: dict[str, Any] = {
         "dataflow_id": dataflow_id,
-        "name": request.name,
         "nodes": request.nodes,
         "edges": request.edges,
     }
@@ -272,7 +342,7 @@ async def get_dataflow_state(
     doc = await dsr.get_by_id(dataflow_state_id)
     if not doc:
         raise HTTPException(404, detail="DataflowState nicht gefunden.")
-    return doc
+    return build_dataflow_state_api_view(doc)
 
 
 @router.post("/dataflow-states", status_code=status.HTTP_201_CREATED)
@@ -298,7 +368,7 @@ async def post_dataflow_state(
     out = await dsr.get_by_id(request.dataflow_state_id)
     if not out:
         raise HTTPException(500, detail="DataflowState nach insert nicht lesbar.")
-    return out
+    return build_dataflow_state_api_view(out)
 
 
 @router.patch("/dataflow-states/{dataflow_state_id}")
@@ -307,7 +377,6 @@ async def patch_dataflow_state(
     body: dict[str, Any] = Body(...),
     dsr: DataflowStateRepository = Depends(get_dataflow_state_repository),
 ) -> dict[str, Any]:
-    """Erwartet mindestens 'nodes'/'edges' oder vollständiges 'dataflow_state' (Map)."""
     if not await dsr.get_by_id(dataflow_state_id):
         raise HTTPException(404, detail="DataflowState nicht gefunden.")
     if "dataflow_state" in body and isinstance(body["dataflow_state"], dict):
@@ -322,7 +391,8 @@ async def patch_dataflow_state(
         ok = await dsr.update_dataflow_state(dataflow_state_id, new_state)
     if not ok:
         raise HTTPException(500, detail="Update fehlgeschlagen.")
-    return (await dsr.get_by_id(dataflow_state_id)) or {}
+    out = (await dsr.get_by_id(dataflow_state_id)) or {}
+    return build_dataflow_state_api_view(out)
 
 
 @router.delete("/dataflow-states/{dataflow_state_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -334,7 +404,7 @@ async def delete_dataflow_state(
         raise HTTPException(404, detail="DataflowState nicht gefunden.")
 
 
-# --- Plugin-Konfigurationen (kein in-place-Update) ---
+# --- Plugin-Konfigurationen ---
 
 
 @router.get("/plugin-configurations")
@@ -382,7 +452,34 @@ async def delete_plugin_configuration(
         raise HTTPException(404, detail="Plugin-Konfiguration nicht gefunden.")
 
 
-# --- Events (Ergänzung: POST) ---
+# --- Events ---
+
+
+@router.get("/events")
+async def list_events(
+    pagination: tuple[int, int] = Depends(_pagination),
+    pipeline_id: Annotated[Optional[str], Query()] = None,
+    event_repo: EventRepository = Depends(get_event_repository),
+) -> dict[str, Any]:
+    page, page_size = pagination
+    raw = await event_repo.list_events(
+        page=page, page_size=page_size, pipeline_id=pipeline_id
+    )
+    return format_event_page(raw)
+
+
+@router.get("/events/{event_id}")
+async def get_event(
+    event_id: str,
+    event_repo: EventRepository = Depends(get_event_repository),
+) -> dict[str, Any]:
+    event = await event_repo.find_by_id(event_id)
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Event '{event_id}' wurde nicht gefunden.",
+        )
+    return format_event_for_api(event)
 
 
 @router.post("/events", status_code=status.HTTP_201_CREATED)
@@ -393,12 +490,13 @@ async def post_event(
     ev: dict[str, Any] = {
         "pipeline_id": request.pipeline_id,
         "plugin_worker_id": request.plugin_worker_id,
-        "process_id": request.pipeline_id,
-        "subprocess_id": request.plugin_worker_id,
         "event_type": request.event_type,
         "event_time": datetime.now(timezone.utc),
+        "plugin_worker_replica_id": request.plugin_worker_replica_id,
     }
     if request.payload is not None:
         ev["payload"] = request.payload
     _id = await event_repo.insert(ev)
-    return {"_id": _id, **{k: v for k, v in ev.items() if k != "_id"}}
+    return format_event_for_api(
+        {**{k: v for k, v in ev.items()}, "_id": _id}
+    )
