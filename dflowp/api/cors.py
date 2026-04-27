@@ -18,7 +18,8 @@ from fastapi import FastAPI
 #   app.*.dflowp.online – kein fremder Host.)
 # - optional :PORT für lokale Tests
 DFLOWP_CORS_ALLOW_ORIGIN_REGEX = (
-    r"^https?://(?:(?:[a-z0-9-]+)\.)*dflowp\.online(?::\d+)?$"
+    r"^https?://(?:(?:[a-z0-9-]+)\.)*dflowp\.online(?::\d+)?$",
+    r"http://localhost:3000"
 )
 
 
