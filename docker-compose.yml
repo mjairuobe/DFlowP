@@ -51,6 +51,7 @@ services:
 
   frontend:
     container_name: dflowp-frontend
+    profiles: ["frontend"]
     build:
       context: .
       dockerfile: Dockerfile-Frontend

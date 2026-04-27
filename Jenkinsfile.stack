@@ -56,7 +56,6 @@ EOF
 cat > .jenkins_stack_images.env <<EOF
 DOCKER_IMAGE_MONGO=${IMAGE_REPO_BASE}/dflowp-mongo:${STACK_TAG}
 DOCKER_IMAGE_API=${IMAGE_REPO_BASE}/dflowp-api:${STACK_TAG}
-DOCKER_IMAGE_FRONTEND=${IMAGE_REPO_BASE}/dflowp-frontend:${STACK_TAG}
 DOCKER_IMAGE_RUNTIME=${IMAGE_REPO_BASE}/dflowp-runtime:${STACK_TAG}
 DOCKER_IMAGE_EVENTSYSTEM=${IMAGE_REPO_BASE}/dflowp-eventsystem:${STACK_TAG}
 DOCKER_IMAGE_EVENT_BROKER=${IMAGE_REPO_BASE}/dflowp-event-broker:${STACK_TAG}
@@ -132,7 +131,6 @@ build_target() {
 targets=(
   "mongo|Dockerfile.mongo|${DOCKER_IMAGE_MONGO}"
   "api|Dockerfile.api|${DOCKER_IMAGE_API}"
-  "frontend|Dockerfile-Frontend|${DOCKER_IMAGE_FRONTEND}"
   "worker|Dockerfile.worker|${DOCKER_IMAGE_RUNTIME}"
   "eventsystem|Dockerfile.eventsystem|${DOCKER_IMAGE_EVENTSYSTEM}"
   "event-broker|Dockerfile.event_broker|${DOCKER_IMAGE_EVENT_BROKER}"
@@ -196,10 +194,9 @@ if ! chmod a+rwx volumes/mongo 2>/dev/null && ! chmod 777 volumes/mongo 2>/dev/n
 fi
 
 docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
-docker rm -f dflowp-frontend 2>/dev/null || true
 docker-compose -f docker-compose.yml config -q
-docker-compose -f docker-compose.yml pull
-docker-compose -f docker-compose.yml up -d --no-build
+docker-compose -f docker-compose.yml pull mongo api worker eventsystem event-broker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
+docker-compose -f docker-compose.yml up -d --no-build mongo api worker eventsystem event-broker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan
 docker-compose -f docker-compose.yml ps
 '''
                 }
