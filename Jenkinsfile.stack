@@ -39,27 +39,37 @@ else
 fi
 GIT_SHORT=$(git rev-parse --short=12 HEAD)
 STACK_TAG="stack-${GIT_SHORT}"
+DOCKERHUB_REGISTRY="${DOCKERHUB_REGISTRY:-docker.io}"
+DOCKERHUB_NAMESPACE="${DOCKERHUB_NAMESPACE:-crawlabase}"
+IMAGE_REPO_BASE="${DOCKERHUB_REGISTRY}/${DOCKERHUB_NAMESPACE}"
+DOCKERHUB_CACHE_REPO="${DOCKERHUB_CACHE_REPO:-${IMAGE_REPO_BASE}/dflowp-buildcache}"
 
 cat > .jenkins_runtime.env <<EOF
 SOFTWARE_VERSION=${SOFTWARE_VERSION}
 STACK_TAG=${STACK_TAG}
+DOCKERHUB_REGISTRY=${DOCKERHUB_REGISTRY}
+DOCKERHUB_NAMESPACE=${DOCKERHUB_NAMESPACE}
+IMAGE_REPO_BASE=${IMAGE_REPO_BASE}
+DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}
 EOF
 
 cat > .jenkins_stack_images.env <<EOF
-DOCKER_IMAGE_MONGO=docker.io/crawlabase/dflowp-mongo:${STACK_TAG}
-DOCKER_IMAGE_API=docker.io/crawlabase/dflowp-api:${STACK_TAG}
-DOCKER_IMAGE_FRONTEND=docker.io/crawlabase/dflowp-frontend:${STACK_TAG}
-DOCKER_IMAGE_RUNTIME=docker.io/crawlabase/dflowp-runtime:${STACK_TAG}
-DOCKER_IMAGE_EVENTSYSTEM=docker.io/crawlabase/dflowp-eventsystem:${STACK_TAG}
-DOCKER_IMAGE_EVENT_BROKER=docker.io/crawlabase/dflowp-event-broker:${STACK_TAG}
-DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS=docker.io/crawlabase/dflowp-plugin-fetchfeeditems:${STACK_TAG}
-DOCKER_IMAGE_PLUGIN_EMBEDDATA=docker.io/crawlabase/dflowp-plugin-embeddata:${STACK_TAG}
-DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN=docker.io/crawlabase/dflowp-plugin-clustering-dbscan:${STACK_TAG}
-DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=docker.io/crawlabase/dflowp-plugin-clustering-hdbscan:${STACK_TAG}
+DOCKER_IMAGE_MONGO=${IMAGE_REPO_BASE}/dflowp-mongo:${STACK_TAG}
+DOCKER_IMAGE_API=${IMAGE_REPO_BASE}/dflowp-api:${STACK_TAG}
+DOCKER_IMAGE_FRONTEND=${IMAGE_REPO_BASE}/dflowp-frontend:${STACK_TAG}
+DOCKER_IMAGE_RUNTIME=${IMAGE_REPO_BASE}/dflowp-runtime:${STACK_TAG}
+DOCKER_IMAGE_EVENTSYSTEM=${IMAGE_REPO_BASE}/dflowp-eventsystem:${STACK_TAG}
+DOCKER_IMAGE_EVENT_BROKER=${IMAGE_REPO_BASE}/dflowp-event-broker:${STACK_TAG}
+DOCKER_IMAGE_PLUGIN_FETCHFEEDITEMS=${IMAGE_REPO_BASE}/dflowp-plugin-fetchfeeditems:${STACK_TAG}
+DOCKER_IMAGE_PLUGIN_EMBEDDATA=${IMAGE_REPO_BASE}/dflowp-plugin-embeddata:${STACK_TAG}
+DOCKER_IMAGE_PLUGIN_CLUSTERING_DBSCAN=${IMAGE_REPO_BASE}/dflowp-plugin-clustering-dbscan:${STACK_TAG}
+DOCKER_IMAGE_PLUGIN_CLUSTERING_HDBSCAN=${IMAGE_REPO_BASE}/dflowp-plugin-clustering-hdbscan:${STACK_TAG}
 EOF
 
 echo "SOFTWARE_VERSION=${SOFTWARE_VERSION}"
 echo "STACK_TAG=${STACK_TAG}"
+echo "IMAGE_REPO_BASE=${IMAGE_REPO_BASE}"
+echo "DOCKERHUB_CACHE_REPO=${DOCKERHUB_CACHE_REPO}"
 '''
             }
         }
@@ -75,7 +85,7 @@ echo "${HUBP}" | docker login -u "${HUBU}" --password-stdin docker.io
         stage('Prepare Buildx builder') {
             steps {
                 sh '''set -euo pipefail
-RAW="dflowp-stack-${JOB_BASE_NAME:-job}-${BUILD_NUMBER:-0}"
+RAW="dflowp-stack-${JOB_BASE_NAME:-job}"
 BUILDER_NAME=$(printf '%s' "${RAW}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9_.-' '-')
 echo "BUILDER_NAME=${BUILDER_NAME}" > .jenkins_buildx.env
 
@@ -87,7 +97,7 @@ docker buildx inspect --bootstrap
 '''
             }
         }
-        stage('Build images (buildx parallel + cache)') {
+        stage('Build images (buildx parallel + registry cache/push)') {
             steps {
                 sh '''set -euo pipefail
 set -a
@@ -98,25 +108,22 @@ set +a
 
 : "${BUILDER_NAME?}"
 : "${SOFTWARE_VERSION?}"
+: "${DOCKERHUB_CACHE_REPO?}"
 
-mkdir -p .buildx-cache .buildx-cache-new
 GIT_REV=$(git rev-parse HEAD)
 MAX_PARALLEL="${BUILDX_MAX_PARALLEL:-4}"
 
 build_target() {
   IFS='|' read -r svc dockerfile image <<< "$1"
-  cache_dir=".buildx-cache/${svc}"
-  cache_new=".buildx-cache-new/${svc}"
-  rm -rf "${cache_new}"
-  mkdir -p "${cache_dir}" "$(dirname "${cache_new}")"
+  cache_ref="${DOCKERHUB_CACHE_REPO}:${svc}"
   echo "=== buildx ${svc} (${dockerfile} -> ${image}) ==="
   docker buildx build \
     --builder "${BUILDER_NAME}" \
     --file "${dockerfile}" \
     --tag "${image}" \
-    --load \
-    --cache-from "type=local,src=${cache_dir}" \
-    --cache-to "type=local,dest=${cache_new},mode=max" \
+    --push \
+    --cache-from "type=registry,ref=${cache_ref}" \
+    --cache-to "type=registry,ref=${cache_ref},mode=max" \
     --label "org.opencontainers.image.version=${SOFTWARE_VERSION}" \
     --label "org.opencontainers.image.revision=${GIT_REV}" \
     .
@@ -148,14 +155,6 @@ for target in "${targets[@]}"; do
   fi
 done
 wait
-
-for svc in mongo api frontend worker eventsystem event-broker plugin-fetchfeeditems plugin-embeddata plugin-clustering-dbscan plugin-clustering-hdbscan; do
-  if [ -d ".buildx-cache-new/${svc}" ]; then
-    rm -rf ".buildx-cache/${svc}"
-    mv ".buildx-cache-new/${svc}" ".buildx-cache/${svc}"
-  fi
-done
-rm -rf .buildx-cache-new
 '''
             }
         }
@@ -198,7 +197,9 @@ fi
 
 docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
 docker rm -f dflowp-frontend 2>/dev/null || true
-docker-compose -f docker-compose.yml up -d
+docker-compose -f docker-compose.yml config -q
+docker-compose -f docker-compose.yml pull
+docker-compose -f docker-compose.yml up -d --no-build
 docker-compose -f docker-compose.yml ps
 '''
                 }
@@ -262,10 +263,8 @@ docker-compose -f docker-compose.yml run --rm -e "MONGODB_TEST_DB=${MONGODB_TEST
         always {
             sh '''set +e
 docker-compose -f docker-compose.yml down --remove-orphans
-if [ -f .jenkins_buildx.env ]; then
-  . ./.jenkins_buildx.env
-  [ -n "${BUILDER_NAME:-}" ] && docker buildx rm "${BUILDER_NAME}" >/dev/null 2>&1 || true
-fi
+docker buildx use default >/dev/null 2>&1 || true
+rm -f .jenkins_buildx.env .jenkins_runtime.env .jenkins_stack_images.env
 docker logout docker.io >/dev/null 2>&1 || true
 '''
         }
