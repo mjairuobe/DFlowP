@@ -36,10 +36,10 @@ def _event_time_human(event: dict) -> str:
     return "?"
 
 
-def _subprocess_type(event: dict) -> str:
+def _plugin_type(event: dict) -> str:
     payload = event.get("payload")
     if isinstance(payload, dict):
-        st = payload.get("subprocess_type")
+        st = payload.get("plugin_type")
         if st is not None:
             return str(st)
     return "-"
@@ -47,11 +47,13 @@ def _subprocess_type(event: dict) -> str:
 
 def _event_context_line(prefix: str, event: dict, *, event_id: Optional[Any] = None) -> str:
     eid = event_id if event_id is not None else event.get("_id", "?")
+    pipeline_id = event.get("pipeline_id")
+    plugin_worker_id = event.get("plugin_worker_id")
     return (
         f"{prefix} "
-        f"process_id={event.get('process_id')!r} "
-        f"subprocess_id={event.get('subprocess_id')!r} "
-        f"subprocess_type={_subprocess_type(event)!r} "
+        f"pipeline_id={pipeline_id!r} "
+        f"plugin_worker_id={plugin_worker_id!r} "
+        f"plugin_type={_plugin_type(event)!r} "
         f"event_type={event.get('event_type')!r} "
         f"event_time={_event_time_human(event)!r} "
         f"event_id={eid!r}"
@@ -125,11 +127,17 @@ class EventBroker:
 
                 logger.info(_event_context_line("Got", event, event_id=event_id))
 
+                pipeline_id = event.get("pipeline_id")
+                plugin_worker_id = event.get("plugin_worker_id")
+                plugin_worker_replica_id = event.get("plugin_worker_replica_id")
+                if plugin_worker_replica_id is None:
+                    plugin_worker_replica_id = 1
+
                 payload = {
                     "event_id": event_id,
-                    "process_id": event.get("process_id"),
-                    "subprocess_id": event.get("subprocess_id"),
-                    "subprocess_instance_id": event.get("subprocess_instance_id", 1),
+                    "pipeline_id": pipeline_id,
+                    "plugin_worker_id": plugin_worker_id,
+                    "plugin_worker_replica_id": plugin_worker_replica_id,
                     "event_type": event.get("event_type"),
                     "event_time": _serialize_event_time(event.get("event_time")),
                     "payload": event.get("payload"),

@@ -195,10 +195,10 @@ dflowp/
 │       └── plugin_loader.py
 │
 ├── examples/
-│   ├── inputdata_example.json
-│   ├── dataflow_example.json
-│   ├── processconfiguration_example.json
-│   └── dataflowstate_example.json
+│   ├── pressmonitor-flow/
+│   ├── pressmonitor-pipeline-clone-flow/
+│   ├── pressmonitor-pipeline-testconf-clone-flow/
+│   └── example_feeds/
 │
 ├── tests/
 │   ├── database_test.py

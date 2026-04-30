@@ -1,23 +1,23 @@
-"""Lädt Subprozess-Plugins zur Laufzeit (Registry + Remote-HTTP-Clients)."""
+"""Lädt Plugin-Worker zur Laufzeit (Registry + Remote-HTTP-Clients)."""
 
 import os
 from typing import Optional
 
-from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
-from dflowp_processruntime.plugins.remote_plugin import RemotePluginSubprocess
+from dflowp_processruntime.subprocesses.subprocess import BasePluginWorker
+from dflowp_processruntime.plugins.remote_plugin import RemotePluginWorker
 
 
-_REGISTRY: dict[str, BaseSubprocess] = {}
+_REGISTRY: dict[str, BasePluginWorker] = {}
 
 
-def register_subprocess(subprocess_type: str, instance: BaseSubprocess) -> None:
-    """Registriert einen Subprozess-Typ."""
-    _REGISTRY[subprocess_type] = instance
+def register_plugin_worker(plugin_type: str, instance: BasePluginWorker) -> None:
+    """Registriert einen Plugin-Worker-Typ."""
+    _REGISTRY[plugin_type] = instance
 
 
-def get_subprocess(subprocess_type: str) -> Optional[BaseSubprocess]:
-    """Gibt eine Instanz des Subprozesses zurück."""
-    return _REGISTRY.get(subprocess_type)
+def get_plugin_worker(plugin_type: str) -> Optional[BasePluginWorker]:
+    """Gibt eine registrierte Plugin-Worker-Instanz zurück."""
+    return _REGISTRY.get(plugin_type)
 
 
 def load_remote_plugin_services() -> None:
@@ -27,7 +27,7 @@ def load_remote_plugin_services() -> None:
     Umgebungsvariable DFLOWP_PLUGIN_ENDPOINTS:
       FetchFeedItems=...,EmbedData=...,Clustering_DBSCAN=...
 
-    Jeder Eintrag ist ``SubprocessType=base_url``. Der Hostname in der URL muss
+    Jeder Eintrag ist ``PluginType=base_url``. Der Hostname in der URL muss
     ``plugin`` enthalten (Sicherheitsregel im Remote-Client).
     """
     endpoints_raw = os.environ.get(
@@ -40,16 +40,16 @@ def load_remote_plugin_services() -> None:
     for entry in [x.strip() for x in endpoints_raw.split(",") if x.strip()]:
         if "=" not in entry:
             continue
-        subprocess_type, base_url = [x.strip() for x in entry.split("=", 1)]
-        if not subprocess_type or not base_url:
+        plugin_type, base_url = [x.strip() for x in entry.split("=", 1)]
+        if not plugin_type or not base_url:
             continue
         host_part = base_url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
         if "plugin" not in host_part:
             continue
-        register_subprocess(
-            subprocess_type,
-            RemotePluginSubprocess(
-                subprocess_type=subprocess_type,
+        register_plugin_worker(
+            plugin_type,
+            RemotePluginWorker(
+                plugin_type=plugin_type,
                 base_url=base_url,
             ),
         )

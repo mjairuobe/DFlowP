@@ -1,11 +1,11 @@
 {
   "_comment": "Beispielstate: FetchFeedItems abgeschlossen, EmbedData läuft noch.",
-  "process_id": "proc_news_pipeline_001",
+  "pipeline_id": "proc_news_pipeline_001",
   "dataflow": {
     "nodes": [
       {
-        "subprocess_id": "FetchFeedItems1",
-        "subprocess_type": "FetchFeedItems",
+        "plugin_worker_id": "FetchFeedItems1",
+        "plugin_type": "FetchFeedItems",
         "event_status": "EVENT_COMPLETED",
         "io_transformation_states": [
           {
@@ -29,8 +29,8 @@
         ]
       },
       {
-        "subprocess_id": "EmbedData1",
-        "subprocess_type": "EmbedData",
+        "plugin_worker_id": "EmbedData1",
+        "plugin_type": "EmbedData",
         "event_status": "EVENT_STARTED",
         "io_transformation_states": [
           {

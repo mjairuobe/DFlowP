@@ -29,6 +29,8 @@ echo "Arbeitsverzeichnis: ${TMP_DIR}"
 
 ## 1) Quellpipeline anlegen
 
+Die beiden Feeds stammen aus `examples/example_feeds/inputdata_set_big.json` und sind reale RSS-Quellen.
+
 ```bash
 curl -sS -X POST \
   "${BASE_URL}${API_PREFIX}/pipelines" \
@@ -40,9 +42,9 @@ curl -sS -X POST \
     \"input_dataset_id\": \"${INPUT_DATASET_ID}\",
     \"dataflow\": {
       \"nodes\": [
-        {\"subprocess_id\": \"FetchFeedItems1\", \"subprocess_type\": \"FetchFeedItems\"},
-        {\"subprocess_id\": \"EmbedData1\", \"subprocess_type\": \"EmbedData\"},
-        {\"subprocess_id\": \"ClusterPress1\", \"subprocess_type\": \"Clustering_DBSCAN\"}
+        {\"plugin_worker_id\": \"FetchFeedItems1\", \"plugin_type\": \"FetchFeedItems\"},
+        {\"plugin_worker_id\": \"EmbedData1\", \"plugin_type\": \"EmbedData\"},
+        {\"plugin_worker_id\": \"ClusterPress1\", \"plugin_type\": \"Clustering_DBSCAN\"}
       ],
       \"edges\": [
         {\"from\": \"FetchFeedItems1\", \"to\": \"EmbedData1\"},
@@ -55,8 +57,16 @@ curl -sS -X POST \
       \"ClusterPress1\": {\"eps\": 0.5, \"min_samples\": 2, \"metric\": \"cosine\"}
     },
     \"input_data\": [
-      {\"title\": \"Feed Test 1\", \"xmlUrl\": \"https://example.org/feed1.xml\"},
-      {\"title\": \"Feed Test 2\", \"xmlUrl\": \"https://example.org/feed2.xml\"}
+      {
+        \"title\": \"tagesschau.de\",
+        \"xmlUrl\": \"https://www.tagesschau.de/index~rss2.xml\",
+        \"htmlUrl\": \"https://www.tagesschau.de/\"
+      },
+      {
+        \"title\": \"DER SPIEGEL - Schlagzeilen\",
+        \"xmlUrl\": \"https://www.spiegel.de/schlagzeilen/index.rss\",
+        \"htmlUrl\": \"https://www.spiegel.de/\"
+      }
     ],
     \"start_immediately\": false
   }" | tee "${TMP_DIR}/source_pipeline.json"

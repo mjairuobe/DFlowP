@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from math import ceil
 
 from dflowp.api.app import app
-from dflowp.api.deps import get_data_item_repository, get_event_repository, get_process_repository
+from dflowp.api.deps import get_data_item_repository, get_event_repository, get_pipeline_repository
 from dflowp_core.database.data_item_repository import summarize_for_list_view
 
 # Für zustandsbehaftete Fake-Repos (create/update/delete)
@@ -95,11 +95,11 @@ class _FakeDataItemRepository:
         return "mongo_" + item_id
 
 
-class _FakeProcessRepository:
+class _FakePipelineRepository:
     async def create_indexes(self) -> None:
         return
 
-    async def list_processes(self, *, page: int, page_size: int) -> dict:
+    async def list_pipelines(self, *, page: int, page_size: int) -> dict:
         return {
             "items": [
                 {"pipeline_id": "proc_001", "status": "running", "timestamp_ms": 200},
@@ -111,10 +111,10 @@ class _FakeProcessRepository:
             "total_pages": 1,
         }
 
-    async def find_by_id(self, process_id: str) -> dict | None:
-        if process_id in _FAKE_PROCESS_DOCS:
-            return dict(_FAKE_PROCESS_DOCS[process_id])
-        if process_id == "proc_001":
+    async def find_by_id(self, pipeline_id: str) -> dict | None:
+        if pipeline_id in _FAKE_PROCESS_DOCS:
+            return dict(_FAKE_PROCESS_DOCS[pipeline_id])
+        if pipeline_id == "proc_001":
             return {"pipeline_id": "proc_001", "status": "running", "timestamp_ms": 200}
         return None
 
@@ -123,7 +123,6 @@ class _FakeProcessRepository:
         pid = configuration.pipeline_id
         doc: dict = {
             "pipeline_id": pid,
-            "process_id": pid,
             "software_version": configuration.software_version,
             "input_dataset_id": configuration.input_dataset_id,
             "dataflow_id": "df_fake",
@@ -134,36 +133,34 @@ class _FakeProcessRepository:
         _FAKE_PROCESS_DOCS[pid] = doc
         return dict(doc)
 
-    async def insert(self, process: dict) -> str:
-        pid = process.get("pipeline_id") or process.get("process_id")
+    async def insert(self, pipeline_doc: dict) -> str:
+        pid = pipeline_doc.get("pipeline_id")
         if not pid:
-            raise ValueError("pipeline_id or process_id required")
-        doc = dict(process)
+            raise ValueError("pipeline_id required")
+        doc = dict(pipeline_doc)
         doc["_id"] = "mongo_" + str(pid)
         _FAKE_PROCESS_DOCS[str(pid)] = doc
         return str(doc["_id"])
 
-    async def update(self, process_id: str, update: dict) -> bool:
-        if process_id in _FAKE_PROCESS_DOCS:
-            _FAKE_PROCESS_DOCS[process_id].update(update)
+    async def update(self, pipeline_id: str, update: dict) -> bool:
+        if pipeline_id in _FAKE_PROCESS_DOCS:
+            _FAKE_PROCESS_DOCS[pipeline_id].update(update)
             return True
         return False
 
-    async def delete_by_id(self, process_id: str) -> bool:
-        if process_id in _FAKE_PROCESS_DOCS:
-            del _FAKE_PROCESS_DOCS[process_id]
+    async def delete_by_id(self, pipeline_id: str) -> bool:
+        if pipeline_id in _FAKE_PROCESS_DOCS:
+            del _FAKE_PROCESS_DOCS[pipeline_id]
             return True
         return False
 
-    async def list_subprocesses(self, *, page: int, page_size: int) -> dict:
+    async def list_plugin_workers(self, *, page: int, page_size: int) -> dict:
         return {
             "items": [
                 {
                     "pipeline_id": "proc_001",
                     "plugin_worker_id": "sub_001",
                     "plugin_type": "FetchFeedItems",
-                    "subprocess_id": "sub_001",
-                    "subprocess_type": "FetchFeedItems",
                     "event_status": "EVENT_COMPLETED",
                     "io_transformation_states": [],
                     "timestamp_ms": 200,
@@ -175,30 +172,22 @@ class _FakeProcessRepository:
             "total_pages": 1,
         }
 
-    async def find_subprocess_by_id(self, subprocess_id: str) -> dict | None:
-        if subprocess_id == "sub_001":
+    async def find_plugin_worker_by_id(self, plugin_worker_id: str) -> dict | None:
+        if plugin_worker_id == "sub_001":
             return {
                 "pipeline_id": "proc_001",
                 "plugin_worker_id": "sub_001",
                 "plugin_type": "FetchFeedItems",
-                "subprocess_id": "sub_001",
-                "subprocess_type": "FetchFeedItems",
                 "event_status": "EVENT_COMPLETED",
                 "io_transformation_states": [],
                 "timestamp_ms": 200,
             }
         return None
 
-    async def list_pipelines(self, *, page: int, page_size: int) -> dict:
-        return await self.list_processes(page=page, page_size=page_size)
-
-    async def list_plugin_workers(self, *, page: int, page_size: int) -> dict:
-        return await self.list_subprocesses(page=page, page_size=page_size)
-
     async def find_plugin_worker(self, pipeline_id: str, plugin_worker_id: str) -> dict | None:
         if pipeline_id != "proc_001":
             return None
-        return await self.find_subprocess_by_id(plugin_worker_id)
+        return await self.find_plugin_worker_by_id(plugin_worker_id)
 
     async def copy_pipeline_with_reexecution(
         self,
@@ -209,30 +198,13 @@ class _FakeProcessRepository:
         plugin_config_override: dict | None = None,
         dataflow_id_override: str | None = None,
     ) -> dict | None:
-        return await self.copy_process_with_reexecution(
-            source_process_id=source_pipeline_id,
-            target_process_id=target_pipeline_id,
-            parent_subprocess_ids=list(parent_plugin_worker_ids or []),
-            subprocess_config_override=plugin_config_override,
-        )
-
-    async def copy_process_with_reexecution(
-        self,
-        *,
-        source_process_id: str,
-        target_process_id: str,
-        parent_subprocess_ids: list[str],
-        subprocess_config_override: dict | None = None,
-    ) -> dict | None:
-        if source_process_id != "proc_001":
+        if source_pipeline_id != "proc_001":
             return None
-        cfg = {"process_id": target_process_id}
-        if subprocess_config_override:
-            cfg["subprocess_config"] = subprocess_config_override
-            cfg["plugin_config"] = subprocess_config_override
+        cfg = {"pipeline_id": target_pipeline_id}
+        if plugin_config_override:
+            cfg["plugin_config"] = plugin_config_override
         return {
-            "pipeline_id": target_process_id,
-            "process_id": target_process_id,
+            "pipeline_id": target_pipeline_id,
             "dataflow_id": "df_cloned",
             "dataflow_state_id": "dfs_cloned",
             "plugin_configuration_id": "pcfg_cloned",
@@ -242,14 +214,13 @@ class _FakeProcessRepository:
                 "nodes": [
                     {
                         "plugin_worker_id": "sub_001",
-                        "subprocess_id": "sub_001",
                         "event_status": "Not Started",
                         "io_transformation_states": [],
                     }
                 ],
                 "edges": [],
             },
-            "reexecution_roots": parent_subprocess_ids,
+            "reexecution_roots": list(parent_plugin_worker_ids or []),
         }
 
 
@@ -262,23 +233,22 @@ class _FakeEventRepository:
         *,
         page: int,
         page_size: int,
-        process_id: str | None = None,
         pipeline_id: str | None = None,
     ) -> dict:
         return {
             "items": [
                 {
                     "_id": "evt_001",
-                    "process_id": "proc_001",
-                    "subprocess_id": "sub_001",
+                    "pipeline_id": "proc_001",
+                    "plugin_worker_id": "sub_001",
                     "event_type": "EVENT_COMPLETED",
                     "event_time": "2026-04-06T10:00:00Z",
                     "timestamp_ms": 200,
                 },
                 {
                     "_id": "evt_002",
-                    "process_id": "proc_001",
-                    "subprocess_id": "sub_001",
+                    "pipeline_id": "proc_001",
+                    "plugin_worker_id": "sub_001",
                     "event_type": "EVENT_STARTED",
                     "event_time": "2026-04-06T09:00:00Z",
                     "timestamp_ms": 100,
@@ -294,8 +264,8 @@ class _FakeEventRepository:
         if event_id == "evt_001":
             return {
                 "_id": "evt_001",
-                "process_id": "proc_001",
-                "subprocess_id": "sub_001",
+                "pipeline_id": "proc_001",
+                "plugin_worker_id": "sub_001",
                 "event_type": "EVENT_COMPLETED",
                 "event_time": "2026-04-06T10:00:00Z",
                 "timestamp_ms": 200,
@@ -309,7 +279,7 @@ def _create_client() -> TestClient:
     os.environ["DFlowP_API_Key"] = "test-key"
 
     app.dependency_overrides[get_data_item_repository] = _FakeDataItemRepository
-    app.dependency_overrides[get_process_repository] = _FakeProcessRepository
+    app.dependency_overrides[get_pipeline_repository] = _FakePipelineRepository
     app.dependency_overrides[get_event_repository] = _FakeEventRepository
 
     return TestClient(app, base_url="http://127.0.0.1:8000")
@@ -350,7 +320,7 @@ def test_get_data_not_found() -> None:
     assert response.status_code == 404
 
 
-def test_list_processes_with_pagination() -> None:
+def test_list_pipelines_with_pagination() -> None:
     client = _create_client()
     response = client.get("/api/v1/pipelines?page=1&page_size=2", headers=_auth_headers())
     assert response.status_code == 200
@@ -375,7 +345,7 @@ def test_get_process_detail_not_found() -> None:
     assert response.status_code == 404
 
 
-def test_list_subprocesses_with_pagination() -> None:
+def test_list_plugin_workers_with_pagination() -> None:
     client = _create_client()
     response = client.get("/api/v1/plugin-workers?page=1&page_size=1", headers=_auth_headers())
     assert response.status_code == 200
@@ -387,17 +357,17 @@ def test_list_subprocesses_with_pagination() -> None:
     assert payload["items"][0]["timestamp_ms"] == 200
 
 
-def test_get_subprocess_detail() -> None:
+def test_get_plugin_worker_detail() -> None:
     client = _create_client()
     response = client.get(
         "/api/v1/pipelines/proc_001/plugin-workers/sub_001", headers=_auth_headers()
     )
     assert response.status_code == 200
     body = response.json()
-    assert body.get("plugin_worker_id") == "sub_001" or body.get("subprocess_id") == "sub_001"
+    assert body.get("plugin_worker_id") == "sub_001" or body.get("plugin_worker_id") == "sub_001"
 
 
-def test_get_subprocess_detail_not_found() -> None:
+def test_get_plugin_worker_detail_not_found() -> None:
     client = _create_client()
     response = client.get(
         "/api/v1/pipelines/proc_001/plugin-workers/not_found", headers=_auth_headers()
@@ -572,7 +542,7 @@ def test_clone_process_with_reexecution() -> None:
     )
     assert response.status_code == 201
     payload = response.json()
-    pid = payload.get("pipeline_id") or payload.get("process_id", "")
+    pid = payload.get("pipeline_id") or payload.get("pipeline_id", "")
     assert str(pid).startswith("proc_001_copy")
     assert payload["status"] == "pending"
     node = payload["dataflow_state"]["nodes"][0]
@@ -603,8 +573,8 @@ def test_create_process_pending_with_input_data() -> None:
             "input_dataset_id": "ds_api_feed",
             "dataflow": {
                 "nodes": [
-                    {"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"},
-                    {"subprocess_id": "E1", "subprocess_type": "EmbedData"},
+                    {"plugin_worker_id": "F1", "plugin_type": "FetchFeedItems"},
+                    {"plugin_worker_id": "E1", "plugin_type": "EmbedData"},
                 ],
                 "edges": [{"from": "F1", "to": "E1"}],
             },
@@ -615,7 +585,7 @@ def test_create_process_pending_with_input_data() -> None:
     )
     assert response.status_code == 201
     body = response.json()
-    assert (body.get("pipeline_id") or body.get("process_id")) == "proc_api_create_1"
+    assert (body.get("pipeline_id") or body.get("pipeline_id")) == "proc_api_create_1"
     assert body["status"] == "pending"
     assert body["input_dataset_id"] == "ds_api_feed"
     assert "dataflow_state_id" in body
@@ -631,7 +601,7 @@ def test_create_process_conflict_existing_id() -> None:
             "pipeline_id": "proc_dup",
             "input_dataset_id": "ds_x",
             "dataflow": {
-                "nodes": [{"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"}],
+                "nodes": [{"plugin_worker_id": "F1", "plugin_type": "FetchFeedItems"}],
                 "edges": [],
             },
             "plugin_config": {},
@@ -645,7 +615,7 @@ def test_create_process_conflict_existing_id() -> None:
             "pipeline_id": "proc_dup",
             "input_dataset_id": "ds_y",
             "dataflow": {
-                "nodes": [{"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"}],
+                "nodes": [{"plugin_worker_id": "F1", "plugin_type": "FetchFeedItems"}],
                 "edges": [],
             },
             "plugin_config": {},
@@ -663,7 +633,7 @@ def test_stop_process() -> None:
             "pipeline_id": "proc_stop_me",
             "input_dataset_id": "ds_z",
             "dataflow": {
-                "nodes": [{"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"}],
+                "nodes": [{"plugin_worker_id": "F1", "plugin_type": "FetchFeedItems"}],
                 "edges": [],
             },
             "plugin_config": {},
@@ -688,7 +658,7 @@ def test_delete_process() -> None:
             "pipeline_id": "proc_del",
             "input_dataset_id": "ds_z",
             "dataflow": {
-                "nodes": [{"subprocess_id": "F1", "subprocess_type": "FetchFeedItems"}],
+                "nodes": [{"plugin_worker_id": "F1", "plugin_type": "FetchFeedItems"}],
                 "edges": [],
             },
             "plugin_config": {},
@@ -699,7 +669,7 @@ def test_delete_process() -> None:
     assert "proc_del" not in _FAKE_PROCESS_DOCS
 
 
-def test_clone_with_subprocess_config_override() -> None:
+def test_clone_with_plugin_config_override() -> None:
     client = _create_client()
     response = client.post(
         "/api/v1/pipelines/proc_001/clone",
@@ -712,9 +682,9 @@ def test_clone_with_subprocess_config_override() -> None:
     )
     assert response.status_code == 201
     rj = response.json()
-    if "configuration" in rj and "subprocess_config" in rj["configuration"]:
-        assert rj["configuration"]["subprocess_config"]["EmbedData1"]["model"] == (
+    if "configuration" in rj and "plugin_config" in rj["configuration"]:
+        assert rj["configuration"]["plugin_config"]["EmbedData1"]["model"] == (
             "text-embedding-3-large"
         )
     else:
-        assert "pipeline_id" in rj or "process_id" in rj
+        assert "pipeline_id" in rj or "pipeline_id" in rj

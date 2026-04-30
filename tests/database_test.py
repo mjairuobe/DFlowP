@@ -15,7 +15,7 @@ from dflowp_core.database.mongo import (
     connect_to_mongodb,
     get_database,
 )
-from dflowp_core.database.process_repository import ProcessRepository
+from dflowp_core.database.pipeline_repository import PipelineRepository
 
 
 TIMESTAMP_HUMAN_PATTERN = re.compile(r"^\d{2}_\d{2}_\d{4}_\d{2}:\d{2}_UTC[+-]\d+$")
@@ -78,17 +78,17 @@ async def db_session():
 
 
 @pytest.mark.asyncio
-async def test_process_repository_crud(db_session):
-    """Testet ProcessRepository: Insert und Find."""
-    repo = ProcessRepository()
+async def test_pipeline_repository_crud(db_session):
+    """Testet PipelineRepository: Insert und Find."""
+    repo = PipelineRepository()
     await repo.create_indexes()
 
-    process = {
+    pipeline_doc = {
         "pipeline_id": "proc_test_001",
         "software_version": "1.0.0",
         "status": "running",
     }
-    inserted_id = await repo.insert(process)
+    inserted_id = await repo.insert(pipeline_doc)
     assert inserted_id
 
     found = await repo.find_by_id("proc_test_001")
@@ -107,7 +107,7 @@ async def test_process_repository_crud(db_session):
 
     # Cleanup
     if should_delete():
-        await db_session[ProcessRepository.COLLECTION_NAME].delete_one(
+        await db_session[PipelineRepository.COLLECTION_NAME].delete_one(
             {"pipeline_id": "proc_test_001"}
         )
 

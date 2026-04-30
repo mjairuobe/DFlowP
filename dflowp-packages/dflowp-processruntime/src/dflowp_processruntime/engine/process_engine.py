@@ -9,27 +9,26 @@ from dflowp_core.eventinterfaces.event_types import EVENT_COMPLETED, EVENT_FAILE
 from dflowp_processruntime.engine.pipeline_config_loader import load_pipeline_configuration
 from dflowp_processruntime.processes.process_configuration import (
     PipelineConfiguration,
-    ProcessConfiguration,
 )
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 def _ev_pipeline_id(event: dict[str, Any]) -> Optional[str]:
-    return event.get("pipeline_id") or event.get("process_id")
+    return event.get("pipeline_id")
 
 
 def _ev_plugin_worker_id(event: dict[str, Any]) -> Optional[str]:
-    return event.get("plugin_worker_id") or event.get("subprocess_id")
+    return event.get("plugin_worker_id")
 
 
 def _node_id(n: dict[str, Any]) -> Optional[str]:
-    return n.get("plugin_worker_id") or n.get("subprocess_id")
+    return n.get("plugin_worker_id")
 
 
-class ProcessEngine:
+class PipelineEngine:
     """
     Führt Pipelines aus, aktualisiert DataflowState in der Collection ``dataflow_states``,
     emittiert Events (pipeline_id / plugin_worker_id).
@@ -38,20 +37,20 @@ class ProcessEngine:
     def __init__(
         self,
         event_service: Any,
-        process_repository: Any,
+        pipeline_repository: Any,
         dataflow_state_repository: Any,
         data_repository: Any,
         dataset_repository: Any,
-        get_subprocess: Callable[[str], Any],
+        get_plugin_worker: Callable[[str], Any],
         enable_local_event_subscriptions: bool = True,
     ) -> None:
         self._event_service = event_service
-        self._process_repo = process_repository
+        self._pipeline_repo = pipeline_repository
         self._dataflow_state_repo = dataflow_state_repository
         self._data_repo = data_repository
         self._dataset_repo = dataset_repository
-        self._get_subprocess = get_subprocess
-        self._active_subprocess_count: int = 0
+        self._get_plugin_worker = get_plugin_worker
+        self._active_plugin_worker_count: int = 0
         self._enable_local_event_subscriptions = enable_local_event_subscriptions
 
     @staticmethod
@@ -60,18 +59,18 @@ class ProcessEngine:
 
     def start(self) -> None:
         if self._enable_local_event_subscriptions:
-            self._event_service.subscribe(EVENT_COMPLETED, self._on_subprocess_completed)
-            self._event_service.subscribe(EVENT_FAILED, self._on_subprocess_failed)
-            logger.info("[ProcessEngine] gestartet, lokale Events subscribed")
+            self._event_service.subscribe(EVENT_COMPLETED, self._on_plugin_worker_completed)
+            self._event_service.subscribe(EVENT_FAILED, self._on_plugin_worker_failed)
+            logger.info("[PipelineEngine] gestartet, lokale Events subscribed")
             return
-        logger.info("[ProcessEngine] gestartet, erwartet externe Event-Notifications")
+        logger.info("[PipelineEngine] gestartet, erwartet externe Event-Notifications")
 
     async def handle_event_notification(self, event: dict[str, Any]) -> None:
         event_type = event.get("event_type")
         if event_type == EVENT_COMPLETED:
-            await self._on_subprocess_completed(event)
+            await self._on_plugin_worker_completed(event)
         elif event_type == EVENT_FAILED:
-            await self._on_subprocess_failed(event)
+            await self._on_plugin_worker_failed(event)
 
     async def wait_until_idle(
         self,
@@ -79,7 +78,7 @@ class ProcessEngine:
         shutdown: Optional[asyncio.Event] = None,
         poll_seconds: float = 0.5,
     ) -> None:
-        while self._active_subprocess_count > 0:
+        while self._active_plugin_worker_count > 0:
             if shutdown is not None and shutdown.is_set():
                 return
             await asyncio.sleep(poll_seconds)
@@ -88,33 +87,31 @@ class ProcessEngine:
         self, doc: dict[str, Any]
     ) -> Optional[PipelineConfiguration]:
         pdoc = dict(doc)
-        if not pdoc.get("pipeline_id") and pdoc.get("process_id"):
-            pdoc["pipeline_id"] = pdoc["process_id"]
         try:
             if pdoc.get("dataflow_id") and pdoc.get("plugin_configuration_id"):
                 return await load_pipeline_configuration(pdoc)
             if pdoc.get("configuration"):
-                return ProcessConfiguration.from_dict(pdoc["configuration"])
+                return PipelineConfiguration.from_dict(pdoc["configuration"])
         except Exception as exc:  # noqa: BLE001
             logger.error("Pipeline-Konfiguration konnte nicht geladen werden: %s", exc)
         return None
 
-    async def activate_pending_process(self, pipeline_id: str) -> bool:
+    async def activate_pending_pipeline(self, pipeline_id: str) -> bool:
         """Aktiviert startbereite Root-Plugin-Worker (nach claim, status=running)."""
-        doc = await self._process_repo.find_by_id(pipeline_id)
+        doc = await self._pipeline_repo.find_by_id(pipeline_id)
         if not doc:
             logger.error(
-                "[ProcessEngine] Pipeline %s nicht in der Datenbank", pipeline_id
+                "[PipelineEngine] Pipeline %s nicht in der Datenbank", pipeline_id
             )
             return False
 
         configuration = await self._load_configuration(doc)
         if not configuration:
             logger.error(
-                "[ProcessEngine] Pipeline %s: keine auflösbare Konfiguration (Referenzen oder `configuration`)",
+                "[PipelineEngine] Pipeline %s: keine auflösbare Konfiguration (Referenzen oder `configuration`)",
                 pipeline_id,
             )
-            await self._process_repo.update(pipeline_id, {"status": "failed"})
+            await self._pipeline_repo.update(pipeline_id, {"status": "failed"})
             return False
 
         configuration.apply_default_openai_key_from_env()
@@ -128,8 +125,8 @@ class ProcessEngine:
                 if doc.get("dataflow_state")
                 else "kein dataflow_state_id"
             )
-            logger.error("[ProcessEngine] Pipeline %s: %s", pipeline_id, msg)
-            await self._process_repo.update(pid, {"status": "failed"})
+            logger.error("[PipelineEngine] Pipeline %s: %s", pipeline_id, msg)
+            await self._pipeline_repo.update(pid, {"status": "failed"})
             return False
 
         if not await self._dataflow_state_repo.get_dataflow_state(dfs_id):
@@ -137,7 +134,7 @@ class ProcessEngine:
             await self._dataflow_state_repo.update_dataflow_state(
                 dfs_id, dataflow_state.to_dict()
             )
-            await self._process_repo.update(
+            await self._pipeline_repo.update(
                 pid,
                 {
                     "software_version": configuration.software_version,
@@ -146,8 +143,8 @@ class ProcessEngine:
             )
         dataflow_doc = await self._dataflow_state_repo.get_dataflow_state(dfs_id)
         if not dataflow_doc:
-            logger.error("[ProcessEngine] DataflowState %s fehlt in der DB", dfs_id)
-            await self._process_repo.update(pid, {"status": "failed"})
+            logger.error("[PipelineEngine] DataflowState %s fehlt in der DB", dfs_id)
+            await self._pipeline_repo.update(pid, {"status": "failed"})
             return False
 
         nodes = dataflow_doc.get("nodes", []) or []
@@ -174,22 +171,22 @@ class ProcessEngine:
             logger.progress(
                 "%s Ready-Plugin-Worker wird gestartet", self._source(pid, wid)
             )
-            await self._start_subprocess(pid, wid, configuration, dfs_id)
+            await self._start_plugin_worker(pid, wid, configuration, dfs_id)
 
         if not runnable:
             logger.info(
-                "[ProcessEngine] Keine startbaren Plugin-Worker für Pipeline %s", pid
+                "[PipelineEngine] Keine startbaren Plugin-Worker für Pipeline %s", pid
             )
         return True
 
-    async def start_process(self, configuration: ProcessConfiguration) -> bool:
+    async def start_pipeline(self, configuration: PipelineConfiguration) -> bool:
         """Legt vollständige Pipeline in Mongo an und startet Root-Plugin-Worker."""
         configuration.apply_default_openai_key_from_env()
         configuration.apply_software_version_from_env()
         pipeline_id = configuration.pipeline_id
-        logger.info("[ProcessEngine] Starte Pipeline %s", pipeline_id)
+        logger.info("[PipelineEngine] Starte Pipeline %s", pipeline_id)
 
-        doc = await self._process_repo.insert_from_configuration(
+        doc = await self._pipeline_repo.insert_from_configuration(
             configuration, status="running"
         )
         dfs_id = doc["dataflow_state_id"]
@@ -197,10 +194,10 @@ class ProcessEngine:
             logger.progress(
                 "%s Root-Plugin-Worker wird gestartet", self._source(pipeline_id, wid)
             )
-            await self._start_subprocess(pipeline_id, wid, configuration, dfs_id)
+            await self._start_plugin_worker(pipeline_id, wid, configuration, dfs_id)
         return True
 
-    async def _start_subprocess(
+    async def _start_plugin_worker(
         self,
         pipeline_id: str,
         plugin_worker_id: str,
@@ -245,7 +242,7 @@ class ProcessEngine:
             )
             return
 
-        sp = self._get_subprocess(node_def.plugin_type)
+        sp = self._get_plugin_worker(node_def.plugin_type)
         if not sp:
             await self._dataflow_state_repo.update_node_state(
                 dataflow_state_id, plugin_worker_id, event_status=EVENT_FAILED
@@ -257,7 +254,7 @@ class ProcessEngine:
             )
             return
 
-        self._active_subprocess_count += 1
+        self._active_plugin_worker_count += 1
 
         async def run_wrapper() -> None:
             try:
@@ -289,11 +286,11 @@ class ProcessEngine:
                     error=str(e),
                 )
             finally:
-                self._active_subprocess_count -= 1
+                self._active_plugin_worker_count -= 1
                 logger.debug(
                     "%s beendet, aktive Plugin-Worker=%d",
                     self._source(pipeline_id, plugin_worker_id),
-                    self._active_subprocess_count,
+                    self._active_plugin_worker_count,
                 )
 
         asyncio.create_task(run_wrapper())
@@ -305,7 +302,7 @@ class ProcessEngine:
         plugin_type: str,
         configuration: PipelineConfiguration,
         dataflow_state_id: str,
-    ) -> Optional[SubprocessContext]:
+    ) -> Optional[PluginWorkerContext]:
         config = configuration.plugin_config.get(plugin_worker_id, {})
         root_ids = configuration.dataflow.get_root_nodes()
 
@@ -332,7 +329,7 @@ class ProcessEngine:
                             type=d.get("type", "input"),
                         )
                     )
-            return SubprocessContext(
+            return PluginWorkerContext(
                 pipeline_id=pipeline_id,
                 plugin_worker_id=plugin_worker_id,
                 plugin_type=plugin_type,
@@ -356,7 +353,7 @@ class ProcessEngine:
                     break
 
         input_data = await self._resolve_predecessor_outputs_to_data(all_output_ids)
-        return SubprocessContext(
+        return PluginWorkerContext(
             pipeline_id=pipeline_id,
             plugin_worker_id=plugin_worker_id,
             plugin_type=plugin_type,
@@ -396,7 +393,7 @@ class ProcessEngine:
                 )
         return input_data
 
-    async def _on_subprocess_completed(self, event: dict) -> None:
+    async def _on_plugin_worker_completed(self, event: dict) -> None:
         pipeline_id = _ev_pipeline_id(event)
         plugin_worker_id = _ev_plugin_worker_id(event)
         if not pipeline_id or not plugin_worker_id:
@@ -408,7 +405,7 @@ class ProcessEngine:
         if plugin_worker_id == "0":
             return
 
-        pl_doc = await self._process_repo.find_by_id(pipeline_id)
+        pl_doc = await self._pipeline_repo.find_by_id(pipeline_id)
         if not pl_doc:
             return
 
@@ -426,29 +423,29 @@ class ProcessEngine:
                 self._source(pipeline_id, plugin_worker_id),
                 succ,
             )
-            await self._start_subprocess(
+            await self._start_plugin_worker(
                 pipeline_id, succ, configuration, dfs_id
             )
 
         if not configuration.dataflow.get_successors(plugin_worker_id):
             all_ok = await self._check_all_completed(dfs_id)
             if all_ok:
-                await self._process_repo.update(pipeline_id, {"status": "completed"})
+                await self._pipeline_repo.update(pipeline_id, {"status": "completed"})
                 logger.success(
-                    "[ProcessEngine] Pipeline %s vollständig abgeschlossen", pipeline_id
+                    "[PipelineEngine] Pipeline %s vollständig abgeschlossen", pipeline_id
                 )
                 await self._event_service.emit_completed(
                     pipeline_id=pipeline_id, plugin_worker_id="0"
                 )
 
-    async def _on_subprocess_failed(self, event: dict) -> None:
+    async def _on_plugin_worker_failed(self, event: dict) -> None:
         pipeline_id = _ev_pipeline_id(event)
         if pipeline_id:
             logger.error(
                 "%s EVENT_FAILED empfangen",
                 self._source(pipeline_id, str(_ev_plugin_worker_id(event) or "?")),
             )
-            await self._process_repo.update(pipeline_id, {"status": "failed"})
+            await self._pipeline_repo.update(pipeline_id, {"status": "failed"})
 
     async def _check_all_completed(self, dataflow_state_id: str) -> bool:
         doc = await self._dataflow_state_repo.get_dataflow_state(dataflow_state_id)

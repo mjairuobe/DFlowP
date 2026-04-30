@@ -6,7 +6,7 @@ import pytest
 
 from dflowp.plugin_clustering_hdbscan.clustering_hdbscan import ClusteringHDBSCAN
 from dflowp_processruntime.datastructures.data import Data
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_processruntime.subprocesses.io_transformation_state import TransformationStatus
 
 
@@ -22,10 +22,10 @@ class FakeDatasetRepo:
 @pytest.mark.asyncio
 async def test_hdbscan_two_clusters() -> None:
     plugin = ClusteringHDBSCAN()
-    ctx = SubprocessContext(
-        process_id="p1",
-        subprocess_id="s1",
-        subprocess_type="Clustering_HDBSCAN",
+    ctx = PluginWorkerContext(
+        pipeline_id="p1",
+        plugin_worker_id="s1",
+        plugin_type="Clustering_HDBSCAN",
         config={
             "min_cluster_size": 2,
             "min_samples": 1,
@@ -57,10 +57,10 @@ async def test_hdbscan_two_clusters() -> None:
 @pytest.mark.asyncio
 async def test_hdbscan_all_noise_when_min_cluster_size_not_met() -> None:
     plugin = ClusteringHDBSCAN()
-    ctx = SubprocessContext(
-        process_id="p1",
-        subprocess_id="s1",
-        subprocess_type="Clustering_HDBSCAN",
+    ctx = PluginWorkerContext(
+        pipeline_id="p1",
+        plugin_worker_id="s1",
+        plugin_type="Clustering_HDBSCAN",
         config={"min_cluster_size": 10, "metric": "euclidean"},
         input_data=[
             Data(data_id="a", content={"embedding": [0.0, 0.0]}, type="output"),

@@ -10,7 +10,7 @@ from dflowp.api.cors import add_cors_middleware
 from dflowp.api.kebab_routes import router as kebab_v1_router
 from dflowp_core.database.data_item_repository import DataItemRepository
 from dflowp_core.database.event_repository import EventRepository
-from dflowp_core.database.process_repository import ProcessRepository
+from dflowp_core.database.pipeline_repository import PipelineRepository
 from dflowp_core.database.mongo import (
     close_mongodb_connection,
     connect_to_mongodb,
@@ -27,7 +27,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
             uri=resolve_mongodb_uri(),
             database_name=os.environ.get("MONGODB_DATABASE", "dflowp"),
         )
-        process_repo = ProcessRepository()
+        process_repo = PipelineRepository()
         data_item_repo = DataItemRepository()
         event_repo = EventRepository()
         await process_repo.create_indexes()

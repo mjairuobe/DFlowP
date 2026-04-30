@@ -94,16 +94,16 @@ def test_clustering_hdbscan_plugin_info_and_health() -> None:
 
 @pytest.mark.asyncio
 async def test_remote_plugin_resolve_requires_plugin_name() -> None:
-    from dflowp_processruntime.plugins.remote_plugin import RemotePluginSubprocess
-    from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+    from dflowp_processruntime.plugins.remote_plugin import RemotePluginWorker
+    from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 
-    subprocess = RemotePluginSubprocess("FetchFeedItems")
-    context = SubprocessContext(
-        process_id="p1",
-        subprocess_id="s1",
-        subprocess_type="FetchFeedItems",
+    worker = RemotePluginWorker("FetchFeedItems")
+    context = PluginWorkerContext(
+        pipeline_id="p1",
+        plugin_worker_id="s1",
+        plugin_type="FetchFeedItems",
         config={"plugin_service_name": "fetchfeeditems"},
         input_data=[],
     )
     with pytest.raises(ValueError, match="muss 'plugin' enthalten"):
-        await subprocess._resolve_service_url(context)
+        await worker._resolve_service_url(context)

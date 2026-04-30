@@ -8,7 +8,7 @@ import logging
 from dflowp_core.utils.logger import (
     _ColorFormatter,
     get_component_logger,
-    get_process_subprocess_logger,
+    get_pipeline_plugin_worker_logger,
 )
 
 
@@ -38,9 +38,9 @@ def test_component_logger_prefix_and_methods() -> None:
 
 
 def test_process_subprocess_logger_name_contains_ids() -> None:
-    logger = get_process_subprocess_logger(
-        process_id="proc_alpha",
-        subprocess_id="EmbedData1",
+    logger = get_pipeline_plugin_worker_logger(
+        pipeline_id="proc_alpha",
+        plugin_worker_id="EmbedData1",
     )
     assert logger.extra["source"] == "[proc_alpha][EmbedData1]"
     assert logger.logger.name == "dflowp.[proc_alpha][EmbedData1]"

@@ -1,4 +1,4 @@
-"""Remote plugin client subprocess for plugin microservices."""
+"""Remote plugin client worker for plugin microservices."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ import httpx
 from dflowp_processruntime.subprocesses.io_transformation_state import (
     IOTransformationState,
 )
-from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess import BasePluginWorker
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,20 +29,20 @@ def _service_env_suffix(plugin_type: str) -> str:
     return _slugify_plugin_type(plugin_type).replace("-", "_").upper()
 
 
-def build_remote_subprocess(subprocess_type: str) -> "RemotePluginSubprocess":
-    return RemotePluginSubprocess(subprocess_type=subprocess_type)
+def build_remote_plugin_worker(plugin_type: str) -> "RemotePluginWorker":
+    return RemotePluginWorker(plugin_type=plugin_type)
 
 
-class RemotePluginSubprocess(BaseSubprocess):
-    """Forwards subprocess execution to a remote plugin service over HTTP."""
+class RemotePluginWorker(BasePluginWorker):
+    """Forwards plugin-worker execution to a remote plugin service over HTTP."""
 
-    def __init__(self, subprocess_type: str, base_url: Optional[str] = None) -> None:
-        super().__init__(subprocess_type)
+    def __init__(self, plugin_type: str, base_url: Optional[str] = None) -> None:
+        super().__init__(plugin_type)
         self._base_url = base_url.rstrip("/") if base_url else None
 
     async def run(
         self,
-        context: SubprocessContext,
+        context: PluginWorkerContext,
         event_emitter: Optional[Any] = None,
         state_updater: Optional[Any] = None,
         data_repository: Optional[Any] = None,
@@ -85,7 +85,7 @@ class RemotePluginSubprocess(BaseSubprocess):
                 if attempt < retries:
                     logger.warning(
                         "Remote plugin call fehlgeschlagen (%s, attempt %d/%d): %s",
-                        self.subprocess_type,
+                        self.plugin_type,
                         attempt,
                         retries,
                         exc,
@@ -93,7 +93,7 @@ class RemotePluginSubprocess(BaseSubprocess):
                     await asyncio.sleep(delay_seconds)
 
         raise RuntimeError(
-            f"Remote plugin call für {self.subprocess_type} fehlgeschlagen: {last_error}"
+            f"Remote plugin call für {self.plugin_type} fehlgeschlagen: {last_error}"
         )
 
     async def _assert_dns_resolvable(
@@ -110,7 +110,7 @@ class RemotePluginSubprocess(BaseSubprocess):
                 f"Plugin-Host '{host}' ist per DNS nicht auflösbar: {exc}"
             ) from exc
 
-    async def _resolve_service_url(self, context: SubprocessContext) -> str:
+    async def _resolve_service_url(self, context: PluginWorkerContext) -> str:
         if self._base_url:
             host = _host_from_url(self._base_url)
             if "plugin" not in host:
@@ -131,8 +131,8 @@ class RemotePluginSubprocess(BaseSubprocess):
             await self._assert_dns_resolvable(host)
             return service_url
 
-        env_suffix = _service_env_suffix(self.subprocess_type)
-        default_name = f"plugin-{_slugify_plugin_type(self.subprocess_type)}"
+        env_suffix = _service_env_suffix(self.plugin_type)
+        default_name = f"plugin-{_slugify_plugin_type(self.plugin_type)}"
         service_name = str(
             context.config.get(
                 "plugin_service_name",

@@ -16,8 +16,8 @@ class _FakeEventRepository:
         return [
             {
                 "_id": "evt_001",
-                "process_id": "proc_1",
-                "subprocess_id": "sub_1",
+                "pipeline_id": "proc_1",
+                "plugin_worker_id": "sub_1",
                 "event_type": "EVENT_COMPLETED",
                 "event_time": datetime.now(timezone.utc),
             }

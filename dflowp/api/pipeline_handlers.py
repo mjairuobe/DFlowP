@@ -5,9 +5,9 @@ from typing import Any, Optional
 from fastapi import HTTPException, status
 
 from dflowp.api.process_persist import persist_input_dataset_rows
-from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
+from dflowp_processruntime.processes.process_configuration import PipelineConfiguration
 from dflowp_core.database.data_item_repository import DataItemRepository
-from dflowp_core.database.process_repository import ProcessRepository
+from dflowp_core.database.pipeline_repository import PipelineRepository
 
 
 async def create_pipeline_document(
@@ -19,25 +19,23 @@ async def create_pipeline_document(
     plugin_config: dict[str, dict[str, Any]],
     input_data: Optional[list[dict[str, Any]]],
     start_immediately: bool,
-    process_repo: ProcessRepository,
+    pipeline_repo: PipelineRepository,
     data_item_repo: DataItemRepository,
 ) -> dict:
     """Legt eine Pipeline inkl. referenzierter Dokumente an."""
-    if await process_repo.find_by_id(pipeline_id):
+    if await pipeline_repo.find_by_id(pipeline_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Pipeline '{pipeline_id}' existiert bereits.",
         )
     try:
-        configuration = ProcessConfiguration.from_dict(
+        configuration = PipelineConfiguration.from_dict(
             {
                 "pipeline_id": pipeline_id,
-                "process_id": pipeline_id,
                 "software_version": software_version,
                 "input_dataset_id": input_dataset_id,
                 "dataflow": dataflow,
                 "plugin_config": plugin_config,
-                "subprocess_config": plugin_config,
             }
         )
     except Exception as exc:
@@ -63,7 +61,7 @@ async def create_pipeline_document(
         )
 
     st = "running" if start_immediately else "pending"
-    created = await process_repo.insert_from_configuration(configuration, status=st)
+    created = await pipeline_repo.insert_from_configuration(configuration, status=st)
     if not created:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

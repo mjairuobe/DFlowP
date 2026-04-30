@@ -69,7 +69,7 @@ def build_dataflow_state_api_view(doc: dict[str, Any]) -> dict[str, Any]:
         q = quality_min_max_avg_median(n)
         entry: dict[str, Any] = {
             "plugin_worker_id": wid,
-            "plugin_type": n.get("plugin_type") or n.get("subprocess_type"),
+            "plugin_type": n.get("plugin_type"),
             "event_status": n.get("event_status"),
             "quality": q,
         }

@@ -5,11 +5,11 @@ from dflowp_core.database.dataflow_state_repository import DataflowStateReposito
 from dflowp_core.database.data_item_repository import DataItemRepository
 from dflowp_core.database.event_repository import EventRepository
 from dflowp_core.database.plugin_configuration_repository import PluginConfigurationRepository
-from dflowp_core.database.process_repository import ProcessRepository
+from dflowp_core.database.pipeline_repository import PipelineRepository
 
 
-def get_process_repository() -> ProcessRepository:
-    return ProcessRepository()
+def get_pipeline_repository() -> PipelineRepository:
+    return PipelineRepository()
 
 
 def get_data_item_repository() -> DataItemRepository:

@@ -1,0 +1,2381 @@
+Behalten? (Checkbox),Testname,Beschreibung,Quellcode
+FALSE,tests/api_test.py::test_api_rejects_missing_api_key,Prueft: api rejects missing api key.,"def test_api_rejects_missing_api_key() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/data"")
+    assert response.status_code == 401"
+FALSE,tests/api_test.py::test_clone_process_source_not_found,Prueft: clone process source not found.,"def test_clone_process_source_not_found() -> None:
+    client = _create_client()
+    response = client.post(
+        ""/api/v1/pipelines/proc_404/clone"",
+        headers=_auth_headers(),
+        json={
+            ""parent_plugin_worker_ids"": [""sub_001""],
+        },
+    )
+    assert response.status_code == 404"
+FALSE,tests/api_test.py::test_clone_process_with_reexecution,Prueft: clone process with reexecution.,"def test_clone_process_with_reexecution() -> None:
+    client = _create_client()
+    response = client.post(
+        ""/api/v1/pipelines/proc_001/clone"",
+        headers=_auth_headers(),
+        json={
+            ""parent_plugin_worker_ids"": [""sub_001""],
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    pid = payload.get(""pipeline_id"") or payload.get(""process_id"", """")
+    assert str(pid).startswith(""proc_001_copy"")
+    assert payload[""status""] == ""pending""
+    node = payload[""dataflow_state""][""nodes""][0]
+    assert node[""event_status""] == ""Not Started""
+    assert node[""io_transformation_states""] == []"
+FALSE,tests/api_test.py::test_clone_with_subprocess_config_override,Prueft: clone with subprocess config override.,"def test_clone_with_subprocess_config_override() -> None:
+    client = _create_client()
+    response = client.post(
+        ""/api/v1/pipelines/proc_001/clone"",
+        headers=_auth_headers(),
+        json={
+            ""parent_plugin_worker_ids"": [""sub_001""],
+            ""new_pipeline_id"": ""proc_cloned_cfg"",
+            ""plugin_config"": {""EmbedData1"": {""model"": ""text-embedding-3-large""}},
+        },
+    )
+    assert response.status_code == 201
+    rj = response.json()
+    if ""configuration"" in rj and ""subprocess_config"" in rj[""configuration""]:
+        assert rj[""configuration""][""subprocess_config""][""EmbedData1""][""model""] == (
+            ""text-embedding-3-large""
+        )
+    else:
+        assert ""pipeline_id"" in rj or ""process_id"" in rj"
+FALSE,tests/api_test.py::test_create_data_item,Prueft: create data item.,"def test_create_data_item() -> None:
+    client = _create_client()
+    response = client.post(
+        ""/api/v1/data"",
+        headers=_auth_headers(),
+        json={
+            ""id"": ""data_new_1"",
+            ""content"": {""title"": ""T"", ""xmlUrl"": ""https://example.com/feed""},
+            ""type"": ""input"",
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body[""id""] == ""data_new_1""
+    assert body[""doc_type""] == ""data""
+    assert body[""content""][""xmlUrl""] == ""https://example.com/feed"""
+FALSE,tests/api_test.py::test_create_dataset_conflict_existing_id,Prueft: create dataset conflict existing id.,"def test_create_dataset_conflict_existing_id() -> None:
+    client = _create_client()
+    r1 = client.post(
+        ""/api/v1/data"",
+        headers=_auth_headers(),
+        json={""doc_type"": ""dataset"", ""id"": ""ds_dup"", ""rows"": [{""a"": 1}]},
+    )
+    assert r1.status_code == 201
+    r2 = client.post(
+        ""/api/v1/data"",
+        headers=_auth_headers(),
+        json={""doc_type"": ""dataset"", ""id"": ""ds_dup"", ""rows"": [{""a"": 2}]},
+    )
+    assert r2.status_code == 409"
+FALSE,tests/api_test.py::test_create_dataset_with_data_ids,Prueft: create dataset with data ids.,"def test_create_dataset_with_data_ids() -> None:
+    client = _create_client()
+    client.post(
+        ""/api/v1/data"",
+        headers=_auth_headers(),
+        json={""id"": ""d_ref_a"", ""content"": {""x"": 1}, ""type"": ""input""},
+    )
+    client.post(
+        ""/api/v1/data"",
+        headers=_auth_headers(),
+        json={""id"": ""d_ref_b"", ""content"": {""x"": 2}, ""type"": ""input""},
+    )
+    response = client.post(
+        ""/api/v1/data"",
+        headers=_auth_headers(),
+        json={
+            ""doc_type"": ""dataset"",
+            ""id"": ""ds_from_refs"",
+            ""data_ids"": [""d_ref_a"", ""d_ref_b""],
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()[""data_ids""] == [""d_ref_a"", ""d_ref_b""]"
+FALSE,tests/api_test.py::test_create_dataset_with_rows,Prueft: create dataset with rows.,"def test_create_dataset_with_rows() -> None:
+    client = _create_client()
+    response = client.post(
+        ""/api/v1/data"",
+        headers=_auth_headers(),
+        json={
+            ""doc_type"": ""dataset"",
+            ""id"": ""ds_feed_batch"",
+            ""rows"": [
+                {""title"": ""A"", ""text"": ""x"", ""xmlUrl"": ""https://a/feed"", ""htmlUrl"": ""https://a/""},
+                {""title"": ""B"", ""text"": ""y"", ""xmlUrl"": ""https://b/feed"", ""htmlUrl"": ""https://b/""},
+            ],
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body[""id""] == ""ds_feed_batch""
+    assert body[""doc_type""] == ""dataset""
+    assert body[""data_ids""] == [""ds_feed_batch_row_0"", ""ds_feed_batch_row_1""]"
+FALSE,tests/api_test.py::test_create_process_conflict_existing_id,Prueft: create process conflict existing id.,"def test_create_process_conflict_existing_id() -> None:
+    client = _create_client()
+    r1 = client.post(
+        ""/api/v1/pipelines"",
+        headers=_auth_headers(),
+        json={
+            ""pipeline_id"": ""proc_dup"",
+            ""input_dataset_id"": ""ds_x"",
+            ""dataflow"": {
+                ""nodes"": [{""subprocess_id"": ""F1"", ""subprocess_type"": ""FetchFeedItems""}],
+                ""edges"": [],
+            },
+            ""plugin_config"": {},
+        },
+    )
+    assert r1.status_code == 201
+    r2 = client.post(
+        ""/api/v1/pipelines"",
+        headers=_auth_headers(),
+        json={
+            ""pipeline_id"": ""proc_dup"",
+            ""input_dataset_id"": ""ds_y"",
+            ""dataflow"": {
+                ""nodes"": [{""subprocess_id"": ""F1"", ""subprocess_type"": ""FetchFeedItems""}],
+                ""edges"": [],
+            },
+            ""plugin_config"": {},
+        },
+    )
+    assert r2.status_code == 409"
+FALSE,tests/api_test.py::test_create_process_pending_with_input_data,Prueft: create process pending with input data.,"def test_create_process_pending_with_input_data() -> None:
+    client = _create_client()
+    response = client.post(
+        ""/api/v1/pipelines"",
+        headers=_auth_headers(),
+        json={
+            ""pipeline_id"": ""proc_api_create_1"",
+            ""software_version"": ""0.1.0"",
+            ""input_dataset_id"": ""ds_api_feed"",
+            ""dataflow"": {
+                ""nodes"": [
+                    {""subprocess_id"": ""F1"", ""subprocess_type"": ""FetchFeedItems""},
+                    {""subprocess_id"": ""E1"", ""subprocess_type"": ""EmbedData""},
+                ],
+                ""edges"": [{""from"": ""F1"", ""to"": ""E1""}],
+            },
+            ""plugin_config"": {""F1"": {}, ""E1"": {""model"": ""text-embedding-3-small""}},
+            ""input_data"": [{""title"": ""A"", ""summary"": ""B"", ""url"": ""https://example.com""}],
+            ""start_immediately"": False,
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert (body.get(""pipeline_id"") or body.get(""process_id"")) == ""proc_api_create_1""
+    assert body[""status""] == ""pending""
+    assert body[""input_dataset_id""] == ""ds_api_feed""
+    assert ""dataflow_state_id"" in body
+    assert ""ds_api_feed"" in _FAKE_DATA_ITEMS"
+FALSE,tests/api_test.py::test_delete_process,Prueft: delete process.,"def test_delete_process() -> None:
+    client = _create_client()
+    client.post(
+        ""/api/v1/pipelines"",
+        headers=_auth_headers(),
+        json={
+            ""pipeline_id"": ""proc_del"",
+            ""input_dataset_id"": ""ds_z"",
+            ""dataflow"": {
+                ""nodes"": [{""subprocess_id"": ""F1"", ""subprocess_type"": ""FetchFeedItems""}],
+                ""edges"": [],
+            },
+            ""plugin_config"": {},
+        },
+    )
+    r = client.delete(""/api/v1/pipelines/proc_del"", headers=_auth_headers())
+    assert r.status_code == 204
+    assert ""proc_del"" not in _FAKE_PROCESS_DOCS"
+FALSE,tests/api_test.py::test_get_data_detail_includes_content,Prueft: get data detail includes content.,"def test_get_data_detail_includes_content() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/data/data_001"", headers=_auth_headers())
+    assert response.status_code == 200
+    assert response.json()[""id""] == ""data_001""
+    assert response.json()[""content""][""k""] == ""v"""
+FALSE,tests/api_test.py::test_get_data_detail_not_found,Prueft: get data detail not found.,"def test_get_data_detail_not_found() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/data/not_found"", headers=_auth_headers())
+    assert response.status_code == 404"
+FALSE,tests/api_test.py::test_get_data_not_found,Prueft: get data not found.,"def test_get_data_not_found() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/data/not_found"", headers=_auth_headers())
+    assert response.status_code == 404"
+FALSE,tests/api_test.py::test_get_dataset_detail_via_data_endpoint,Prueft: get dataset detail via data endpoint.,"def test_get_dataset_detail_via_data_endpoint() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/data/ds_001"", headers=_auth_headers())
+    assert response.status_code == 200
+    assert response.json()[""id""] == ""ds_001"""
+FALSE,tests/api_test.py::test_get_event_detail,Prueft: get event detail.,"def test_get_event_detail() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/events/evt_001"", headers=_auth_headers())
+    assert response.status_code == 200
+    assert response.json()[""_id""] == ""evt_001"""
+FALSE,tests/api_test.py::test_get_event_detail_not_found,Prueft: get event detail not found.,"def test_get_event_detail_not_found() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/events/not_found"", headers=_auth_headers())
+    assert response.status_code == 404"
+FALSE,tests/api_test.py::test_get_process_detail,Prueft: get process detail.,"def test_get_process_detail() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/pipelines/proc_001"", headers=_auth_headers())
+    assert response.status_code == 200
+    assert response.json()[""pipeline_id""] == ""proc_001"""
+FALSE,tests/api_test.py::test_get_process_detail_not_found,Prueft: get process detail not found.,"def test_get_process_detail_not_found() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/pipelines/not_found"", headers=_auth_headers())
+    assert response.status_code == 404"
+FALSE,tests/api_test.py::test_get_subprocess_detail,Prueft: get subprocess detail.,"def test_get_subprocess_detail() -> None:
+    client = _create_client()
+    response = client.get(
+        ""/api/v1/pipelines/proc_001/plugin-workers/sub_001"", headers=_auth_headers()
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get(""plugin_worker_id"") == ""sub_001"" or body.get(""subprocess_id"") == ""sub_001"""
+FALSE,tests/api_test.py::test_get_subprocess_detail_not_found,Prueft: get subprocess detail not found.,"def test_get_subprocess_detail_not_found() -> None:
+    client = _create_client()
+    response = client.get(
+        ""/api/v1/pipelines/proc_001/plugin-workers/not_found"", headers=_auth_headers()
+    )
+    assert response.status_code == 404"
+FALSE,tests/api_test.py::test_list_data_datasets_only_via_doc_type,Prueft: list data datasets only via doc type.,"def test_list_data_datasets_only_via_doc_type() -> None:
+    client = _create_client()
+    response = client.get(
+        ""/api/v1/data?doc_type=dataset&page=1&page_size=2"", headers=_auth_headers()
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[""page""] == 1
+    assert len(payload[""items""]) >= 1
+    assert payload[""items""][0][""doc_type""] == ""dataset"""
+FALSE,tests/api_test.py::test_list_data_doc_type_filter,Prueft: list data doc type filter.,"def test_list_data_doc_type_filter() -> None:
+    client = _create_client()
+    r = client.get(
+        ""/api/v1/data?doc_type=data&doc_type=dataset"",
+        headers=_auth_headers(),
+    )
+    assert r.status_code == 200
+    assert r.json()[""total_items""] == 2
+    r_data = client.get(""/api/v1/data?doc_type=data"", headers=_auth_headers())
+    assert r_data.status_code == 200
+    body = r_data.json()
+    assert body[""total_items""] == 1
+    assert body[""items""][0][""doc_type""] == ""data""
+    assert ""content"" not in body[""items""][0]"
+FALSE,tests/api_test.py::test_list_data_doc_type_invalid,Prueft: list data doc type invalid.,"def test_list_data_doc_type_invalid() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/data?doc_type=foo"", headers=_auth_headers())
+    assert response.status_code == 422
+    assert ""doc_type"" in response.json()[""detail""].lower()"
+FALSE,tests/api_test.py::test_list_data_with_pagination,Prueft: list data with pagination.,"def test_list_data_with_pagination() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/data?page=1&page_size=2"", headers=_auth_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[""page""] == 1
+    assert payload[""page_size""] == 2
+    assert payload[""total_items""] == 2
+    assert len(payload[""items""]) == 2
+    assert payload[""items""][0][""timestamp_ms""] > payload[""items""][1][""timestamp_ms""]
+    for item in payload[""items""]:
+        assert ""content"" not in item"
+FALSE,tests/api_test.py::test_list_events_with_pagination,Prueft: list events with pagination.,"def test_list_events_with_pagination() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/events?page=1&page_size=2"", headers=_auth_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[""page""] == 1
+    assert payload[""page_size""] == 2
+    assert payload[""total_items""] == 2
+    assert len(payload[""items""]) == 2
+    assert payload[""items""][0][""timestamp_ms""] > payload[""items""][1][""timestamp_ms""]"
+FALSE,tests/api_test.py::test_list_processes_with_pagination,Prueft: list processes with pagination.,"def test_list_processes_with_pagination() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/pipelines?page=1&page_size=2"", headers=_auth_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[""page""] == 1
+    assert payload[""page_size""] == 2
+    assert payload[""total_items""] == 2
+    assert len(payload[""items""]) == 2
+    assert payload[""items""][0][""timestamp_ms""] > payload[""items""][1][""timestamp_ms""]"
+FALSE,tests/api_test.py::test_list_subprocesses_with_pagination,Prueft: list subprocesses with pagination.,"def test_list_subprocesses_with_pagination() -> None:
+    client = _create_client()
+    response = client.get(""/api/v1/plugin-workers?page=1&page_size=1"", headers=_auth_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[""page""] == 1
+    assert payload[""page_size""] == 1
+    assert payload[""total_items""] == 1
+    assert len(payload[""items""]) == 1
+    assert payload[""items""][0][""timestamp_ms""] == 200"
+FALSE,tests/api_test.py::test_stop_process,Prueft: stop process.,"def test_stop_process() -> None:
+    client = _create_client()
+    client.post(
+        ""/api/v1/pipelines"",
+        headers=_auth_headers(),
+        json={
+            ""pipeline_id"": ""proc_stop_me"",
+            ""input_dataset_id"": ""ds_z"",
+            ""dataflow"": {
+                ""nodes"": [{""subprocess_id"": ""F1"", ""subprocess_type"": ""FetchFeedItems""}],
+                ""edges"": [],
+            },
+            ""plugin_config"": {},
+        },
+    )
+    r = client.post(
+        ""/api/v1/pipelines/proc_stop_me/stop"",
+        headers=_auth_headers(),
+        json={""reason"": ""test""},
+    )
+    assert r.status_code == 200
+    assert r.json()[""status""] == ""stopped""
+    assert r.json().get(""cancelled_reason"") == ""test"""
+FALSE,tests/clustering_dbscan_test.py::test_all_noise_when_min_samples_not_met,Prueft: all noise when min samples not met.,"@pytest.mark.asyncio
+async def test_all_noise_when_min_samples_not_met() -> None:
+    plugin = ClusteringDBSCAN()
+    ctx = SubprocessContext(
+        process_id=""p1"",
+        subprocess_id=""s1"",
+        subprocess_type=""Clustering_DBSCAN"",
+        config={""eps"": 0.01, ""min_samples"": 10},
+        input_data=[
+            Data(data_id=""a"", content={""embedding"": [0.0, 0.0]}, type=""output""),
+            Data(data_id=""b"", content={""embedding"": [1.0, 1.0]}, type=""output""),
+        ],
+    )
+    repo = FakeDatasetRepo()
+    states = await plugin.run(context=ctx, dataset_repository=repo)
+
+    assert states[0].quality == 0.1
+    assert len(repo.inserted) == 1
+    assert repo.inserted[0][""is_noise""] is True
+    assert repo.inserted[0][""cluster_label""] == -1
+    assert set(repo.inserted[0][""data_ids""]) == {""a"", ""b""}"
+FALSE,tests/clustering_dbscan_test.py::test_dbscan_two_clusters,Prueft: dbscan two clusters.,"@pytest.mark.asyncio
+async def test_dbscan_two_clusters() -> None:
+    plugin = ClusteringDBSCAN()
+    ctx = SubprocessContext(
+        process_id=""p1"",
+        subprocess_id=""s1"",
+        subprocess_type=""Clustering_DBSCAN"",
+        config={""eps"": 0.5, ""min_samples"": 2, ""metric"": ""euclidean""},
+        input_data=[
+            Data(data_id=""a"", content={""embedding"": [0.0, 0.0]}, type=""output""),
+            Data(data_id=""b"", content={""embedding"": [0.1, 0.0]}, type=""output""),
+            Data(data_id=""c"", content={""embedding"": [10.0, 10.0]}, type=""output""),
+            Data(data_id=""d"", content={""embedding"": [10.1, 10.0]}, type=""output""),
+        ],
+    )
+    repo = FakeDatasetRepo()
+    states = await plugin.run(context=ctx, dataset_repository=repo)
+
+    assert len(states) == 1
+    assert states[0].status == TransformationStatus.FINISHED
+    assert states[0].quality == 1.0
+    assert len(states[0].output_data_ids) == 2
+    assert len(repo.inserted) == 2
+    labels = {d[""cluster_label""] for d in repo.inserted}
+    assert labels == {0, 1}
+    for d in repo.inserted:
+        assert d[""type""] == ""cluster""
+        assert d[""algorithm""] == ""DBSCAN""
+        assert len(d[""data_ids""]) == 2"
+FALSE,tests/clustering_hdbscan_plugin_test.py::test_hdbscan_all_noise_when_min_cluster_size_not_met,Prueft: hdbscan all noise when min cluster size not met.,"@pytest.mark.asyncio
+async def test_hdbscan_all_noise_when_min_cluster_size_not_met() -> None:
+    plugin = ClusteringHDBSCAN()
+    ctx = SubprocessContext(
+        process_id=""p1"",
+        subprocess_id=""s1"",
+        subprocess_type=""Clustering_HDBSCAN"",
+        config={""min_cluster_size"": 10, ""metric"": ""euclidean""},
+        input_data=[
+            Data(data_id=""a"", content={""embedding"": [0.0, 0.0]}, type=""output""),
+            Data(data_id=""b"", content={""embedding"": [1.0, 1.0]}, type=""output""),
+        ],
+    )
+    repo = FakeDatasetRepo()
+    states = await plugin.run(context=ctx, dataset_repository=repo)
+
+    assert states[0].quality == 0.1
+    assert len(repo.inserted) == 1
+    assert repo.inserted[0][""is_noise""] is True
+    assert repo.inserted[0][""cluster_label""] == -1
+    assert set(repo.inserted[0][""data_ids""]) == {""a"", ""b""}"
+FALSE,tests/clustering_hdbscan_plugin_test.py::test_hdbscan_two_clusters,Prueft: hdbscan two clusters.,"@pytest.mark.asyncio
+async def test_hdbscan_two_clusters() -> None:
+    plugin = ClusteringHDBSCAN()
+    ctx = SubprocessContext(
+        process_id=""p1"",
+        subprocess_id=""s1"",
+        subprocess_type=""Clustering_HDBSCAN"",
+        config={
+            ""min_cluster_size"": 2,
+            ""min_samples"": 1,
+            ""metric"": ""euclidean"",
+        },
+        input_data=[
+            Data(data_id=""a"", content={""embedding"": [0.0, 0.0]}, type=""output""),
+            Data(data_id=""b"", content={""embedding"": [0.05, 0.0]}, type=""output""),
+            Data(data_id=""c"", content={""embedding"": [50.0, 50.0]}, type=""output""),
+            Data(data_id=""d"", content={""embedding"": [50.05, 50.0]}, type=""output""),
+        ],
+    )
+    repo = FakeDatasetRepo()
+    states = await plugin.run(context=ctx, dataset_repository=repo)
+
+    assert len(states) == 1
+    assert states[0].status == TransformationStatus.FINISHED
+    assert states[0].quality == 1.0
+    assert len(states[0].output_data_ids) == 2
+    assert len(repo.inserted) == 2
+    labels = {d[""cluster_label""] for d in repo.inserted}
+    assert labels == {0, 1}
+    for d in repo.inserted:
+        assert d[""type""] == ""cluster""
+        assert d[""algorithm""] == ""HDBSCAN""
+        assert len(d[""data_ids""]) == 2"
+FALSE,tests/cors_test.py::test_cors_regex_allows_dflowp_online_variants,Prueft: cors regex allows dflowp online variants.,"@pytest.mark.parametrize(
+    ""origin"",
+    [
+        ""https://x.dflowp.online"",
+        ""https://dflowp.online"",
+        ""https://foo-bar.baz.dflowp.online"",
+        ""https://dflowp.online:8443"",
+        ""http://app.dflowp.online:3000"",
+    ],
+)
+def test_cors_regex_allows_dflowp_online_variants(origin: str) -> None:
+    assert _rx.fullmatch(origin) is not None, origin"
+FALSE,tests/cors_test.py::test_cors_regex_rejects_unrelated_origins,Prueft: cors regex rejects unrelated origins.,"@pytest.mark.parametrize(
+    ""origin"",
+    [
+        ""https://evil.com"",
+        ""https://dflowp-online.evil.com"",
+        ""https://notdflowp.online"",
+    ],
+)
+def test_cors_regex_rejects_unrelated_origins(origin: str) -> None:
+    assert _rx.fullmatch(origin) is None, origin"
+FALSE,tests/database_test.py::test_data_item_repository_crud,Testet DataItemRepository (unified repository) direkt.,"@pytest.mark.asyncio
+async def test_data_item_repository_crud(db_session):
+    """"""Testet DataItemRepository (unified repository) direkt.""""""
+    repo = DataItemRepository()
+    await repo.create_indexes()
+
+    # Test: Data-Dokument einfügen
+    data_doc = {
+        ""id"": ""data_item_test_001"",
+        ""doc_type"": ""data"",
+        ""type"": ""output"",
+        ""content"": {""value"": 100},
+    }
+    data_id = await repo.insert(data_doc)
+    assert data_id
+
+    found_data = await repo.find_by_id(""data_item_test_001"")
+    assert found_data is not None
+    assert found_data[""id""] == ""data_item_test_001""
+    assert found_data[""doc_type""] == ""data""
+    assert found_data[""content""][""value""] == 100
+    assert isinstance(found_data[""timestamp_ms""], int)
+    assert isinstance(found_data[""timestamp_human""], str)
+    assert TIMESTAMP_HUMAN_PATTERN.match(found_data[""timestamp_human""])
+
+    # Test: Dataset-Dokument einfügen
+    dataset_doc = {
+        ""id"": ""dataset_item_test_001"",
+        ""doc_type"": ""dataset"",
+        ""data_ids"": [""data_1"", ""data_2"", ""data_3""],
+    }
+    dataset_id = await repo.insert(dataset_doc)
+    assert dataset_id
+
+    found_dataset = await repo.find_by_id(""dataset_item_test_001"")
+    assert found_dataset is not None
+    assert found_dataset[""id""] == ""dataset_item_test_001""
+    assert found_dataset[""doc_type""] == ""dataset""
+    assert len(found_dataset[""data_ids""]) == 3
+    assert isinstance(found_dataset[""timestamp_ms""], int)
+    assert isinstance(found_dataset[""timestamp_human""], str)
+    assert TIMESTAMP_HUMAN_PATTERN.match(found_dataset[""timestamp_human""])
+
+    # Cleanup
+    if should_delete():
+        await db_session[DataItemRepository.COLLECTION_NAME].delete_many(
+            {""id"": {""$in"": [""data_item_test_001"", ""dataset_item_test_001""]}}
+        )"
+FALSE,tests/database_test.py::test_data_item_repository_type_validation,Testet dass DataItemRepository doc_type validiert.,"@pytest.mark.asyncio
+async def test_data_item_repository_type_validation(db_session):
+    """"""Testet dass DataItemRepository doc_type validiert.""""""
+    repo = DataItemRepository()
+    await repo.create_indexes()
+
+    # Test: Fehler bei fehlender doc_type
+    with pytest.raises(ValueError, match=""doc_type field is required""):
+        await repo.insert({""id"": ""test_001"", ""content"": {}})
+
+    # Test: Fehler bei ungültigem doc_type
+    with pytest.raises(ValueError, match=""Invalid doc_type""):
+        await repo.insert({
+            ""id"": ""test_002"",
+            ""doc_type"": ""invalid"",
+            ""content"": {}
+        })
+
+    # Test: Fehler bei Data ohne content
+    with pytest.raises(ValueError, match=""content field is required""):
+        await repo.insert({
+            ""id"": ""test_003"",
+            ""doc_type"": ""data""
+        })
+
+    # Test: Fehler bei Dataset ohne data_ids
+    with pytest.raises(ValueError, match=""data_ids field is required""):
+        await repo.insert({
+            ""id"": ""test_004"",
+            ""doc_type"": ""dataset""
+        })"
+FALSE,tests/database_test.py::test_data_repository_crud,Testet DataRepository: Insert und Find (Wrapper-Test).,"@pytest.mark.asyncio
+async def test_data_repository_crud(db_session):
+    """"""Testet DataRepository: Insert und Find (Wrapper-Test).""""""
+    repo = DataRepository()
+    await repo.create_indexes()
+
+    data = {
+        ""data_id"": ""data_test_001"",
+        ""type"": ""output"",
+        ""content"": {""value"": 42},
+    }
+    inserted_id = await repo.insert(data)
+    assert inserted_id
+
+    found = await repo.find_by_id(""data_test_001"")
+    assert found is not None
+    assert found[""data_id""] == ""data_test_001""
+    assert found[""content""][""value""] == 42
+    # Wrapper soll doc_type hinzugefügt haben
+    assert found.get(""doc_type"") == ""data""
+
+    if should_delete():
+        # Cleanup in der neuen unified collection
+        await db_session[DataItemRepository.COLLECTION_NAME].delete_one(
+            {""id"": ""data_test_001""}
+        )"
+FALSE,tests/database_test.py::test_dataset_repository_crud,Testet DatasetRepository: Insert und Find (Wrapper-Test).,"@pytest.mark.asyncio
+async def test_dataset_repository_crud(db_session):
+    """"""Testet DatasetRepository: Insert und Find (Wrapper-Test).""""""
+    repo = DatasetRepository()
+    await repo.create_indexes()
+
+    dataset = {
+        ""dataset_id"": ""ds_test_001"",
+        ""data_ids"": [""data_1"", ""data_2""],
+    }
+    inserted_id = await repo.insert(dataset)
+    assert inserted_id
+
+    found = await repo.find_by_id(""ds_test_001"")
+    assert found is not None
+    assert found[""dataset_id""] == ""ds_test_001""
+    assert len(found[""data_ids""]) == 2
+    # Wrapper soll doc_type hinzugefügt haben
+    assert found.get(""doc_type"") == ""dataset""
+
+    # Cleanup
+    if should_delete():
+        # Cleanup in der neuen unified collection
+        await db_session[DataItemRepository.COLLECTION_NAME].delete_one(
+            {""id"": ""ds_test_001""}
+        )"
+FALSE,tests/database_test.py::test_event_repository_crud,"Testet EventRepository: Insert, Find, Count.","@pytest.mark.asyncio
+async def test_event_repository_crud(db_session):
+    """"""Testet EventRepository: Insert, Find, Count.""""""
+    repo = EventRepository()
+    await repo.create_indexes()
+
+    event = {
+        ""pipeline_id"": ""proc_evt_001"",
+        ""plugin_worker_id"": ""sub_evt_001"",
+        ""event_type"": ""EVENT_STARTED"",
+        ""plugin_worker_replica_id"": 1,
+    }
+    inserted_id = await repo.insert(event)
+    assert inserted_id
+
+    count = await repo.count_by_pipeline(""proc_evt_001"")
+    assert count >= 1
+
+    events = []
+    async for e in repo.find_by_pipeline_id(""proc_evt_001""):
+        events.append(e)
+    assert len(events) >= 1
+    assert events[0][""event_type""] == ""EVENT_STARTED""
+
+    latest = await repo.get_latest_event(""proc_evt_001"", ""sub_evt_001"")
+    assert latest is not None
+    assert latest[""event_type""] == ""EVENT_STARTED""
+    assert isinstance(latest[""timestamp_ms""], int)
+    assert isinstance(latest[""timestamp_human""], str)
+    assert TIMESTAMP_HUMAN_PATTERN.match(latest[""timestamp_human""])
+
+    if should_delete():
+        await db_session[EventRepository.COLLECTION_NAME].delete_many(
+            {""pipeline_id"": ""proc_evt_001""}
+        )
+
+    await db_session[EventRepository.COLLECTION_NAME].delete_many(
+        {""pipeline_id"": ""proc_evt_001""}
+    )"
+FALSE,tests/database_test.py::test_mongodb_connection,Testet ob die MongoDB-Verbindung hergestellt werden kann.,"@pytest.mark.asyncio
+async def test_mongodb_connection():
+    """"""Testet ob die MongoDB-Verbindung hergestellt werden kann.""""""
+    uri = os.environ.get(""MONGODB_URI"", resolve_mongodb_uri())
+    db = await connect_to_mongodb(uri=uri, database_name=""dflowp_test"")
+    assert db is not None
+    assert db.name == ""dflowp_test""
+
+    # Ping zur Bestätigung
+    await db.command(""ping"")
+
+    await close_mongodb_connection()"
+FALSE,tests/database_test.py::test_mongodb_connection_reuses_singleton,Testet ob mehrfache Verbindungen dieselbe Instanz nutzen.,"@pytest.mark.asyncio
+async def test_mongodb_connection_reuses_singleton():
+    """"""Testet ob mehrfache Verbindungen dieselbe Instanz nutzen.""""""
+    uri = os.environ.get(""MONGODB_URI"", resolve_mongodb_uri())
+    db1 = await connect_to_mongodb(
+        uri=uri,
+        database_name=""dflowp_test"",
+    )
+    db2 = await connect_to_mongodb(
+        uri=uri,
+        database_name=""dflowp_test"",
+    )
+    assert db1 is db2
+    await close_mongodb_connection()"
+FALSE,tests/database_test.py::test_process_repository_crud,Testet ProcessRepository: Insert und Find.,"@pytest.mark.asyncio
+async def test_process_repository_crud(db_session):
+    """"""Testet ProcessRepository: Insert und Find.""""""
+    repo = ProcessRepository()
+    await repo.create_indexes()
+
+    process = {
+        ""pipeline_id"": ""proc_test_001"",
+        ""software_version"": ""1.0.0"",
+        ""status"": ""running"",
+    }
+    inserted_id = await repo.insert(process)
+    assert inserted_id
+
+    found = await repo.find_by_id(""proc_test_001"")
+    assert found is not None
+    assert found[""pipeline_id""] == ""proc_test_001""
+    assert found[""status""] == ""running""
+    assert isinstance(found[""timestamp_ms""], int)
+    assert isinstance(found[""timestamp_human""], str)
+    assert TIMESTAMP_HUMAN_PATTERN.match(found[""timestamp_human""])
+
+    updated = await repo.update(""proc_test_001"", {""status"": ""completed""})
+    assert updated is True
+
+    found2 = await repo.find_by_id(""proc_test_001"")
+    assert found2[""status""] == ""completed""
+
+    # Cleanup
+    if should_delete():
+        await db_session[ProcessRepository.COLLECTION_NAME].delete_one(
+            {""pipeline_id"": ""proc_test_001""}
+        )"
+FALSE,tests/event_broker_test.py::test_broker_marks_delivered_on_2xx,Prueft: broker marks delivered on 2xx.,"@pytest.mark.asyncio
+async def test_broker_marks_delivered_on_2xx(monkeypatch) -> None:
+    repo = _FakeEventRepository()
+    broker = EventBroker(
+        eventsystem_url=""http://eventsystem:8001"",
+        event_repository=repo,
+    )
+
+    monkeypatch.setattr(""dflowp.event_broker.app.httpx.AsyncClient"", lambda timeout: _FakeClient(204))
+
+    delivered = await broker.run_once()
+    assert delivered == 1
+    assert repo.delivered == [""evt_001""]
+    assert repo.failed == []"
+FALSE,tests/event_broker_test.py::test_broker_marks_failed_on_non_2xx,Prueft: broker marks failed on non 2xx.,"@pytest.mark.asyncio
+async def test_broker_marks_failed_on_non_2xx(monkeypatch) -> None:
+    repo = _FakeEventRepository()
+    broker = EventBroker(
+        eventsystem_url=""http://eventsystem:8001"",
+        event_repository=repo,
+    )
+
+    monkeypatch.setattr(""dflowp.event_broker.app.httpx.AsyncClient"", lambda timeout: _FakeClient(500))
+
+    delivered = await broker.run_once()
+    assert delivered == 0
+    assert repo.delivered == []
+    assert len(repo.failed) == 1"
+FALSE,tests/eventsystem_test.py::test_event_bus_multiple_handlers,Testet ob mehrere Handler für denselben Event-Typ aufgerufen werden.,"@pytest.mark.asyncio
+async def test_event_bus_multiple_handlers(event_bus_fresh):
+    """"""Testet ob mehrere Handler für denselben Event-Typ aufgerufen werden.""""""
+    bus = event_bus_fresh
+    r1: list[dict] = []
+    r2: list[dict] = []
+
+    async def h1(evt: dict):
+        r1.append(evt)
+
+    async def h2(evt: dict):
+        r2.append(evt)
+
+    bus.subscribe(EVENT_COMPLETED, h1)
+    bus.subscribe(EVENT_COMPLETED, h2)
+
+    await bus.publish({
+        ""pipeline_id"": ""p2"",
+        ""plugin_worker_id"": ""s2"",
+        ""event_type"": EVENT_COMPLETED,
+        ""event_time"": datetime.now(timezone.utc),
+    })
+
+    assert len(r1) == 1
+    assert len(r2) == 1
+    assert r1[0][""event_type""] == EVENT_COMPLETED
+    assert r2[0][""event_type""] == EVENT_COMPLETED"
+FALSE,tests/eventsystem_test.py::test_event_bus_publish_subscribe,Testet Publish und Subscribe ohne Persistenz.,"@pytest.mark.asyncio
+async def test_event_bus_publish_subscribe(event_bus_fresh):
+    """"""Testet Publish und Subscribe ohne Persistenz.""""""
+    bus = event_bus_fresh
+    received: list[dict] = []
+
+    async def handler(evt: dict):
+        received.append(evt)
+
+    bus.subscribe(EVENT_STARTED, handler)
+    await bus.publish({
+        ""pipeline_id"": ""p1"",
+        ""plugin_worker_id"": ""s1"",
+        ""event_type"": EVENT_STARTED,
+        ""event_time"": datetime.now(timezone.utc),
+    })
+
+    assert len(received) == 1
+    assert received[0][""pipeline_id""] == ""p1""
+    assert received[0][""plugin_worker_id""] == ""s1""
+    assert received[0][""event_type""] == EVENT_STARTED"
+FALSE,tests/eventsystem_test.py::test_event_bus_wildcard_subscribe,Testet Wildcard-Subscribe (*) für alle Event-Typen.,"@pytest.mark.asyncio
+async def test_event_bus_wildcard_subscribe(event_bus_fresh):
+    """"""Testet Wildcard-Subscribe (*) für alle Event-Typen.""""""
+    bus = event_bus_fresh
+    received: list[dict] = []
+
+    async def handler(evt: dict):
+        received.append(evt)
+
+    bus.subscribe(""*"", handler)
+    await bus.publish({
+        ""pipeline_id"": ""p3"",
+        ""plugin_worker_id"": ""s3"",
+        ""event_type"": EVENT_FAILED,
+        ""event_time"": datetime.now(timezone.utc),
+    })
+
+    assert len(received) == 1
+    assert received[0][""event_type""] == EVENT_FAILED"
+FALSE,tests/eventsystem_test.py::test_event_bus_with_persistence,Testet Event-Bus mit persistenter Speicherung in MongoDB.,"@pytest.mark.asyncio
+async def test_event_bus_with_persistence(mongodb_connection):
+    """"""Testet Event-Bus mit persistenter Speicherung in MongoDB.""""""
+    from dflowp_core.database.event_repository import EventRepository
+
+    bus = EventBus()  # Frischer Bus für isolierten Test
+    repo = EventRepository()
+    bus.set_event_repository(repo)
+    await repo.create_indexes()
+
+    received: list[dict] = []
+    bus.subscribe(EVENT_STARTED, lambda e: received.append(e))
+
+    await bus.publish({
+        ""pipeline_id"": ""proc_persist_1"",
+        ""plugin_worker_id"": ""sub_persist_1"",
+        ""event_type"": EVENT_STARTED,
+        ""plugin_worker_replica_id"": 1,
+    })
+
+    assert len(received) == 1
+
+    # Prüfen ob in DB gespeichert
+    count = await repo.count_by_pipeline(""proc_persist_1"")
+    assert count >= 1
+
+    events_from_db = []
+    async for e in repo.find_by_pipeline_id(""proc_persist_1""):
+        events_from_db.append(e)
+    assert len(events_from_db) >= 1
+    assert events_from_db[0][""event_type""] == EVENT_STARTED"
+FALSE,tests/eventsystem_test.py::test_event_service_db_first_emits_to_repo_and_local_subscribers,DB-first Emit speichert zuerst und triggert lokale Handler.,"@pytest.mark.asyncio
+async def test_event_service_db_first_emits_to_repo_and_local_subscribers() -> None:
+    """"""DB-first Emit speichert zuerst und triggert lokale Handler.""""""
+
+    class _FakeRepo:
+        def __init__(self) -> None:
+            self.inserted: list[dict] = []
+
+        async def insert(self, event: dict) -> str:
+            self.inserted.append(event)
+            return ""evt_1""
+
+    svc = EventService(EventBus())
+    repo = _FakeRepo()
+    svc.set_event_repository(repo)
+    received: list[dict] = []
+    svc.subscribe(EVENT_STARTED, lambda e: received.append(e))
+
+    await svc.emit_started(
+        pipeline_id=""proc_db_first"", plugin_worker_id=""sub_db_first""
+    )
+
+    assert len(repo.inserted) == 1
+    assert repo.inserted[0][""event_type""] == EVENT_STARTED
+    assert len(received) >= 1"
+FALSE,tests/eventsystem_test.py::test_event_service_emit_completed,Testet EventService.emit_completed.,"@pytest.mark.asyncio
+async def test_event_service_emit_completed():
+    """"""Testet EventService.emit_completed.""""""
+    svc = EventService(EventBus())
+    received: list[dict] = []
+
+    svc.subscribe(EVENT_COMPLETED, lambda e: received.append(e))
+
+    await svc.emit_completed(
+        pipeline_id=""proc_svc_2"",
+        plugin_worker_id=""sub_svc_2"",
+    )
+
+    assert len(received) == 1
+    assert received[0][""event_type""] == EVENT_COMPLETED"
+FALSE,tests/eventsystem_test.py::test_event_service_emit_failed,Testet EventService.emit_failed mit Fehlermeldung.,"@pytest.mark.asyncio
+async def test_event_service_emit_failed():
+    """"""Testet EventService.emit_failed mit Fehlermeldung.""""""
+    svc = EventService(EventBus())
+    received: list[dict] = []
+
+    svc.subscribe(EVENT_FAILED, lambda e: received.append(e))
+
+    await svc.emit_failed(
+        pipeline_id=""proc_svc_3"",
+        plugin_worker_id=""sub_svc_3"",
+        error=""Test-Fehler"",
+    )
+
+    assert len(received) == 1
+    assert received[0][""event_type""] == EVENT_FAILED
+    assert received[0].get(""payload"", {}).get(""error"") == ""Test-Fehler"""
+FALSE,tests/eventsystem_test.py::test_event_service_emit_started,Testet EventService.emit_started.,"@pytest.mark.asyncio
+async def test_event_service_emit_started():
+    """"""Testet EventService.emit_started.""""""
+    svc = EventService(EventBus())
+    received: list[dict] = []
+
+    def handler(evt: dict):
+        received.append(evt)
+
+    svc.subscribe(EVENT_STARTED, handler)
+
+    await svc.emit_started(
+        pipeline_id=""proc_svc_1"",
+        plugin_worker_id=""sub_svc_1"",
+        payload={""extra"": ""data""},
+    )
+
+    assert len(received) == 1
+    assert received[0][""pipeline_id""] == ""proc_svc_1""
+    assert received[0][""plugin_worker_id""] == ""sub_svc_1""
+    assert received[0][""event_type""] == EVENT_STARTED
+    assert received[0].get(""payload"", {}).get(""extra"") == ""data""
+    assert ""event_time"" in received[0]"
+FALSE,tests/eventsystem_test.py::test_eventsystem_subscription_and_ingest_endpoints,Eventsystem-Endpoint nimmt Events an und bestätigt Empfang.,"def test_eventsystem_subscription_and_ingest_endpoints() -> None:
+    """"""Eventsystem-Endpoint nimmt Events an und bestätigt Empfang.""""""
+    client = TestClient(eventsystem_app)
+    eventsystem_app.dependency_overrides = {}
+    # Isoliert Testzustand zwischen Testfällen.
+    import dflowp.eventsystem.app as eventsystem_module
+    eventsystem_module._SUBSCRIBERS.clear()
+    subscribe_response = client.post(
+        ""/internal/subscriptions"",
+        json={
+            ""subscriber_id"": ""runtime-1"",
+            ""callback_url"": ""http://runtime-1:8002"",
+        },
+    )
+    assert subscribe_response.status_code == 201
+    subscribe_payload = subscribe_response.json()
+    assert subscribe_payload[""status""] == ""registered""
+
+    list_response = client.get(""/internal/subscriptions"")
+    assert list_response.status_code == 200
+    list_payload = list_response.json()
+    assert list_payload[""subscriber_count""] >= 1
+
+    response = client.post(
+        ""/internal/events"",
+        json={
+            ""pipeline_id"": ""proc_evt"",
+            ""plugin_worker_id"": ""sub_evt"",
+            ""event_type"": EVENT_STARTED,
+            ""event_time"": ""2026-04-08T10:00:00Z"",
+            ""plugin_worker_replica_id"": 1,
+        },
+    )
+    assert response.status_code == 204"
+FALSE,tests/eventsystem_test.py::test_eventsystem_uses_callback_url_without_double_suffix,Eventsystem darf /internal/events nicht doppelt an Callback anhängen.,"@pytest.mark.asyncio
+async def test_eventsystem_uses_callback_url_without_double_suffix(monkeypatch) -> None:
+    """"""Eventsystem darf /internal/events nicht doppelt an Callback anhängen.""""""
+    from dflowp.eventsystem import app as eventsystem_module
+
+    eventsystem_module._SUBSCRIBERS[""runtime-1""] = ""http://worker:8002/internal/events""
+
+    post_mock = AsyncMock()
+    fake_client = AsyncMock()
+    fake_client.__aenter__.return_value.post = post_mock
+    fake_client.__aexit__.return_value = None
+    monkeypatch.setattr(eventsystem_module.httpx, ""AsyncClient"", lambda timeout: fake_client)
+
+    await eventsystem_module.receive_event({""event_type"": EVENT_COMPLETED})
+
+    assert post_mock.await_count == 1
+    args, kwargs = post_mock.await_args
+    assert args[0] == ""http://worker:8002/internal/events"""
+FALSE,tests/logging_test.py::test_color_formatter_renders_colored_levels,Prueft: color formatter renders colored levels.,"def test_color_formatter_renders_colored_levels() -> None:
+    formatter = _ColorFormatter(""%(levelname)s %(message)s"")
+    record = logging.LogRecord(
+        name=""test"",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg=""kaputt"",
+        args=(),
+        exc_info=None,
+    )
+    rendered = formatter.format(record)
+    assert ""\x1b["" in rendered
+    assert ""ERROR"" in rendered
+    assert ""kaputt"" in rendered"
+FALSE,tests/logging_test.py::test_component_logger_prefix_and_methods,Prueft: component logger prefix and methods.,"def test_component_logger_prefix_and_methods() -> None:
+    logger = get_component_logger(""Eventsystem"")
+    assert logger.extra[""source""] == ""Eventsystem""
+    assert logger.logger.name == ""Eventsystem""
+    assert hasattr(logger.logger, ""progress"")
+    assert hasattr(logger.logger, ""success"")"
+FALSE,tests/logging_test.py::test_process_subprocess_logger_name_contains_ids,Prueft: process subprocess logger name contains ids.,"def test_process_subprocess_logger_name_contains_ids() -> None:
+    logger = get_process_subprocess_logger(
+        process_id=""proc_alpha"",
+        subprocess_id=""EmbedData1"",
+    )
+    assert logger.extra[""source""] == ""[proc_alpha][EmbedData1]""
+    assert logger.logger.name == ""dflowp.[proc_alpha][EmbedData1]"""
+FALSE,tests/plugin_services_test.py::test_clustering_hdbscan_plugin_info_and_health,Prueft: clustering hdbscan plugin info and health.,"def test_clustering_hdbscan_plugin_info_and_health() -> None:
+    module = _load_module(
+        ""plugin_clustering_hdbscan_app"",
+        ""dflowp/plugin_clustering_hdbscan/app.py"",
+    )
+    client = TestClient(module.app)
+    health = client.get(""/health"")
+    assert health.status_code == 200
+    assert health.json()[""status""] == ""ok""
+
+    info = client.get(""/plugin/info"")
+    assert info.status_code == 200
+    payload = info.json()
+    assert payload[""service_name""] == ""plugin-clustering-hdbscan""
+    assert payload[""plugin_name""] == ""Clustering_HDBSCAN"""
+FALSE,tests/plugin_services_test.py::test_clustering_plugin_info_and_health,Prueft: clustering plugin info and health.,"def test_clustering_plugin_info_and_health() -> None:
+    module = _load_module(
+        ""plugin_clustering_dbscan_app"",
+        ""dflowp/plugin_clustering_dbscan/app.py"",
+    )
+    client = TestClient(module.app)
+    health = client.get(""/health"")
+    assert health.status_code == 200
+    assert health.json()[""status""] == ""ok""
+
+    info = client.get(""/plugin/info"")
+    assert info.status_code == 200
+    payload = info.json()
+    assert payload[""service_name""] == ""plugin-clustering-dbscan""
+    assert payload[""plugin_name""] == ""Clustering_DBSCAN"""
+FALSE,tests/plugin_services_test.py::test_embed_plugin_info_and_health,Prueft: embed plugin info and health.,"def test_embed_plugin_info_and_health() -> None:
+    module = _load_module(
+        ""plugin_embeddata_app"",
+        ""dflowp/plugin_embeddata/app.py"",
+    )
+    client = TestClient(module.app)
+    health = client.get(""/health"")
+    assert health.status_code == 200
+    assert health.json()[""status""] == ""ok""
+
+    info = client.get(""/plugin/info"")
+    assert info.status_code == 200
+    payload = info.json()
+    assert payload[""service_name""] == ""plugin-embeddata""
+    assert payload[""plugin_name""] == ""EmbedData"""
+FALSE,tests/plugin_services_test.py::test_fetch_plugin_info_and_health,Prueft: fetch plugin info and health.,"def test_fetch_plugin_info_and_health() -> None:
+    module = _load_module(
+        ""plugin_fetchfeeditems_app"",
+        ""dflowp/plugin_fetchfeeditems/app.py"",
+    )
+    client = TestClient(module.app)
+    health = client.get(""/health"")
+    assert health.status_code == 200
+    assert health.json()[""status""] == ""ok""
+
+    info = client.get(""/plugin/info"")
+    assert info.status_code == 200
+    payload = info.json()
+    assert payload[""plugin_name""] == ""FetchFeedItems""
+    assert payload[""status""] == ""ready"""
+FALSE,tests/plugin_services_test.py::test_plugin_directories_exist,Prueft: plugin directories exist.,"def test_plugin_directories_exist() -> None:
+    root = pathlib.Path(__file__).resolve().parents[1] / ""dflowp""
+    assert (root / ""plugin_fetchfeeditems"").is_dir()
+    assert (root / ""plugin_embeddata"").is_dir()
+    assert (root / ""plugin_clustering_dbscan"").is_dir()
+    assert (root / ""plugin_clustering_hdbscan"").is_dir()"
+FALSE,tests/plugin_services_test.py::test_remote_plugin_resolve_requires_plugin_name,Prueft: remote plugin resolve requires plugin name.,"@pytest.mark.asyncio
+async def test_remote_plugin_resolve_requires_plugin_name() -> None:
+    from dflowp_processruntime.plugins.remote_plugin import RemotePluginSubprocess
+    from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+
+    subprocess = RemotePluginSubprocess(""FetchFeedItems"")
+    context = SubprocessContext(
+        process_id=""p1"",
+        subprocess_id=""s1"",
+        subprocess_type=""FetchFeedItems"",
+        config={""plugin_service_name"": ""fetchfeeditems""},
+        input_data=[],
+    )
+    with pytest.raises(ValueError, match=""muss 'plugin' enthalten""):
+        await subprocess._resolve_service_url(context)"
+FALSE,tests/process_test.py::test_activate_pending_process_starts_only_ready_nodes_for_partial_reexecution,Bei partiellem Re-Execution-Clone (z. B. nur EmbedData1 auf Not Started) darf activate_pending_process nicht pauschal den Root neu starten.,"@pytest.mark.asyncio
+async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reexecution(
+    isolated_event_service,
+):
+    """"""
+    Bei partiellem Re-Execution-Clone (z. B. nur EmbedData1 auf Not Started)
+    darf activate_pending_process nicht pauschal den Root neu starten.
+    """"""
+    config = ProcessConfiguration.from_dict(
+        {
+            ""process_id"": ""proc_partial_reexec"",
+            ""software_version"": ""1.0.0"",
+            ""input_dataset_id"": ""ds_chain"",
+            ""dataflow"": {
+                ""nodes"": [
+                    {""subprocess_id"": ""FetchFeedItems1"", ""subprocess_type"": ""TypeA""},
+                    {""subprocess_id"": ""EmbedData1"", ""subprocess_type"": ""TypeB""},
+                ],
+                ""edges"": [{""from"": ""FetchFeedItems1"", ""to"": ""EmbedData1""}],
+            },
+            ""subprocess_config"": {},
+        }
+    )
+
+    process_repo = AsyncMock()
+    process_repo.update = AsyncMock(return_value=True)
+    process_repo.find_by_id = AsyncMock(
+        return_value={
+            ""pipeline_id"": ""proc_partial_reexec"",
+            ""process_id"": ""proc_partial_reexec"",
+            ""dataflow_state_id"": ""dfs_partial"",
+            ""configuration"": config.to_dict(),
+        }
+    )
+
+    dataflow_state_repo = AsyncMock()
+    dataflow_state_repo.update_node_state = AsyncMock(return_value=True)
+    dataflow_state_repo.get_dataflow_state = AsyncMock(
+        return_value={
+            ""nodes"": [
+                {
+                    ""subprocess_id"": ""FetchFeedItems1"",
+                    ""subprocess_type"": ""TypeA"",
+                    ""event_status"": ""EVENT_COMPLETED"",
+                    ""io_transformation_states"": [
+                        {
+                            ""input_data_id"": ""d1"",
+                            ""output_data_ids"": [""out_fetch_1""],
+                            ""status"": ""Finished"",
+                            ""quality"": 1.0,
+                        }
+                    ],
+                },
+                {
+                    ""subprocess_id"": ""EmbedData1"",
+                    ""subprocess_type"": ""TypeB"",
+                    ""event_status"": ""Not Started"",
+                    ""io_transformation_states"": [],
+                },
+            ],
+            ""edges"": [{""from"": ""FetchFeedItems1"", ""to"": ""EmbedData1""}],
+        }
+    )
+
+    async def mock_find_data(data_id: str):
+        return {""data_id"": data_id, ""content"": {""text"": data_id}, ""type"": ""output""}
+
+    data_repo = AsyncMock()
+    data_repo.find_by_id = mock_find_data
+    data_repo.insert = AsyncMock()
+
+    dataset_repo = AsyncMock()
+    dataset_repo.find_by_id = AsyncMock(return_value={""dataset_id"": ""ds_chain"", ""data_ids"": [""d1""]})
+
+    started: list[str] = []
+
+    async def mock_run(context, **kwargs):
+        started.append(context.subprocess_id)
+        return [
+            IOTransformationState(
+                input_data_id=context.input_data[0].data_id if context.input_data else ""none"",
+                output_data_ids=[f""out_{context.subprocess_id}""],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+
+    dummy = AsyncMock()
+    dummy.run = mock_run
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy,
+    )
+    engine.start()
+
+    ok = await engine.activate_pending_process(""proc_partial_reexec"")
+    assert ok is True
+    await asyncio.sleep(0.2)
+
+    assert ""EmbedData1"" in started
+    assert ""FetchFeedItems1"" not in started"
+FALSE,tests/process_test.py::test_dataflow_get_descendants_including_self,Descendants enthalten Knoten selbst und alle transitiven Nachfolger.,"def test_dataflow_get_descendants_including_self():
+    """"""Descendants enthalten Knoten selbst und alle transitiven Nachfolger.""""""
+    config = {
+        ""nodes"": [
+            {""subprocess_id"": ""A"", ""subprocess_type"": ""T""},
+            {""subprocess_id"": ""B"", ""subprocess_type"": ""T""},
+            {""subprocess_id"": ""C"", ""subprocess_type"": ""T""},
+            {""subprocess_id"": ""D"", ""subprocess_type"": ""T""},
+        ],
+        ""edges"": [
+            {""from"": ""A"", ""to"": ""B""},
+            {""from"": ""B"", ""to"": ""C""},
+            {""from"": ""A"", ""to"": ""D""},
+        ],
+    }
+    df = parse_dataflow(config)
+
+    assert df.get_descendants_including_self(""A"") == {""A"", ""B"", ""C"", ""D""}
+    assert df.get_descendants_including_self(""B"") == {""B"", ""C""}
+    assert df.get_descendants_including_self(""C"") == {""C""}"
+FALSE,tests/process_test.py::test_dataflow_get_node,get_node gibt den richtigen Knoten zurück.,"def test_dataflow_get_node():
+    """"""get_node gibt den richtigen Knoten zurück.""""""
+    df = parse_dataflow(_SIMPLE_DATAFLOW_CONFIG)
+
+    node = df.get_node(""B"")
+    assert node is not None
+    assert node.plugin_type == ""TypeB""
+
+    assert df.get_node(""NONEXISTENT"") is None"
+FALSE,tests/process_test.py::test_dataflow_node_add_or_update_io_state,DataflowNodeState.add_or_update_io_state fügt hinzu und aktualisiert korrekt.,"def test_dataflow_node_add_or_update_io_state():
+    """"""DataflowNodeState.add_or_update_io_state fügt hinzu und aktualisiert korrekt.""""""
+    node = DataflowNodeState(
+        plugin_worker_id=""A"",
+        plugin_type=""TypeA"",
+        event_status=""Not Started"",
+        io_transformation_states=[],
+    )
+
+    s1 = IOTransformationState(
+        input_data_id=""inp_1"",
+        output_data_ids=[""out_1""],
+        status=TransformationStatus.FINISHED,
+    )
+    node.add_or_update_io_state(s1)
+    assert len(node.io_transformation_states) == 1
+
+    # Aktualisieren: dieselbe input_data_id
+    s1_updated = IOTransformationState(
+        input_data_id=""inp_1"",
+        output_data_ids=[""out_1"", ""out_2""],
+        status=TransformationStatus.FINISHED,
+    )
+    node.add_or_update_io_state(s1_updated)
+    assert len(node.io_transformation_states) == 1
+    assert len(node.io_transformation_states[0].output_data_ids) == 2
+
+    # Hinzufügen: neue input_data_id
+    s2 = IOTransformationState(
+        input_data_id=""inp_2"",
+        output_data_ids=[""out_3""],
+        status=TransformationStatus.FINISHED,
+    )
+    node.add_or_update_io_state(s2)
+    assert len(node.io_transformation_states) == 2"
+FALSE,tests/process_test.py::test_dataflow_parsing_nodes_and_edges,DataFlow wird korrekt aus einem Dict geparst (Legacy-Keys → ``plugin_worker_id``/``plugin_type``).,"def test_dataflow_parsing_nodes_and_edges():
+    """"""DataFlow wird korrekt aus einem Dict geparst (Legacy-Keys → ``plugin_worker_id``/``plugin_type``).""""""
+    df = parse_dataflow(_SIMPLE_DATAFLOW_CONFIG)
+
+    assert len(df.nodes) == 2
+    assert len(df.edges) == 1
+    assert df.nodes[0].plugin_worker_id == ""A""
+    assert df.nodes[0].plugin_type == ""TypeA""
+    assert df.edges[0].from_node == ""A""
+    assert df.edges[0].to_node == ""B"""
+FALSE,tests/process_test.py::test_dataflow_root_nodes_multiple,Mehrere Root-Knoten werden alle erkannt.,"def test_dataflow_root_nodes_multiple():
+    """"""Mehrere Root-Knoten werden alle erkannt.""""""
+    config = {
+        ""nodes"": [
+            {""subprocess_id"": ""A"", ""subprocess_type"": ""T""},
+            {""subprocess_id"": ""B"", ""subprocess_type"": ""T""},
+            {""subprocess_id"": ""C"", ""subprocess_type"": ""T""},
+        ],
+        ""edges"": [
+            {""from"": ""A"", ""to"": ""C""},
+            {""from"": ""B"", ""to"": ""C""},
+        ],
+    }
+    df = parse_dataflow(config)
+    roots = set(df.get_root_nodes())
+
+    assert roots == {""A"", ""B""}"
+FALSE,tests/process_test.py::test_dataflow_root_nodes_single,Root-Knoten (ohne Vorgänger) werden korrekt erkannt.,"def test_dataflow_root_nodes_single():
+    """"""Root-Knoten (ohne Vorgänger) werden korrekt erkannt.""""""
+    df = parse_dataflow(_SIMPLE_DATAFLOW_CONFIG)
+    roots = df.get_root_nodes()
+
+    assert len(roots) == 1
+    assert roots[0] == ""A"""
+FALSE,tests/process_test.py::test_dataflow_state_from_dataflow,DataflowState wird korrekt aus einem DataFlow initialisiert.,"def test_dataflow_state_from_dataflow():
+    """"""DataflowState wird korrekt aus einem DataFlow initialisiert.""""""
+    df = parse_dataflow(_SIMPLE_DATAFLOW_CONFIG)
+    state = DataflowState.from_dataflow(df)
+
+    assert len(state.nodes) == 2
+    assert len(state.edges) == 1
+
+    node_a = state.get_node(""A"")
+    assert node_a is not None
+    assert node_a.event_status == ""Not Started""
+    assert node_a.io_transformation_states == []"
+FALSE,tests/process_test.py::test_dataflow_state_to_dict,DataflowState.to_dict erzeugt ein korrektes Dict.,"def test_dataflow_state_to_dict():
+    """"""DataflowState.to_dict erzeugt ein korrektes Dict.""""""
+    df = parse_dataflow(_SIMPLE_DATAFLOW_CONFIG)
+    state = DataflowState.from_dataflow(df)
+    d = state.to_dict()
+
+    assert ""nodes"" in d
+    assert ""edges"" in d
+    assert d[""nodes""][0][""plugin_worker_id""] == ""A""
+    assert d[""edges""][0][""from""] == ""A"""
+FALSE,tests/process_test.py::test_dataflow_successors_and_predecessors,get_successors und get_predecessors funktionieren korrekt.,"def test_dataflow_successors_and_predecessors():
+    """"""get_successors und get_predecessors funktionieren korrekt.""""""
+    config = {
+        ""nodes"": [
+            {""subprocess_id"": ""A"", ""subprocess_type"": ""T""},
+            {""subprocess_id"": ""B"", ""subprocess_type"": ""T""},
+            {""subprocess_id"": ""C"", ""subprocess_type"": ""T""},
+        ],
+        ""edges"": [
+            {""from"": ""A"", ""to"": ""B""},
+            {""from"": ""A"", ""to"": ""C""},
+        ],
+    }
+    df = parse_dataflow(config)
+
+    assert set(df.get_successors(""A"")) == {""B"", ""C""}
+    assert df.get_predecessors(""B"") == [""A""]
+    assert df.get_predecessors(""C"") == [""A""]
+    assert df.get_successors(""B"") == []
+    assert df.get_successors(""C"") == []"
+FALSE,tests/process_test.py::test_document_name_generator_format,Generierte Dokumentnamen folgen dem human-readable Pattern.,"def test_document_name_generator_format():
+    """"""Generierte Dokumentnamen folgen dem human-readable Pattern.""""""
+    doc_id = build_human_readable_document_id(domain=""news"", document_type=""ds"")
+    parts = doc_id.split(""_"")
+    assert len(parts) == 5
+    assert parts[-2] == ""news""
+    assert parts[-1] == ""ds"""
+FALSE,tests/process_test.py::test_embed_data_api_error_continues_other_items,API-Fehler bei einem Artikel stoppt nicht die Verarbeitung weiterer Artikel.,"@pytest.mark.asyncio
+async def test_embed_data_api_error_continues_other_items():
+    """"""API-Fehler bei einem Artikel stoppt nicht die Verarbeitung weiterer Artikel.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    call_count = 0
+
+    async def mock_create(input, model):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError(""Simulated API error"")
+        resp = MagicMock()
+        resp.data = [MagicMock(embedding=MOCK_EMBEDDING)]
+        return resp
+
+    context = _make_article_context(
+        [
+            {""title"": ""Bad Article"", ""summary"": ""Will fail""},
+            {""title"": ""Good Article"", ""summary"": ""Will succeed""},
+        ],
+        config={""openai_api_key"": ""test-key""},
+    )
+    plugin = EmbedData()
+
+    with patch(""openai.AsyncOpenAI"") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = mock_create
+        mock_openai_cls.return_value = mock_client
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 2
+    assert results[0].status == TransformationStatus.FAILED
+    assert results[1].status == TransformationStatus.FINISHED"
+FALSE,tests/process_test.py::test_embed_data_custom_attributes,Konfigurierte Attribute werden ausschließlich verwendet.,"@pytest.mark.asyncio
+async def test_embed_data_custom_attributes():
+    """"""Konfigurierte Attribute werden ausschließlich verwendet.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    captured: list[str] = []
+
+    async def mock_create(input, model):
+        captured.append(input)
+        resp = MagicMock()
+        resp.data = [MagicMock(embedding=MOCK_EMBEDDING)]
+        return resp
+
+    context = _make_article_context(
+        [{""title"": ""Title Only"", ""summary"": ""Ignored Summary""}],
+        config={""openai_api_key"": ""test-key"", ""embedding_attributes"": [""title""]},
+    )
+    plugin = EmbedData()
+
+    with patch(""openai.AsyncOpenAI"") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = mock_create
+        mock_openai_cls.return_value = mock_client
+
+        await plugin.run(context=context, data_repository=data_repo)
+
+    assert ""Title Only"" in captured[0]
+    assert ""Ignored Summary"" not in captured[0]"
+FALSE,tests/process_test.py::test_embed_data_custom_model,Das konfigurierte Modell wird an die OpenAI API übergeben.,"@pytest.mark.asyncio
+async def test_embed_data_custom_model():
+    """"""Das konfigurierte Modell wird an die OpenAI API übergeben.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    used_models: list[str] = []
+
+    async def mock_create(input, model):
+        used_models.append(model)
+        resp = MagicMock()
+        resp.data = [MagicMock(embedding=MOCK_EMBEDDING)]
+        return resp
+
+    context = _make_article_context(
+        [{""title"": ""Article""}],
+        config={""openai_api_key"": ""test-key"", ""model"": ""text-embedding-3-large""},
+    )
+    plugin = EmbedData()
+
+    with patch(""openai.AsyncOpenAI"") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = mock_create
+        mock_openai_cls.return_value = mock_client
+
+        await plugin.run(context=context, data_repository=data_repo)
+
+    assert used_models[0] == ""text-embedding-3-large"""
+FALSE,tests/process_test.py::test_embed_data_default_attributes_title_and_summary,Ohne Konfiguration werden title und summary embedded.,"@pytest.mark.asyncio
+async def test_embed_data_default_attributes_title_and_summary():
+    """"""Ohne Konfiguration werden title und summary embedded.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    captured: list[str] = []
+
+    async def mock_create(input, model):
+        captured.append(input)
+        resp = MagicMock()
+        resp.data = [MagicMock(embedding=MOCK_EMBEDDING)]
+        return resp
+
+    context = _make_article_context(
+        [{""title"": ""My Title"", ""summary"": ""My Summary"", ""link"": ""https://x.com""}],
+        config={""openai_api_key"": ""test-key""},
+    )
+    plugin = EmbedData()
+
+    with patch(""openai.AsyncOpenAI"") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = mock_create
+        mock_openai_cls.return_value = mock_client
+
+        await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(captured) == 1
+    assert ""My Title"" in captured[0]
+    assert ""My Summary"" in captured[0]
+    assert ""https://x.com"" not in captured[0]  # link ist kein Default-Attribut"
+FALSE,tests/process_test.py::test_embed_data_duplicate_key_retries_with_new_id,Bei DuplicateKey wird im Embedder mit neuer ID erneut versucht.,"@pytest.mark.asyncio
+async def test_embed_data_duplicate_key_retries_with_new_id():
+    """"""Bei DuplicateKey wird im Embedder mit neuer ID erneut versucht.""""""
+    data_repo = AsyncMock()
+    attempts = {""count"": 0}
+
+    async def mock_insert(_doc):
+        attempts[""count""] += 1
+        if attempts[""count""] == 1:
+            raise DuplicateKeyError(""duplicate key"")
+        return ""ok""
+
+    data_repo.insert = mock_insert
+
+    context = _make_article_context(
+        [{""title"": ""Retry Article"", ""summary"": ""Summary""}],
+        config={""openai_api_key"": ""test-key""},
+    )
+    plugin = EmbedData()
+
+    with patch(""openai.AsyncOpenAI"") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = _mock_openai_create()
+        mock_openai_cls.return_value = mock_client
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert attempts[""count""] >= 2
+    assert results[0].status == TransformationStatus.FINISHED"
+FALSE,tests/process_test.py::test_embed_data_empty_content_uses_placeholder,Artikel ohne konfigurierte Attribute erhalten den Platzhalter '(leer)'.,"@pytest.mark.asyncio
+async def test_embed_data_empty_content_uses_placeholder():
+    """"""Artikel ohne konfigurierte Attribute erhalten den Platzhalter '(leer)'.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    captured: list[str] = []
+
+    async def mock_create(input, model):
+        captured.append(input)
+        resp = MagicMock()
+        resp.data = [MagicMock(embedding=MOCK_EMBEDDING)]
+        return resp
+
+    context = _make_article_context(
+        [{""other_field"": ""irrelevant""}],
+        config={""openai_api_key"": ""test-key""},
+    )
+    plugin = EmbedData()
+
+    with patch(""openai.AsyncOpenAI"") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = mock_create
+        mock_openai_cls.return_value = mock_client
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert results[0].status == TransformationStatus.FINISHED
+    assert ""(leer)"" in captured[0]"
+FALSE,tests/process_test.py::test_embed_data_missing_api_key_marks_as_failed,"Fehlender API-Key markiert das Item als FAILED, kein Absturz.","@pytest.mark.asyncio
+async def test_embed_data_missing_api_key_marks_as_failed():
+    """"""Fehlender API-Key markiert das Item als FAILED, kein Absturz.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    context = _make_article_context(
+        [{""title"": ""Test"", ""summary"": ""Summary""}],
+        config={},  # Kein openai_api_key
+    )
+    plugin = EmbedData()
+
+    env_without_key = {k: v for k, v in os.environ.items() if k != ""OPENAI_API_KEY""}
+    with patch.dict(os.environ, env_without_key, clear=True):
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 1
+    assert results[0].status == TransformationStatus.FAILED
+    assert results[0].output_data_ids == []
+    data_repo.insert.assert_not_called()"
+FALSE,tests/process_test.py::test_embed_data_multiple_articles,Mehrere Artikel erzeugen je einen Embedding-Eintrag.,"@pytest.mark.asyncio
+async def test_embed_data_multiple_articles():
+    """"""Mehrere Artikel erzeugen je einen Embedding-Eintrag.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    articles = [
+        {""title"": f""Article {i}"", ""summary"": f""Summary {i}""} for i in range(5)
+    ]
+    context = _make_article_context(articles, config={""openai_api_key"": ""test-key""})
+    plugin = EmbedData()
+
+    with patch(""openai.AsyncOpenAI"") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = _mock_openai_create()
+        mock_openai_cls.return_value = mock_client
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 5
+    assert all(r.status == TransformationStatus.FINISHED for r in results)
+    assert data_repo.insert.call_count == 5"
+FALSE,tests/process_test.py::test_embed_data_requires_data_repository,Fehlende data_repository löst ValueError aus.,"@pytest.mark.asyncio
+async def test_embed_data_requires_data_repository():
+    """"""Fehlende data_repository löst ValueError aus.""""""
+    context = _make_article_context(
+        [{""title"": ""Test""}],
+        config={""openai_api_key"": ""test-key""},
+    )
+    plugin = EmbedData()
+
+    with pytest.raises(ValueError, match=""data_repository""):
+        await plugin.run(context=context, data_repository=None)"
+FALSE,tests/process_test.py::test_embed_data_success,Embedding wird korrekt erstellt und in DB gespeichert.,"@pytest.mark.asyncio
+async def test_embed_data_success():
+    """"""Embedding wird korrekt erstellt und in DB gespeichert.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    context = _make_article_context(
+        [{""title"": ""Test Article"", ""summary"": ""Summary text""}],
+        config={""openai_api_key"": ""test-key""},
+    )
+    plugin = EmbedData()
+
+    with patch(""openai.AsyncOpenAI"") as mock_openai_cls:
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = _mock_openai_create()
+        mock_openai_cls.return_value = mock_client
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 1
+    assert results[0].status == TransformationStatus.FINISHED
+    assert len(results[0].output_data_ids) == 1
+
+    inserted = data_repo.insert.call_args_list[0][0][0]
+    assert inserted[""type""] == ""output""
+    assert ""embedding"" in inserted[""content""]
+    assert inserted[""content""][""embedding""] == MOCK_EMBEDDING
+    assert inserted[""content""][""source_data_id""] == ""article_0""
+    assert ""proc_embed_test"" in inserted[""data_id""]
+    assert ""EmbedData1"" in inserted[""data_id""]"
+FALSE,tests/process_test.py::test_fetch_feed_items_duplicate_key_retries_with_new_id,Bei DuplicateKey wird mit neuer ID erneut versucht.,"@pytest.mark.asyncio
+async def test_fetch_feed_items_duplicate_key_retries_with_new_id():
+    """"""Bei DuplicateKey wird mit neuer ID erneut versucht.""""""
+    data_repo = AsyncMock()
+    attempts = {""count"": 0}
+
+    async def mock_insert(_doc):
+        attempts[""count""] += 1
+        if attempts[""count""] == 1:
+            raise DuplicateKeyError(""duplicate key"")
+        return ""ok""
+
+    data_repo.insert = mock_insert
+
+    context = _make_feed_context(
+        [{""title"": ""Retry Feed"", ""xmlUrl"": ""https://example.com/feed""}]
+    )
+    plugin = FetchFeedItems()
+
+    with patch(
+        ""dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient""
+    ) as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.text = SAMPLE_RSS_XML
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert attempts[""count""] >= 2
+    assert results[0].status == TransformationStatus.FINISHED"
+FALSE,tests/process_test.py::test_fetch_feed_items_empty_feed,Feed ohne Artikel: FINISHED mit 0 Output-IDs und quality=0.0.,"@pytest.mark.asyncio
+async def test_fetch_feed_items_empty_feed():
+    """"""Feed ohne Artikel: FINISHED mit 0 Output-IDs und quality=0.0.""""""
+    data_repo = AsyncMock()
+    empty_rss = (
+        '<?xml version=""1.0""?><rss version=""2.0"">'
+        ""<channel><title>Empty</title></channel></rss>""
+    )
+    context = _make_feed_context(
+        [{""title"": ""Empty Feed"", ""xmlUrl"": ""https://empty.example.com/feed""}]
+    )
+    plugin = FetchFeedItems()
+
+    with patch(
+        ""dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient""
+    ) as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.text = empty_rss
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 1
+    assert results[0].status == TransformationStatus.FINISHED
+    assert results[0].output_data_ids == []
+    assert results[0].quality == 0.0"
+FALSE,tests/process_test.py::test_fetch_feed_items_http_error_continues_other_feeds,HTTP-Fehler bei einem Feed stoppt nicht die Verarbeitung anderer Feeds.,"@pytest.mark.asyncio
+async def test_fetch_feed_items_http_error_continues_other_feeds():
+    """"""HTTP-Fehler bei einem Feed stoppt nicht die Verarbeitung anderer Feeds.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    context = _make_feed_context(
+        [
+            {""title"": ""Bad Feed"", ""xmlUrl"": ""https://bad.example.com/feed""},
+            {""title"": ""Good Feed"", ""xmlUrl"": ""https://good.example.com/feed""},
+        ]
+    )
+    plugin = FetchFeedItems()
+
+    call_count = 0
+
+    async def mock_get(url, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if ""bad"" in url:
+            import httpx
+            raise httpx.ConnectError(""Connection failed"")
+        resp = MagicMock()
+        resp.text = SAMPLE_RSS_XML
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    with patch(
+        ""dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient""
+    ) as mock_client:
+        mock_client.return_value.__aenter__.return_value.get = mock_get
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 2
+    assert results[0].status == TransformationStatus.FAILED
+    assert results[1].status == TransformationStatus.FINISHED
+    assert len(results[1].output_data_ids) == 2"
+FALSE,tests/process_test.py::test_fetch_feed_items_multiple_feeds,Mehrere Feeds werden alle verarbeitet und erzeugen separate IO-States.,"@pytest.mark.asyncio
+async def test_fetch_feed_items_multiple_feeds():
+    """"""Mehrere Feeds werden alle verarbeitet und erzeugen separate IO-States.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    context = _make_feed_context(
+        [
+            {""title"": ""Feed A"", ""xmlUrl"": ""https://a.example.com/feed""},
+            {""title"": ""Feed B"", ""xmlUrl"": ""https://b.example.com/feed""},
+        ]
+    )
+    plugin = FetchFeedItems()
+
+    with patch(
+        ""dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient""
+    ) as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.text = SAMPLE_RSS_XML
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 2
+    assert results[0].status == TransformationStatus.FINISHED
+    assert results[1].status == TransformationStatus.FINISHED
+    # 2 Feeds × 2 Artikel = 4 Inserts
+    assert data_repo.insert.call_count == 4"
+FALSE,tests/process_test.py::test_fetch_feed_items_no_xml_url,"Feed ohne xmlUrl wird als FAILED markiert, kein DB-Eintrag.","@pytest.mark.asyncio
+async def test_fetch_feed_items_no_xml_url():
+    """"""Feed ohne xmlUrl wird als FAILED markiert, kein DB-Eintrag.""""""
+    data_repo = AsyncMock()
+    context = _make_feed_context([{""title"": ""Feed Without URL""}])
+    plugin = FetchFeedItems()
+
+    results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 1
+    assert results[0].status == TransformationStatus.FAILED
+    assert results[0].output_data_ids == []
+    data_repo.insert.assert_not_called()"
+FALSE,tests/process_test.py::test_fetch_feed_items_output_has_article_fields,"Artikel enthalten title, link, summary und published.","@pytest.mark.asyncio
+async def test_fetch_feed_items_output_has_article_fields():
+    """"""Artikel enthalten title, link, summary und published.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    context = _make_feed_context(
+        [{""title"": ""Feed"", ""xmlUrl"": ""https://example.com/feed""}]
+    )
+    plugin = FetchFeedItems()
+
+    with patch(
+        ""dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient""
+    ) as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.text = SAMPLE_RSS_XML
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+
+        await plugin.run(context=context, data_repository=data_repo)
+
+    article = data_repo.insert.call_args_list[0][0][0][""content""]
+    assert ""title"" in article
+    assert ""link"" in article
+    assert article[""title""] == ""Article 1""
+    assert ""example.com/article-1"" in article[""link""]"
+FALSE,tests/process_test.py::test_fetch_feed_items_requires_data_repository,Fehlende data_repository löst ValueError aus.,"@pytest.mark.asyncio
+async def test_fetch_feed_items_requires_data_repository():
+    """"""Fehlende data_repository löst ValueError aus.""""""
+    context = _make_feed_context(
+        [{""title"": ""Feed"", ""xmlUrl"": ""https://example.com/feed""}]
+    )
+    plugin = FetchFeedItems()
+
+    with pytest.raises(ValueError, match=""data_repository""):
+        await plugin.run(context=context, data_repository=None)"
+FALSE,tests/process_test.py::test_fetch_feed_items_source_included_in_output,Output-Daten enthalten Quellinformationen des Feeds.,"@pytest.mark.asyncio
+async def test_fetch_feed_items_source_included_in_output():
+    """"""Output-Daten enthalten Quellinformationen des Feeds.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    context = _make_feed_context(
+        [{""title"": ""My Source"", ""xmlUrl"": ""https://src.example.com/feed"", ""htmlUrl"": ""https://src.example.com""}]
+    )
+    plugin = FetchFeedItems()
+
+    with patch(
+        ""dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient""
+    ) as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.text = SAMPLE_RSS_XML
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+
+        await plugin.run(context=context, data_repository=data_repo)
+
+    inserted_content = data_repo.insert.call_args_list[0][0][0][""content""]
+    assert ""source"" in inserted_content
+    assert inserted_content[""source""][""title""] == ""My Source""
+    assert inserted_content[""source""][""xmlUrl""] == ""https://src.example.com/feed"""
+FALSE,tests/process_test.py::test_fetch_feed_items_success_two_articles,Ein RSS-Feed mit 2 Artikeln erzeugt 2 Output-Data-Einträge.,"@pytest.mark.asyncio
+async def test_fetch_feed_items_success_two_articles():
+    """"""Ein RSS-Feed mit 2 Artikeln erzeugt 2 Output-Data-Einträge.""""""
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+
+    context = _make_feed_context(
+        [{""title"": ""Test Feed"", ""xmlUrl"": ""https://example.com/feed"", ""htmlUrl"": ""https://example.com""}]
+    )
+    plugin = FetchFeedItems()
+
+    with patch(
+        ""dflowp.plugin_fetchfeeditems.fetch_feed_items.httpx.AsyncClient""
+    ) as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.text = SAMPLE_RSS_XML
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+
+        results = await plugin.run(context=context, data_repository=data_repo)
+
+    assert len(results) == 1
+    assert results[0].status == TransformationStatus.FINISHED
+    assert len(results[0].output_data_ids) == 2
+    assert data_repo.insert.call_count == 2
+    inserted_1 = data_repo.insert.call_args_list[0][0][0][""data_id""]
+    inserted_2 = data_repo.insert.call_args_list[1][0][0][""data_id""]
+    assert inserted_1 != inserted_2
+    assert ""proc_fetch_test"" in inserted_1
+    assert ""FetchFeedItems1"" in inserted_1"
+FALSE,tests/process_test.py::test_get_subprocess_unknown_type,Unbekannter Typ liefert None zurück.,"def test_get_subprocess_unknown_type():
+    """"""Unbekannter Typ liefert None zurück.""""""
+    assert get_subprocess(""NonExistentType_xyz"") is None"
+FALSE,tests/process_test.py::test_io_transformation_state_defaults,IOTransformationState hat sinnvolle Standardwerte.,"def test_io_transformation_state_defaults():
+    """"""IOTransformationState hat sinnvolle Standardwerte.""""""
+    s = IOTransformationState(input_data_id=""inp_0"")
+
+    assert s.status == TransformationStatus.NOT_STARTED
+    assert s.output_data_ids == []
+    assert s.quality is None"
+FALSE,tests/process_test.py::test_io_transformation_state_failed_status,FAILED-Status wird korrekt gesetzt und serialisiert.,"def test_io_transformation_state_failed_status():
+    """"""FAILED-Status wird korrekt gesetzt und serialisiert.""""""
+    s = IOTransformationState(
+        input_data_id=""inp_bad"",
+        output_data_ids=[],
+        status=TransformationStatus.FAILED,
+        quality=0.0,
+    )
+    assert s.status == TransformationStatus.FAILED
+    assert s.to_dict()[""status""] == ""Failed"""
+FALSE,tests/process_test.py::test_io_transformation_state_from_dict_roundtrip,from_dict rekonstruiert den ursprünglichen State.,"def test_io_transformation_state_from_dict_roundtrip():
+    """"""from_dict rekonstruiert den ursprünglichen State.""""""
+    original = IOTransformationState(
+        input_data_id=""inp_2"",
+        output_data_ids=[""out_3""],
+        status=TransformationStatus.IN_PROGRESS,
+        quality=0.5,
+    )
+    restored = IOTransformationState.from_dict(original.to_dict())
+
+    assert restored.input_data_id == original.input_data_id
+    assert restored.output_data_ids == original.output_data_ids
+    assert restored.status == original.status
+    assert restored.quality == original.quality"
+FALSE,tests/process_test.py::test_io_transformation_state_to_dict,to_dict liefert alle Felder korrekt.,"def test_io_transformation_state_to_dict():
+    """"""to_dict liefert alle Felder korrekt.""""""
+    s = IOTransformationState(
+        input_data_id=""inp_1"",
+        output_data_ids=[""out_1"", ""out_2""],
+        status=TransformationStatus.FINISHED,
+        quality=0.95,
+    )
+    d = s.to_dict()
+
+    assert d[""input_data_id""] == ""inp_1""
+    assert d[""output_data_ids""] == [""out_1"", ""out_2""]
+    assert d[""status""] == ""Finished""
+    assert d[""quality""] == 0.95"
+FALSE,tests/process_test.py::test_load_remote_plugin_services_registers_http_clients,DFLOWP_PLUGIN_ENDPOINTS registriert RemotePluginSubprocess pro SubprocessType.,"def test_load_remote_plugin_services_registers_http_clients():
+    """"""DFLOWP_PLUGIN_ENDPOINTS registriert RemotePluginSubprocess pro SubprocessType.""""""
+    from dflowp_processruntime.plugins.remote_plugin import RemotePluginSubprocess
+
+    clear_registry()
+    old = os.environ.get(""DFLOWP_PLUGIN_ENDPOINTS"")
+    os.environ[""DFLOWP_PLUGIN_ENDPOINTS""] = (
+        ""FetchFeedItems=http://plugin-fetchfeeditems:8101,""
+        ""EmbedData=http://plugin-embeddata:8102,""
+        ""Clustering_DBSCAN=http://plugin-clustering-dbscan:8103""
+    )
+    try:
+        load_remote_plugin_services()
+        fetch = get_subprocess(""FetchFeedItems"")
+        embed = get_subprocess(""EmbedData"")
+        cluster = get_subprocess(""Clustering_DBSCAN"")
+        assert fetch is not None
+        assert embed is not None
+        assert cluster is not None
+        assert isinstance(fetch, RemotePluginSubprocess)
+        assert isinstance(embed, RemotePluginSubprocess)
+        assert isinstance(cluster, RemotePluginSubprocess)
+    finally:
+        if old is None:
+            os.environ.pop(""DFLOWP_PLUGIN_ENDPOINTS"", None)
+        else:
+            os.environ[""DFLOWP_PLUGIN_ENDPOINTS""] = old
+        clear_registry()"
+FALSE,tests/process_test.py::test_plugin_registration_and_retrieval,Plugins können registriert und abgerufen werden.,"def test_plugin_registration_and_retrieval():
+    """"""Plugins können registriert und abgerufen werden.""""""
+
+    class _DummySub(BaseSubprocess):
+        def __init__(self):
+            super().__init__(""_DummyType_test"")
+
+        async def run(self, context, **kwargs):
+            return []
+
+    dummy = _DummySub()
+    register_subprocess(""_DummyType_test"", dummy)
+
+    result = get_subprocess(""_DummyType_test"")
+    assert result is dummy"
+FALSE,tests/process_test.py::test_process_configuration_apply_software_version_from_env,Software-Version wird als major.minor.build aus SOFTWARE_VERSION übernommen.,"def test_process_configuration_apply_software_version_from_env(monkeypatch):
+    """"""Software-Version wird als major.minor.build aus SOFTWARE_VERSION übernommen.""""""
+    pc = _make_process_config(process_id=""test_softver"")
+    monkeypatch.setenv(""SOFTWARE_VERSION"", ""12"")
+
+    pc.apply_software_version_from_env()
+
+    assert pc.software_version == f""{MAJOR_VERSION}.{MINOR_VERSION}.12"""
+FALSE,tests/process_test.py::test_process_configuration_apply_software_version_v_prefix,SOFTWARE_VERSION vX.Y.Z (Jenkins) wird ohne führendes v übernommen.,"def test_process_configuration_apply_software_version_v_prefix(monkeypatch):
+    """"""SOFTWARE_VERSION vX.Y.Z (Jenkins) wird ohne führendes v übernommen.""""""
+    pc = _make_process_config(process_id=""test_softver_v"")
+    monkeypatch.setenv(""SOFTWARE_VERSION"", ""v1.2.42"")
+
+    pc.apply_software_version_from_env()
+
+    assert pc.software_version == ""1.2.42"""
+FALSE,tests/process_test.py::test_process_configuration_from_dict,ProcessConfiguration.from_dict parst alle Felder korrekt.,"def test_process_configuration_from_dict():
+    """"""ProcessConfiguration.from_dict parst alle Felder korrekt.""""""
+    pc = _make_process_config(
+        process_id=""test_001"",
+        nodes=[{""subprocess_id"": ""A"", ""subprocess_type"": ""TypeA""}],
+        subprocess_config={""A"": {""param"": ""value""}},
+    )
+
+    assert pc.pipeline_id == ""test_001""
+    assert pc.software_version == ""1.0.0""
+    assert pc.input_dataset_id == ""ds_test""
+    assert len(pc.dataflow.nodes) == 1
+    assert pc.plugin_config[""A""][""param""] == ""value"""
+FALSE,tests/process_test.py::test_process_configuration_to_dict_roundtrip,"ProcessConfiguration.to_dict erzeugt ein Dict, aus dem from_dict neu erstellt werden kann.","def test_process_configuration_to_dict_roundtrip():
+    """"""ProcessConfiguration.to_dict erzeugt ein Dict, aus dem from_dict neu erstellt werden kann.""""""
+    pc = _make_process_config(
+        process_id=""test_roundtrip"",
+        nodes=[
+            {""subprocess_id"": ""X"", ""subprocess_type"": ""TX""},
+            {""subprocess_id"": ""Y"", ""subprocess_type"": ""TY""},
+        ],
+        edges=[{""from"": ""X"", ""to"": ""Y""}],
+    )
+    d = pc.to_dict()
+    pc2 = ProcessConfiguration.from_dict(d)
+
+    assert pc2.pipeline_id == pc.pipeline_id
+    assert len(pc2.dataflow.nodes) == 2
+    assert len(pc2.dataflow.edges) == 1"
+FALSE,tests/process_test.py::test_process_engine_external_event_notifications_without_local_subscriptions,"Wenn lokale Event-Subscriptions deaktiviert sind, kann die Engine Follow-up-Aktionen über handle_event_notification auslösen.","@pytest.mark.asyncio
+async def test_process_engine_external_event_notifications_without_local_subscriptions(
+    isolated_event_service,
+):
+    """"""
+    Wenn lokale Event-Subscriptions deaktiviert sind, kann die Engine
+    Follow-up-Aktionen über handle_event_notification auslösen.
+    """"""
+    chain_config = ProcessConfiguration.from_dict(
+        {
+            ""process_id"": ""proc_external_notify"",
+            ""software_version"": ""1.0.0"",
+            ""input_dataset_id"": ""ds_chain"",
+            ""dataflow"": {
+                ""nodes"": [
+                    {""subprocess_id"": ""Step1"", ""subprocess_type"": ""TypeA""},
+                    {""subprocess_id"": ""Step2"", ""subprocess_type"": ""TypeB""},
+                ],
+                ""edges"": [{""from"": ""Step1"", ""to"": ""Step2""}],
+            },
+            ""subprocess_config"": {},
+        }
+    )
+
+    process_repo = AsyncMock()
+    process_repo.insert = AsyncMock(return_value=""id"")
+    process_repo.insert_from_configuration = AsyncMock(
+        return_value={
+            ""pipeline_id"": ""proc_external_notify"",
+            ""dataflow_state_id"": ""dfs_ext"",
+            ""status"": ""running"",
+        }
+    )
+    process_repo.update = AsyncMock(return_value=True)
+    process_repo.find_by_id = AsyncMock(
+        return_value={
+            ""pipeline_id"": ""proc_external_notify"",
+            ""process_id"": ""proc_external_notify"",
+            ""dataflow_state_id"": ""dfs_ext"",
+            ""configuration"": chain_config.to_dict(),
+        }
+    )
+
+    dataflow_state_repo = AsyncMock()
+    dataflow_state_repo.update_node_state = AsyncMock(return_value=True)
+    dataflow_state_repo.get_dataflow_state = AsyncMock(
+        return_value={
+            ""nodes"": [
+                {
+                    ""plugin_worker_id"": ""Step1"",
+                    ""plugin_type"": ""TypeA"",
+                    ""event_status"": ""EVENT_COMPLETED"",
+                    ""io_transformation_states"": [
+                        {
+                            ""input_data_id"": ""d1"",
+                            ""output_data_ids"": [""out_step1""],
+                            ""status"": ""Finished"",
+                            ""quality"": 1.0,
+                        }
+                    ],
+                },
+                {
+                    ""plugin_worker_id"": ""Step2"",
+                    ""plugin_type"": ""TypeB"",
+                    ""event_status"": ""Not Started"",
+                    ""io_transformation_states"": [],
+                },
+            ],
+            ""edges"": [{""from"": ""Step1"", ""to"": ""Step2""}],
+        }
+    )
+
+    async def mock_find_data(data_id: str):
+        return {""data_id"": data_id, ""content"": {""text"": data_id}, ""type"": ""output""}
+
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+    data_repo.find_by_id = mock_find_data
+
+    dataset_repo = AsyncMock()
+    dataset_repo.find_by_id = AsyncMock(
+        return_value={""dataset_id"": ""ds_chain"", ""data_ids"": [""d1""]}
+    )
+
+    started: list[str] = []
+
+    async def mock_run(context, **kwargs):
+        started.append(context.subprocess_id)
+        return [
+            IOTransformationState(
+                input_data_id=context.input_data[0].data_id
+                if context.input_data
+                else ""none"",
+                output_data_ids=[""out_"" + context.subprocess_id],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+
+    dummy = AsyncMock()
+    dummy.run = mock_run
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy,
+        enable_local_event_subscriptions=False,
+    )
+    engine.start()
+
+    await engine.start_process(chain_config)
+    await asyncio.sleep(0.2)
+    started.clear()
+
+    await engine.handle_event_notification(
+        {
+            ""process_id"": ""proc_external_notify"",
+            ""subprocess_id"": ""Step1"",
+            ""event_type"": ""EVENT_COMPLETED"",
+        }
+    )
+    await asyncio.sleep(0.2)
+
+    assert ""Step2"" in started"
+FALSE,tests/process_test.py::test_process_engine_handles_missing_subprocess_type,"Unbekannter Subprocess-Typ führt zu EVENT_FAILED, kein Absturz.","@pytest.mark.asyncio
+async def test_process_engine_handles_missing_subprocess_type(
+    isolated_event_service, mock_repos
+):
+    """"""Unbekannter Subprocess-Typ führt zu EVENT_FAILED, kein Absturz.""""""
+    process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
+    config = _make_process_config(process_id=""proc_missing_type"")
+    process_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_process_config_doc(""proc_missing_type"")
+    )
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: None,  # Kein Plugin registriert
+    )
+    engine.start()
+
+    # Kein Exception soll propagieren
+    await engine.start_process(config)
+    await asyncio.sleep(0.15)
+
+    # Node-Status wurde auf FAILED gesetzt
+    update_calls = dataflow_state_repo.update_node_state.call_args_list
+    assert any(
+        ""EVENT_FAILED"" in str(call) for call in update_calls
+    ), ""Kein EVENT_FAILED für unbekannten Subprocess-Typ"""
+FALSE,tests/process_test.py::test_process_engine_inserts_process_document,ProcessEngine legt die Pipeline per ``insert_from_configuration`` an.,"@pytest.mark.asyncio
+async def test_process_engine_inserts_process_document(
+    isolated_event_service, mock_repos
+):
+    """"""ProcessEngine legt die Pipeline per ``insert_from_configuration`` an.""""""
+    process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
+    config = _make_process_config(process_id=""proc_insert_test"")
+    process_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_process_config_doc(""proc_insert_test"")
+    )
+
+    dummy_subprocess = AsyncMock()
+    dummy_subprocess.run = AsyncMock(
+        return_value=[
+            IOTransformationState(
+                input_data_id=""d1"",
+                output_data_ids=[""out1""],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+    )
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy_subprocess,
+    )
+    engine.start()
+
+    await engine.start_process(config)
+    await asyncio.sleep(0.15)  # Tasks ablaufen lassen
+
+    process_repo.insert_from_configuration.assert_called_once()
+    icall_args, icall_kwargs = process_repo.insert_from_configuration.call_args
+    assert icall_args[0].pipeline_id == ""proc_insert_test""
+    assert icall_kwargs.get(""status"") == ""running"""
+FALSE,tests/process_test.py::test_process_engine_marks_completed_when_all_done,Prozess wird als 'completed' markiert wenn alle Subprozesse fertig sind.,"@pytest.mark.asyncio
+async def test_process_engine_marks_completed_when_all_done(
+    isolated_event_service, mock_repos
+):
+    """"""Prozess wird als 'completed' markiert wenn alle Subprozesse fertig sind.""""""
+    process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
+    config = _make_process_config(process_id=""proc_complete_test"")
+    process_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_process_config_doc(""proc_complete_test"")
+    )
+
+    dummy_subprocess = AsyncMock()
+    dummy_subprocess.run = AsyncMock(
+        return_value=[
+            IOTransformationState(
+                input_data_id=""d1"",
+                output_data_ids=[""out1""],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+    )
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy_subprocess,
+    )
+    engine.start()
+
+    await engine.start_process(config)
+    await asyncio.sleep(0.2)
+
+    # process_repo.update sollte mit status=""completed"" aufgerufen worden sein
+    update_calls = process_repo.update.call_args_list
+    completed_calls = [c for c in update_calls if c[0][1].get(""status"") == ""completed""]
+    assert len(completed_calls) >= 1"
+FALSE,tests/process_test.py::test_process_engine_starts_root_subprocess,ProcessEngine startet den Root-Subprozess und aktualisiert dessen Status.,"@pytest.mark.asyncio
+async def test_process_engine_starts_root_subprocess(isolated_event_service, mock_repos):
+    """"""ProcessEngine startet den Root-Subprozess und aktualisiert dessen Status.""""""
+    process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
+    config = _make_process_config(process_id=""proc_root_test"")
+    process_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_process_config_doc(""proc_root_test"")
+    )
+
+    dummy_subprocess = AsyncMock()
+    dummy_subprocess.run = AsyncMock(
+        return_value=[
+            IOTransformationState(
+                input_data_id=""d1"",
+                output_data_ids=[""out1""],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+    )
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy_subprocess,
+    )
+    engine.start()
+
+    await engine.start_process(config)
+    await asyncio.sleep(0.15)
+
+    # Subprocess wurde aufgerufen
+    dummy_subprocess.run.assert_called_once()
+
+    # DataflowState wurde aktualisiert
+    assert dataflow_state_repo.update_node_state.call_count >= 2  # STARTED + COMPLETED"
+FALSE,tests/process_test.py::test_process_engine_subprocess_chaining,Nach Abschluss von Subprozess A wird Subprozess B automatisch gestartet.,"@pytest.mark.asyncio
+async def test_process_engine_subprocess_chaining(isolated_event_service):
+    """"""Nach Abschluss von Subprozess A wird Subprozess B automatisch gestartet.""""""
+    chain_config = ProcessConfiguration.from_dict(
+        {
+            ""process_id"": ""proc_chain_test"",
+            ""software_version"": ""1.0.0"",
+            ""input_dataset_id"": ""ds_chain"",
+            ""dataflow"": {
+                ""nodes"": [
+                    {""subprocess_id"": ""Step1"", ""subprocess_type"": ""TypeA""},
+                    {""subprocess_id"": ""Step2"", ""subprocess_type"": ""TypeB""},
+                ],
+                ""edges"": [{""from"": ""Step1"", ""to"": ""Step2""}],
+            },
+            ""subprocess_config"": {},
+        }
+    )
+
+    process_repo = AsyncMock()
+    process_repo.insert = AsyncMock(return_value=""id"")
+    process_repo.insert_from_configuration = AsyncMock(
+        return_value={
+            ""pipeline_id"": ""proc_chain_test"",
+            ""dataflow_state_id"": ""dfs_chain"",
+            ""status"": ""running"",
+        }
+    )
+    process_repo.update = AsyncMock(return_value=True)
+    process_repo.find_by_id = AsyncMock(
+        return_value={
+            ""pipeline_id"": ""proc_chain_test"",
+            ""process_id"": ""proc_chain_test"",
+            ""dataflow_state_id"": ""dfs_chain"",
+            ""configuration"": chain_config.to_dict(),
+        }
+    )
+
+    dataflow_state_repo = AsyncMock()
+    dataflow_state_repo.update_node_state = AsyncMock(return_value=True)
+    dataflow_state_repo.get_dataflow_state = AsyncMock(
+        return_value={
+            ""nodes"": [
+                {
+                    ""plugin_worker_id"": ""Step1"",
+                    ""plugin_type"": ""TypeA"",
+                    ""event_status"": ""EVENT_COMPLETED"",
+                    ""io_transformation_states"": [
+                        {
+                            ""input_data_id"": ""d1"",
+                            ""output_data_ids"": [""out_step1""],
+                            ""status"": ""Finished"",
+                            ""quality"": 1.0,
+                        }
+                    ],
+                },
+                {
+                    ""plugin_worker_id"": ""Step2"",
+                    ""plugin_type"": ""TypeB"",
+                    ""event_status"": ""Not Started"",
+                    ""io_transformation_states"": [],
+                },
+            ],
+            ""edges"": [{""from"": ""Step1"", ""to"": ""Step2""}],
+        }
+    )
+
+    async def mock_find_data(data_id: str):
+        return {""data_id"": data_id, ""content"": {""text"": data_id}, ""type"": ""output""}
+
+    data_repo = AsyncMock()
+    data_repo.insert = AsyncMock()
+    data_repo.find_by_id = mock_find_data
+
+    dataset_repo = AsyncMock()
+    dataset_repo.find_by_id = AsyncMock(
+        return_value={""dataset_id"": ""ds_chain"", ""data_ids"": [""d1""]}
+    )
+
+    started: list[str] = []
+
+    async def mock_run(context, **kwargs):
+        started.append(context.subprocess_id)
+        return [
+            IOTransformationState(
+                input_data_id=context.input_data[0].data_id
+                if context.input_data
+                else ""none"",
+                output_data_ids=[""out_"" + context.subprocess_id],
+                status=TransformationStatus.FINISHED,
+            )
+        ]
+
+    dummy = AsyncMock()
+    dummy.run = mock_run
+
+    engine = ProcessEngine(
+        event_service=isolated_event_service,
+        process_repository=process_repo,
+        dataflow_state_repository=dataflow_state_repo,
+        data_repository=data_repo,
+        dataset_repository=dataset_repo,
+        get_subprocess=lambda t: dummy,
+    )
+    engine.start()
+
+    await engine.start_process(chain_config)
+    await asyncio.sleep(0.3)
+
+    assert ""Step1"" in started, ""Step1 wurde nicht ausgeführt""
+    assert ""Step2"" in started, ""Step2 wurde nach Step1 nicht gestartet"""
+FALSE,tests/process_test.py::test_process_state_to_dict,ProcessState.to_dict enthält alle Felder.,"def test_process_state_to_dict():
+    """"""ProcessState.to_dict enthält alle Felder.""""""
+    ps = ProcessState(pipeline_id=""proc_xyz"", status=""running"")
+    d = ps.to_dict()
+
+    assert d[""pipeline_id""] == ""proc_xyz""
+    assert d[""status""] == ""running""
+    assert ""dataflow_state"" in d"
+FALSE,tests/runtime_event_listener_test.py::test_runtime_listener_forwards_event_to_engine,Prueft: runtime listener forwards event to engine.,"@pytest.mark.asyncio
+async def test_runtime_listener_forwards_event_to_engine(monkeypatch) -> None:
+    fake_runtime = _FakeRuntime()
+    monkeypatch.setattr(rel, ""_runtime"", fake_runtime)
+
+    payload = rel.RuntimeEventPayload(
+        event_id=""evt-1"",
+        process_id=""proc-1"",
+        subprocess_id=""sub-1"",
+        event_type=""EVENT_COMPLETED"",
+        subprocess_instance_id=1,
+        payload={""k"": ""v""},
+    )
+    await rel.receive_runtime_event(payload)
+
+    assert len(fake_runtime.engine.events) == 1
+    assert fake_runtime.engine.events[0][""event_type""] == ""EVENT_COMPLETED""
+    assert fake_runtime.engine.events[0][""payload""] == {""k"": ""v""}"
+FALSE,tests/runtime_event_listener_test.py::test_subscribe_runtime_retries_until_success,Prueft: subscribe runtime retries until success.,"@pytest.mark.asyncio
+async def test_subscribe_runtime_retries_until_success(monkeypatch) -> None:
+    _FakeSubscribeClient.attempts = 0
+    monkeypatch.setattr(rel.httpx, ""AsyncClient"", lambda timeout: _FakeSubscribeClient())
+    monkeypatch.setenv(""DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRIES"", ""5"")
+    monkeypatch.setenv(""DFLOWP_EVENTSYSTEM_SUBSCRIBE_RETRY_SLEEP"", ""0"")
+
+    await rel._subscribe_runtime()
+    assert _FakeSubscribeClient.attempts == 3"
+
+,Verbesserungen Testing-Verhalten,,
+,Weiterer Prompt,,

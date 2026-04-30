@@ -6,7 +6,7 @@ import pytest
 
 from dflowp.plugin_clustering_dbscan.clustering_dbscan import ClusteringDBSCAN
 from dflowp_processruntime.datastructures.data import Data
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_processruntime.subprocesses.io_transformation_state import TransformationStatus
 
 
@@ -22,10 +22,10 @@ class FakeDatasetRepo:
 @pytest.mark.asyncio
 async def test_dbscan_two_clusters() -> None:
     plugin = ClusteringDBSCAN()
-    ctx = SubprocessContext(
-        process_id="p1",
-        subprocess_id="s1",
-        subprocess_type="Clustering_DBSCAN",
+    ctx = PluginWorkerContext(
+        pipeline_id="p1",
+        plugin_worker_id="s1",
+        plugin_type="Clustering_DBSCAN",
         config={"eps": 0.5, "min_samples": 2, "metric": "euclidean"},
         input_data=[
             Data(data_id="a", content={"embedding": [0.0, 0.0]}, type="output"),
@@ -53,10 +53,10 @@ async def test_dbscan_two_clusters() -> None:
 @pytest.mark.asyncio
 async def test_all_noise_when_min_samples_not_met() -> None:
     plugin = ClusteringDBSCAN()
-    ctx = SubprocessContext(
-        process_id="p1",
-        subprocess_id="s1",
-        subprocess_type="Clustering_DBSCAN",
+    ctx = PluginWorkerContext(
+        pipeline_id="p1",
+        plugin_worker_id="s1",
+        plugin_type="Clustering_DBSCAN",
         config={"eps": 0.01, "min_samples": 10},
         input_data=[
             Data(data_id="a", content={"embedding": [0.0, 0.0]}, type="output"),

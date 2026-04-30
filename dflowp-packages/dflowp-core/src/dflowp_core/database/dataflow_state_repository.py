@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 
 def _node_id_key(n: dict[str, Any]) -> str | None:
-    return n.get("plugin_worker_id") or n.get("subprocess_id")
+    return n.get("plugin_worker_id")
 
 
 class DataflowStateRepository:
@@ -76,7 +76,7 @@ class DataflowStateRepository:
         event_status: Optional[str] = None,
         io_transformation_states: Optional[list[dict]] = None,
     ) -> bool:
-        """Aktualisiert einen einzelnen Knoten (ID: plugin_worker_id, Legacy: subprocess_id)."""
+        """Aktualisiert einen einzelnen Knoten über ``plugin_worker_id``."""
         doc = await self._collection.find_one({"dataflow_state_id": dataflow_state_id})
         if not doc:
             return False

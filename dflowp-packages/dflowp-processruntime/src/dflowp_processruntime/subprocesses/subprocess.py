@@ -1,37 +1,37 @@
-"""Abstrakte Implementation eines Subprozesses."""
+"""Abstrakte Implementation eines Plugin-Workers."""
 
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_processruntime.subprocesses.io_transformation_state import IOTransformationState
 
 
-class BaseSubprocess(ABC):
+class BasePluginWorker(ABC):
     """
-    Abstrakte Basis eines Subprozesses.
+    Abstrakte Basis eines Plugin-Workers.
     - Emittiert EVENT_STARTED automatisch beim Start
     - Emittiert EVENT_COMPLETED bei Fertigstellung
     - Kein direkter DB-Zugriff - nutzt Repositories via Context/Callbacks
     """
 
-    def __init__(self, subprocess_type: str) -> None:
-        self.subprocess_type = subprocess_type
+    def __init__(self, plugin_type: str) -> None:
+        self.plugin_type = plugin_type
 
     @abstractmethod
     async def run(
         self,
-        context: SubprocessContext,
+        context: PluginWorkerContext,
         event_emitter: Optional[Any] = None,
         state_updater: Optional[Any] = None,
         data_repository: Optional[Any] = None,
         dataset_repository: Optional[Any] = None,
     ) -> list[IOTransformationState]:
         """
-        Führt den Subprozess aus.
+        Führt den Plugin-Worker aus.
 
         Args:
-            context: SubprocessContext mit Input-Daten und Config
+            context: PluginWorkerContext mit Input-Daten und Config
             event_emitter: Callback zum Emittieren von Events (emit_started, emit_completed, emit_failed)
             state_updater: Callback zum Aktualisieren des dataflow_node_state
             data_repository: Repository zum Speichern von Output-Daten

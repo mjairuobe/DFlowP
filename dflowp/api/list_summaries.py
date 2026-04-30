@@ -6,7 +6,7 @@ from typing import Any
 
 
 def summarize_pipeline_list_item(doc: dict[str, Any]) -> dict[str, Any]:
-    pid = doc.get("pipeline_id") or doc.get("process_id")
+    pid = doc.get("pipeline_id") or doc.get("pipeline_id")
     return {
         "pipeline_id": pid,
         "software_version": doc.get("software_version"),

@@ -221,7 +221,7 @@ async def migrate_legacy_processes_to_pipelines() -> int:
     dsr = DataflowStateRepository()
     n = 0
     async for old in col_old.find({}):
-        pid = old.get("process_id")
+        pid = old.get("pipeline_id")
         if not pid:
             continue
         if await pr.find_by_id(pid):
@@ -239,7 +239,7 @@ async def migrate_legacy_processes_to_pipelines() -> int:
                 }
             )
         pcfg_id = f"mig_pcfg_{pid}"
-        sc = cfg.get("subprocess_config") or {}
+        sc = cfg.get("plugin_config") or {}
         if not await pcr.find_by_id(pcfg_id):
             await pcr.insert(
                 {

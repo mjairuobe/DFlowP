@@ -4,9 +4,9 @@ Tests für Prozesse, Subprozesse, DataFlow und Plugins.
 Abgedeckte Bereiche:
 - DataFlow Parsen & Traversierung
 - IOTransformationState
-- ProcessConfiguration & ProcessState
+- PipelineConfiguration & ProcessState
 - Plugin-Loader
-- ProcessEngine (mit gemockten Repositories)
+- PipelineEngine (mit gemockten Repositories)
 - FetchFeedItems Plugin (mit gemocktem HTTP)
 - EmbedData Plugin (mit gemockter OpenAI API)
 """
@@ -25,22 +25,22 @@ from dflowp_processruntime.dataflow.dataflow_node import DataflowNodeState
 from dflowp_processruntime.dataflow.dataflow_parser import parse_dataflow
 from dflowp_processruntime.dataflow.dataflow_state import DataflowState
 from dflowp_processruntime.datastructures.data import Data
-from dflowp_processruntime.engine.process_engine import ProcessEngine
+from dflowp_processruntime.engine.process_engine import PipelineEngine
 from dflowp_core.eventinterfaces.event_bus import EventBus
 from dflowp_core.eventinterfaces.event_service import EventService
-from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
+from dflowp_processruntime.processes.process_configuration import PipelineConfiguration
 from dflowp_processruntime.processes.process_state import ProcessState
 from dflowp_processruntime.subprocesses.io_transformation_state import (
     IOTransformationState,
     TransformationStatus,
 )
-from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess import BasePluginWorker
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_processruntime.plugins.plugin_loader import (
     clear_registry,
-    get_subprocess,
+    get_plugin_worker,
     load_remote_plugin_services,
-    register_subprocess,
+    register_plugin_worker,
 )
 from dflowp.plugin_embeddata.embed_data import EmbedData
 from dflowp.plugin_fetchfeeditems.fetch_feed_items import FetchFeedItems
@@ -77,39 +77,39 @@ MOCK_EMBEDDING = [0.1, 0.2, 0.3, 0.4, 0.5]
 
 _SIMPLE_DATAFLOW_CONFIG = {
     "nodes": [
-        {"subprocess_id": "A", "subprocess_type": "TypeA"},
-        {"subprocess_id": "B", "subprocess_type": "TypeB"},
+        {"plugin_worker_id": "A", "plugin_type": "TypeA"},
+        {"plugin_worker_id": "B", "plugin_type": "TypeB"},
     ],
     "edges": [{"from": "A", "to": "B"}],
 }
 
 
-def _make_process_config(
-    process_id: str = "proc_test",
+def _make_pipeline_config(
+    pipeline_id: str = "proc_test",
     nodes: Optional[list] = None,
     edges: Optional[list] = None,
-    subprocess_config: Optional[dict] = None,
-) -> ProcessConfiguration:
-    nodes = nodes or [{"subprocess_id": "A", "subprocess_type": "TypeA"}]
-    return ProcessConfiguration.from_dict(
+    plugin_config: Optional[dict] = None,
+) -> PipelineConfiguration:
+    nodes = nodes or [{"plugin_worker_id": "A", "plugin_type": "TypeA"}]
+    return PipelineConfiguration.from_dict(
         {
-            "process_id": process_id,
+            "pipeline_id": pipeline_id,
             "software_version": "1.0.0",
             "input_dataset_id": "ds_test",
             "dataflow": {"nodes": nodes, "edges": edges or []},
-            "subprocess_config": subprocess_config or {},
+            "plugin_config": plugin_config or {},
         }
     )
 
 
 def _make_feed_context(
     feeds: list[dict],
-    process_id: str = "proc_fetch_test",
-) -> SubprocessContext:
-    return SubprocessContext(
-        process_id=process_id,
-        subprocess_id="FetchFeedItems1",
-        subprocess_type="FetchFeedItems",
+    pipeline_id: str = "proc_fetch_test",
+) -> PluginWorkerContext:
+    return PluginWorkerContext(
+        pipeline_id=pipeline_id,
+        plugin_worker_id="FetchFeedItems1",
+        plugin_type="FetchFeedItems",
         config={},
         input_data=[
             Data(data_id=f"feed_{i}", content=feed, type="input")
@@ -121,12 +121,12 @@ def _make_feed_context(
 def _make_article_context(
     articles: list[dict],
     config: Optional[dict] = None,
-    process_id: str = "proc_embed_test",
-) -> SubprocessContext:
-    return SubprocessContext(
-        process_id=process_id,
-        subprocess_id="EmbedData1",
-        subprocess_type="EmbedData",
+    pipeline_id: str = "proc_embed_test",
+) -> PluginWorkerContext:
+    return PluginWorkerContext(
+        pipeline_id=pipeline_id,
+        plugin_worker_id="EmbedData1",
+        plugin_type="EmbedData",
         config=config or {},
         input_data=[
             Data(data_id=f"article_{i}", content=art, type="output")
@@ -148,26 +148,26 @@ def isolated_event_service():
     return _IsolatedEventService()
 
 
-def _make_mock_process_config_doc(
-    process_id: str,
+def _make_mock_pipeline_config_doc(
+    pipeline_id: str,
     nodes=None,
     edges=None,
     *,
     dataflow_state_id: str = "dfs_test_mock",
 ) -> dict[str, Any]:
     """Pipeline-Dokument für Mock-Repositories (mit ``dataflow_state_id`` für die Engine)."""
-    nodes = nodes or [{"subprocess_id": "A", "subprocess_type": "TypeA"}]
+    nodes = nodes or [{"plugin_worker_id": "A", "plugin_type": "TypeA"}]
     return {
-        "pipeline_id": process_id,
-        "process_id": process_id,
+        "pipeline_id": pipeline_id,
+        "pipeline_id": pipeline_id,
         "dataflow_state_id": dataflow_state_id,
         "status": "running",
         "configuration": {
-            "process_id": process_id,
+            "pipeline_id": pipeline_id,
             "software_version": "1.0.0",
             "input_dataset_id": "ds_test",
             "dataflow": {"nodes": nodes, "edges": edges or []},
-            "subprocess_config": {},
+            "plugin_config": {},
         },
     }
 
@@ -180,7 +180,7 @@ def _async_insert_from_configuration(
     dfs_id = "dfs_test_mock"
     return {
         "pipeline_id": pid,
-        "process_id": pid,
+        "pipeline_id": pid,
         "dataflow_state_id": dfs_id,
         "status": status,
     }
@@ -189,16 +189,16 @@ def _async_insert_from_configuration(
 @pytest.fixture
 def mock_repos():
     """Erstellt Mock-Repositories, die eine einfache Prozesskonfiguration kennen."""
-    process_repo = AsyncMock()
-    process_repo.insert = AsyncMock(return_value="mock_inserted_id")
-    process_repo.insert_from_configuration = AsyncMock(
+    pipeline_repo = AsyncMock()
+    pipeline_repo.insert = AsyncMock(return_value="mock_inserted_id")
+    pipeline_repo.insert_from_configuration = AsyncMock(
         side_effect=_async_insert_from_configuration
     )
-    process_repo.update = AsyncMock(return_value=True)
+    pipeline_repo.update = AsyncMock(return_value=True)
     # find_by_id muss immer ein dict zurückgeben (kein AsyncMock),
     # sonst gibt .get() darauf eine Coroutine zurück
-    process_repo.find_by_id = AsyncMock(
-        return_value=_make_mock_process_config_doc("proc_test")
+    pipeline_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_pipeline_config_doc("proc_test")
     )
 
     dataflow_state_repo = AsyncMock()
@@ -209,8 +209,8 @@ def mock_repos():
                 {
                     "plugin_worker_id": "A",
                     "plugin_type": "TypeA",
-                    "subprocess_id": "A",
-                    "subprocess_type": "TypeA",
+                    "plugin_worker_id": "A",
+                    "plugin_type": "TypeA",
                     "event_status": "EVENT_COMPLETED",
                     "io_transformation_states": [],
                 }
@@ -234,7 +234,7 @@ def mock_repos():
         return_value={"dataset_id": "ds_test", "data_ids": ["d1"]}
     )
 
-    return process_repo, dataflow_state_repo, data_repo, dataset_repo
+    return pipeline_repo, dataflow_state_repo, data_repo, dataset_repo
 
 
 # ===========================================================================
@@ -267,9 +267,9 @@ def test_dataflow_root_nodes_multiple():
     """Mehrere Root-Knoten werden alle erkannt."""
     config = {
         "nodes": [
-            {"subprocess_id": "A", "subprocess_type": "T"},
-            {"subprocess_id": "B", "subprocess_type": "T"},
-            {"subprocess_id": "C", "subprocess_type": "T"},
+            {"plugin_worker_id": "A", "plugin_type": "T"},
+            {"plugin_worker_id": "B", "plugin_type": "T"},
+            {"plugin_worker_id": "C", "plugin_type": "T"},
         ],
         "edges": [
             {"from": "A", "to": "C"},
@@ -286,9 +286,9 @@ def test_dataflow_successors_and_predecessors():
     """get_successors und get_predecessors funktionieren korrekt."""
     config = {
         "nodes": [
-            {"subprocess_id": "A", "subprocess_type": "T"},
-            {"subprocess_id": "B", "subprocess_type": "T"},
-            {"subprocess_id": "C", "subprocess_type": "T"},
+            {"plugin_worker_id": "A", "plugin_type": "T"},
+            {"plugin_worker_id": "B", "plugin_type": "T"},
+            {"plugin_worker_id": "C", "plugin_type": "T"},
         ],
         "edges": [
             {"from": "A", "to": "B"},
@@ -308,10 +308,10 @@ def test_dataflow_get_descendants_including_self():
     """Descendants enthalten Knoten selbst und alle transitiven Nachfolger."""
     config = {
         "nodes": [
-            {"subprocess_id": "A", "subprocess_type": "T"},
-            {"subprocess_id": "B", "subprocess_type": "T"},
-            {"subprocess_id": "C", "subprocess_type": "T"},
-            {"subprocess_id": "D", "subprocess_type": "T"},
+            {"plugin_worker_id": "A", "plugin_type": "T"},
+            {"plugin_worker_id": "B", "plugin_type": "T"},
+            {"plugin_worker_id": "C", "plugin_type": "T"},
+            {"plugin_worker_id": "D", "plugin_type": "T"},
         ],
         "edges": [
             {"from": "A", "to": "B"},
@@ -459,16 +459,16 @@ def test_io_transformation_state_failed_status():
 
 
 # ===========================================================================
-# Abschnitt 3: ProcessConfiguration & ProcessState Tests
+# Abschnitt 3: PipelineConfiguration & ProcessState Tests
 # ===========================================================================
 
 
-def test_process_configuration_from_dict():
-    """ProcessConfiguration.from_dict parst alle Felder korrekt."""
-    pc = _make_process_config(
-        process_id="test_001",
-        nodes=[{"subprocess_id": "A", "subprocess_type": "TypeA"}],
-        subprocess_config={"A": {"param": "value"}},
+def test_pipeline_configuration_from_dict():
+    """PipelineConfiguration.from_dict parst alle Felder korrekt."""
+    pc = _make_pipeline_config(
+        pipeline_id="test_001",
+        nodes=[{"plugin_worker_id": "A", "plugin_type": "TypeA"}],
+        plugin_config={"A": {"param": "value"}},
     )
 
     assert pc.pipeline_id == "test_001"
@@ -478,27 +478,27 @@ def test_process_configuration_from_dict():
     assert pc.plugin_config["A"]["param"] == "value"
 
 
-def test_process_configuration_to_dict_roundtrip():
-    """ProcessConfiguration.to_dict erzeugt ein Dict, aus dem from_dict neu erstellt werden kann."""
-    pc = _make_process_config(
-        process_id="test_roundtrip",
+def test_pipeline_configuration_to_dict_roundtrip():
+    """PipelineConfiguration.to_dict erzeugt ein Dict, aus dem from_dict neu erstellt werden kann."""
+    pc = _make_pipeline_config(
+        pipeline_id="test_roundtrip",
         nodes=[
-            {"subprocess_id": "X", "subprocess_type": "TX"},
-            {"subprocess_id": "Y", "subprocess_type": "TY"},
+            {"plugin_worker_id": "X", "plugin_type": "TX"},
+            {"plugin_worker_id": "Y", "plugin_type": "TY"},
         ],
         edges=[{"from": "X", "to": "Y"}],
     )
     d = pc.to_dict()
-    pc2 = ProcessConfiguration.from_dict(d)
+    pc2 = PipelineConfiguration.from_dict(d)
 
     assert pc2.pipeline_id == pc.pipeline_id
     assert len(pc2.dataflow.nodes) == 2
     assert len(pc2.dataflow.edges) == 1
 
 
-def test_process_configuration_apply_software_version_from_env(monkeypatch):
+def test_pipeline_configuration_apply_software_version_from_env(monkeypatch):
     """Software-Version wird als major.minor.build aus SOFTWARE_VERSION übernommen."""
-    pc = _make_process_config(process_id="test_softver")
+    pc = _make_pipeline_config(pipeline_id="test_softver")
     monkeypatch.setenv("SOFTWARE_VERSION", "12")
 
     pc.apply_software_version_from_env()
@@ -506,9 +506,9 @@ def test_process_configuration_apply_software_version_from_env(monkeypatch):
     assert pc.software_version == f"{MAJOR_VERSION}.{MINOR_VERSION}.12"
 
 
-def test_process_configuration_apply_software_version_v_prefix(monkeypatch):
+def test_pipeline_configuration_apply_software_version_v_prefix(monkeypatch):
     """SOFTWARE_VERSION vX.Y.Z (Jenkins) wird ohne führendes v übernommen."""
-    pc = _make_process_config(process_id="test_softver_v")
+    pc = _make_pipeline_config(pipeline_id="test_softver_v")
     monkeypatch.setenv("SOFTWARE_VERSION", "v1.2.42")
 
     pc.apply_software_version_from_env()
@@ -543,7 +543,7 @@ def test_document_name_generator_format():
 def test_plugin_registration_and_retrieval():
     """Plugins können registriert und abgerufen werden."""
 
-    class _DummySub(BaseSubprocess):
+    class _DummySub(BasePluginWorker):
         def __init__(self):
             super().__init__("_DummyType_test")
 
@@ -551,20 +551,20 @@ def test_plugin_registration_and_retrieval():
             return []
 
     dummy = _DummySub()
-    register_subprocess("_DummyType_test", dummy)
+    register_plugin_worker("_DummyType_test", dummy)
 
-    result = get_subprocess("_DummyType_test")
+    result = get_plugin_worker("_DummyType_test")
     assert result is dummy
 
 
-def test_get_subprocess_unknown_type():
+def test_get_plugin_worker_unknown_type():
     """Unbekannter Typ liefert None zurück."""
-    assert get_subprocess("NonExistentType_xyz") is None
+    assert get_plugin_worker("NonExistentType_xyz") is None
 
 
 def test_load_remote_plugin_services_registers_http_clients():
-    """DFLOWP_PLUGIN_ENDPOINTS registriert RemotePluginSubprocess pro SubprocessType."""
-    from dflowp_processruntime.plugins.remote_plugin import RemotePluginSubprocess
+    """DFLOWP_PLUGIN_ENDPOINTS registriert RemotePluginWorker pro SubprocessType."""
+    from dflowp_processruntime.plugins.remote_plugin import RemotePluginWorker
 
     clear_registry()
     old = os.environ.get("DFLOWP_PLUGIN_ENDPOINTS")
@@ -575,15 +575,15 @@ def test_load_remote_plugin_services_registers_http_clients():
     )
     try:
         load_remote_plugin_services()
-        fetch = get_subprocess("FetchFeedItems")
-        embed = get_subprocess("EmbedData")
-        cluster = get_subprocess("Clustering_DBSCAN")
+        fetch = get_plugin_worker("FetchFeedItems")
+        embed = get_plugin_worker("EmbedData")
+        cluster = get_plugin_worker("Clustering_DBSCAN")
         assert fetch is not None
         assert embed is not None
         assert cluster is not None
-        assert isinstance(fetch, RemotePluginSubprocess)
-        assert isinstance(embed, RemotePluginSubprocess)
-        assert isinstance(cluster, RemotePluginSubprocess)
+        assert isinstance(fetch, RemotePluginWorker)
+        assert isinstance(embed, RemotePluginWorker)
+        assert isinstance(cluster, RemotePluginWorker)
     finally:
         if old is None:
             os.environ.pop("DFLOWP_PLUGIN_ENDPOINTS", None)
@@ -593,7 +593,7 @@ def test_load_remote_plugin_services_registers_http_clients():
 
 
 # ===========================================================================
-# Abschnitt 5: ProcessEngine Tests (mit Mock-Repositories)
+# Abschnitt 5: PipelineEngine Tests (mit Mock-Repositories)
 # ===========================================================================
 
 
@@ -601,11 +601,11 @@ def test_load_remote_plugin_services_registers_http_clients():
 async def test_process_engine_inserts_process_document(
     isolated_event_service, mock_repos
 ):
-    """ProcessEngine legt die Pipeline per ``insert_from_configuration`` an."""
-    process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
-    config = _make_process_config(process_id="proc_insert_test")
-    process_repo.find_by_id = AsyncMock(
-        return_value=_make_mock_process_config_doc("proc_insert_test")
+    """PipelineEngine legt die Pipeline per ``insert_from_configuration`` an."""
+    pipeline_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
+    config = _make_pipeline_config(pipeline_id="proc_insert_test")
+    pipeline_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_pipeline_config_doc("proc_insert_test")
     )
 
     dummy_subprocess = AsyncMock()
@@ -619,32 +619,32 @@ async def test_process_engine_inserts_process_document(
         ]
     )
 
-    engine = ProcessEngine(
+    engine = PipelineEngine(
         event_service=isolated_event_service,
-        process_repository=process_repo,
+        pipeline_repository=pipeline_repo,
         dataflow_state_repository=dataflow_state_repo,
         data_repository=data_repo,
         dataset_repository=dataset_repo,
-        get_subprocess=lambda t: dummy_subprocess,
+        get_plugin_worker=lambda t: dummy_subprocess,
     )
     engine.start()
 
-    await engine.start_process(config)
+    await engine.start_pipeline(config)
     await asyncio.sleep(0.15)  # Tasks ablaufen lassen
 
-    process_repo.insert_from_configuration.assert_called_once()
-    icall_args, icall_kwargs = process_repo.insert_from_configuration.call_args
+    pipeline_repo.insert_from_configuration.assert_called_once()
+    icall_args, icall_kwargs = pipeline_repo.insert_from_configuration.call_args
     assert icall_args[0].pipeline_id == "proc_insert_test"
     assert icall_kwargs.get("status") == "running"
 
 
 @pytest.mark.asyncio
 async def test_process_engine_starts_root_subprocess(isolated_event_service, mock_repos):
-    """ProcessEngine startet den Root-Subprozess und aktualisiert dessen Status."""
-    process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
-    config = _make_process_config(process_id="proc_root_test")
-    process_repo.find_by_id = AsyncMock(
-        return_value=_make_mock_process_config_doc("proc_root_test")
+    """PipelineEngine startet den Root-Subprozess und aktualisiert dessen Status."""
+    pipeline_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
+    config = _make_pipeline_config(pipeline_id="proc_root_test")
+    pipeline_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_pipeline_config_doc("proc_root_test")
     )
 
     dummy_subprocess = AsyncMock()
@@ -658,17 +658,17 @@ async def test_process_engine_starts_root_subprocess(isolated_event_service, moc
         ]
     )
 
-    engine = ProcessEngine(
+    engine = PipelineEngine(
         event_service=isolated_event_service,
-        process_repository=process_repo,
+        pipeline_repository=pipeline_repo,
         dataflow_state_repository=dataflow_state_repo,
         data_repository=data_repo,
         dataset_repository=dataset_repo,
-        get_subprocess=lambda t: dummy_subprocess,
+        get_plugin_worker=lambda t: dummy_subprocess,
     )
     engine.start()
 
-    await engine.start_process(config)
+    await engine.start_pipeline(config)
     await asyncio.sleep(0.15)
 
     # Subprocess wurde aufgerufen
@@ -681,36 +681,36 @@ async def test_process_engine_starts_root_subprocess(isolated_event_service, moc
 @pytest.mark.asyncio
 async def test_process_engine_subprocess_chaining(isolated_event_service):
     """Nach Abschluss von Subprozess A wird Subprozess B automatisch gestartet."""
-    chain_config = ProcessConfiguration.from_dict(
+    chain_config = PipelineConfiguration.from_dict(
         {
-            "process_id": "proc_chain_test",
+            "pipeline_id": "proc_chain_test",
             "software_version": "1.0.0",
             "input_dataset_id": "ds_chain",
             "dataflow": {
                 "nodes": [
-                    {"subprocess_id": "Step1", "subprocess_type": "TypeA"},
-                    {"subprocess_id": "Step2", "subprocess_type": "TypeB"},
+                    {"plugin_worker_id": "Step1", "plugin_type": "TypeA"},
+                    {"plugin_worker_id": "Step2", "plugin_type": "TypeB"},
                 ],
                 "edges": [{"from": "Step1", "to": "Step2"}],
             },
-            "subprocess_config": {},
+            "plugin_config": {},
         }
     )
 
-    process_repo = AsyncMock()
-    process_repo.insert = AsyncMock(return_value="id")
-    process_repo.insert_from_configuration = AsyncMock(
+    pipeline_repo = AsyncMock()
+    pipeline_repo.insert = AsyncMock(return_value="id")
+    pipeline_repo.insert_from_configuration = AsyncMock(
         return_value={
             "pipeline_id": "proc_chain_test",
             "dataflow_state_id": "dfs_chain",
             "status": "running",
         }
     )
-    process_repo.update = AsyncMock(return_value=True)
-    process_repo.find_by_id = AsyncMock(
+    pipeline_repo.update = AsyncMock(return_value=True)
+    pipeline_repo.find_by_id = AsyncMock(
         return_value={
             "pipeline_id": "proc_chain_test",
-            "process_id": "proc_chain_test",
+            "pipeline_id": "proc_chain_test",
             "dataflow_state_id": "dfs_chain",
             "configuration": chain_config.to_dict(),
         }
@@ -760,13 +760,13 @@ async def test_process_engine_subprocess_chaining(isolated_event_service):
     started: list[str] = []
 
     async def mock_run(context, **kwargs):
-        started.append(context.subprocess_id)
+        started.append(context.plugin_worker_id)
         return [
             IOTransformationState(
                 input_data_id=context.input_data[0].data_id
                 if context.input_data
                 else "none",
-                output_data_ids=["out_" + context.subprocess_id],
+                output_data_ids=["out_" + context.plugin_worker_id],
                 status=TransformationStatus.FINISHED,
             )
         ]
@@ -774,17 +774,17 @@ async def test_process_engine_subprocess_chaining(isolated_event_service):
     dummy = AsyncMock()
     dummy.run = mock_run
 
-    engine = ProcessEngine(
+    engine = PipelineEngine(
         event_service=isolated_event_service,
-        process_repository=process_repo,
+        pipeline_repository=pipeline_repo,
         dataflow_state_repository=dataflow_state_repo,
         data_repository=data_repo,
         dataset_repository=dataset_repo,
-        get_subprocess=lambda t: dummy,
+        get_plugin_worker=lambda t: dummy,
     )
     engine.start()
 
-    await engine.start_process(chain_config)
+    await engine.start_pipeline(chain_config)
     await asyncio.sleep(0.3)
 
     assert "Step1" in started, "Step1 wurde nicht ausgeführt"
@@ -796,10 +796,10 @@ async def test_process_engine_marks_completed_when_all_done(
     isolated_event_service, mock_repos
 ):
     """Prozess wird als 'completed' markiert wenn alle Subprozesse fertig sind."""
-    process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
-    config = _make_process_config(process_id="proc_complete_test")
-    process_repo.find_by_id = AsyncMock(
-        return_value=_make_mock_process_config_doc("proc_complete_test")
+    pipeline_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
+    config = _make_pipeline_config(pipeline_id="proc_complete_test")
+    pipeline_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_pipeline_config_doc("proc_complete_test")
     )
 
     dummy_subprocess = AsyncMock()
@@ -813,48 +813,48 @@ async def test_process_engine_marks_completed_when_all_done(
         ]
     )
 
-    engine = ProcessEngine(
+    engine = PipelineEngine(
         event_service=isolated_event_service,
-        process_repository=process_repo,
+        pipeline_repository=pipeline_repo,
         dataflow_state_repository=dataflow_state_repo,
         data_repository=data_repo,
         dataset_repository=dataset_repo,
-        get_subprocess=lambda t: dummy_subprocess,
+        get_plugin_worker=lambda t: dummy_subprocess,
     )
     engine.start()
 
-    await engine.start_process(config)
+    await engine.start_pipeline(config)
     await asyncio.sleep(0.2)
 
-    # process_repo.update sollte mit status="completed" aufgerufen worden sein
-    update_calls = process_repo.update.call_args_list
+    # pipeline_repo.update sollte mit status="completed" aufgerufen worden sein
+    update_calls = pipeline_repo.update.call_args_list
     completed_calls = [c for c in update_calls if c[0][1].get("status") == "completed"]
     assert len(completed_calls) >= 1
 
 
 @pytest.mark.asyncio
-async def test_process_engine_handles_missing_subprocess_type(
+async def test_process_engine_handles_missing_plugin_type(
     isolated_event_service, mock_repos
 ):
     """Unbekannter Subprocess-Typ führt zu EVENT_FAILED, kein Absturz."""
-    process_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
-    config = _make_process_config(process_id="proc_missing_type")
-    process_repo.find_by_id = AsyncMock(
-        return_value=_make_mock_process_config_doc("proc_missing_type")
+    pipeline_repo, dataflow_state_repo, data_repo, dataset_repo = mock_repos
+    config = _make_pipeline_config(pipeline_id="proc_missing_type")
+    pipeline_repo.find_by_id = AsyncMock(
+        return_value=_make_mock_pipeline_config_doc("proc_missing_type")
     )
 
-    engine = ProcessEngine(
+    engine = PipelineEngine(
         event_service=isolated_event_service,
-        process_repository=process_repo,
+        pipeline_repository=pipeline_repo,
         dataflow_state_repository=dataflow_state_repo,
         data_repository=data_repo,
         dataset_repository=dataset_repo,
-        get_subprocess=lambda t: None,  # Kein Plugin registriert
+        get_plugin_worker=lambda t: None,  # Kein Plugin registriert
     )
     engine.start()
 
     # Kein Exception soll propagieren
-    await engine.start_process(config)
+    await engine.start_pipeline(config)
     await asyncio.sleep(0.15)
 
     # Node-Status wurde auf FAILED gesetzt
@@ -865,35 +865,35 @@ async def test_process_engine_handles_missing_subprocess_type(
 
 
 @pytest.mark.asyncio
-async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reexecution(
+async def test_activate_pending_pipeline_starts_only_ready_nodes_for_partial_reexecution(
     isolated_event_service,
 ):
     """
     Bei partiellem Re-Execution-Clone (z. B. nur EmbedData1 auf Not Started)
-    darf activate_pending_process nicht pauschal den Root neu starten.
+    darf activate_pending_pipeline nicht pauschal den Root neu starten.
     """
-    config = ProcessConfiguration.from_dict(
+    config = PipelineConfiguration.from_dict(
         {
-            "process_id": "proc_partial_reexec",
+            "pipeline_id": "proc_partial_reexec",
             "software_version": "1.0.0",
             "input_dataset_id": "ds_chain",
             "dataflow": {
                 "nodes": [
-                    {"subprocess_id": "FetchFeedItems1", "subprocess_type": "TypeA"},
-                    {"subprocess_id": "EmbedData1", "subprocess_type": "TypeB"},
+                    {"plugin_worker_id": "FetchFeedItems1", "plugin_type": "TypeA"},
+                    {"plugin_worker_id": "EmbedData1", "plugin_type": "TypeB"},
                 ],
                 "edges": [{"from": "FetchFeedItems1", "to": "EmbedData1"}],
             },
-            "subprocess_config": {},
+            "plugin_config": {},
         }
     )
 
-    process_repo = AsyncMock()
-    process_repo.update = AsyncMock(return_value=True)
-    process_repo.find_by_id = AsyncMock(
+    pipeline_repo = AsyncMock()
+    pipeline_repo.update = AsyncMock(return_value=True)
+    pipeline_repo.find_by_id = AsyncMock(
         return_value={
             "pipeline_id": "proc_partial_reexec",
-            "process_id": "proc_partial_reexec",
+            "pipeline_id": "proc_partial_reexec",
             "dataflow_state_id": "dfs_partial",
             "configuration": config.to_dict(),
         }
@@ -905,8 +905,8 @@ async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reex
         return_value={
             "nodes": [
                 {
-                    "subprocess_id": "FetchFeedItems1",
-                    "subprocess_type": "TypeA",
+                    "plugin_worker_id": "FetchFeedItems1",
+                    "plugin_type": "TypeA",
                     "event_status": "EVENT_COMPLETED",
                     "io_transformation_states": [
                         {
@@ -918,8 +918,8 @@ async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reex
                     ],
                 },
                 {
-                    "subprocess_id": "EmbedData1",
-                    "subprocess_type": "TypeB",
+                    "plugin_worker_id": "EmbedData1",
+                    "plugin_type": "TypeB",
                     "event_status": "Not Started",
                     "io_transformation_states": [],
                 },
@@ -941,11 +941,11 @@ async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reex
     started: list[str] = []
 
     async def mock_run(context, **kwargs):
-        started.append(context.subprocess_id)
+        started.append(context.plugin_worker_id)
         return [
             IOTransformationState(
                 input_data_id=context.input_data[0].data_id if context.input_data else "none",
-                output_data_ids=[f"out_{context.subprocess_id}"],
+                output_data_ids=[f"out_{context.plugin_worker_id}"],
                 status=TransformationStatus.FINISHED,
             )
         ]
@@ -953,17 +953,17 @@ async def test_activate_pending_process_starts_only_ready_nodes_for_partial_reex
     dummy = AsyncMock()
     dummy.run = mock_run
 
-    engine = ProcessEngine(
+    engine = PipelineEngine(
         event_service=isolated_event_service,
-        process_repository=process_repo,
+        pipeline_repository=pipeline_repo,
         dataflow_state_repository=dataflow_state_repo,
         data_repository=data_repo,
         dataset_repository=dataset_repo,
-        get_subprocess=lambda t: dummy,
+        get_plugin_worker=lambda t: dummy,
     )
     engine.start()
 
-    ok = await engine.activate_pending_process("proc_partial_reexec")
+    ok = await engine.activate_pending_pipeline("proc_partial_reexec")
     assert ok is True
     await asyncio.sleep(0.2)
 
@@ -979,36 +979,36 @@ async def test_process_engine_external_event_notifications_without_local_subscri
     Wenn lokale Event-Subscriptions deaktiviert sind, kann die Engine
     Follow-up-Aktionen über handle_event_notification auslösen.
     """
-    chain_config = ProcessConfiguration.from_dict(
+    chain_config = PipelineConfiguration.from_dict(
         {
-            "process_id": "proc_external_notify",
+            "pipeline_id": "proc_external_notify",
             "software_version": "1.0.0",
             "input_dataset_id": "ds_chain",
             "dataflow": {
                 "nodes": [
-                    {"subprocess_id": "Step1", "subprocess_type": "TypeA"},
-                    {"subprocess_id": "Step2", "subprocess_type": "TypeB"},
+                    {"plugin_worker_id": "Step1", "plugin_type": "TypeA"},
+                    {"plugin_worker_id": "Step2", "plugin_type": "TypeB"},
                 ],
                 "edges": [{"from": "Step1", "to": "Step2"}],
             },
-            "subprocess_config": {},
+            "plugin_config": {},
         }
     )
 
-    process_repo = AsyncMock()
-    process_repo.insert = AsyncMock(return_value="id")
-    process_repo.insert_from_configuration = AsyncMock(
+    pipeline_repo = AsyncMock()
+    pipeline_repo.insert = AsyncMock(return_value="id")
+    pipeline_repo.insert_from_configuration = AsyncMock(
         return_value={
             "pipeline_id": "proc_external_notify",
             "dataflow_state_id": "dfs_ext",
             "status": "running",
         }
     )
-    process_repo.update = AsyncMock(return_value=True)
-    process_repo.find_by_id = AsyncMock(
+    pipeline_repo.update = AsyncMock(return_value=True)
+    pipeline_repo.find_by_id = AsyncMock(
         return_value={
             "pipeline_id": "proc_external_notify",
-            "process_id": "proc_external_notify",
+            "pipeline_id": "proc_external_notify",
             "dataflow_state_id": "dfs_ext",
             "configuration": chain_config.to_dict(),
         }
@@ -1058,13 +1058,13 @@ async def test_process_engine_external_event_notifications_without_local_subscri
     started: list[str] = []
 
     async def mock_run(context, **kwargs):
-        started.append(context.subprocess_id)
+        started.append(context.plugin_worker_id)
         return [
             IOTransformationState(
                 input_data_id=context.input_data[0].data_id
                 if context.input_data
                 else "none",
-                output_data_ids=["out_" + context.subprocess_id],
+                output_data_ids=["out_" + context.plugin_worker_id],
                 status=TransformationStatus.FINISHED,
             )
         ]
@@ -1072,25 +1072,25 @@ async def test_process_engine_external_event_notifications_without_local_subscri
     dummy = AsyncMock()
     dummy.run = mock_run
 
-    engine = ProcessEngine(
+    engine = PipelineEngine(
         event_service=isolated_event_service,
-        process_repository=process_repo,
+        pipeline_repository=pipeline_repo,
         dataflow_state_repository=dataflow_state_repo,
         data_repository=data_repo,
         dataset_repository=dataset_repo,
-        get_subprocess=lambda t: dummy,
+        get_plugin_worker=lambda t: dummy,
         enable_local_event_subscriptions=False,
     )
     engine.start()
 
-    await engine.start_process(chain_config)
+    await engine.start_pipeline(chain_config)
     await asyncio.sleep(0.2)
     started.clear()
 
     await engine.handle_event_notification(
         {
-            "process_id": "proc_external_notify",
-            "subprocess_id": "Step1",
+            "pipeline_id": "proc_external_notify",
+            "plugin_worker_id": "Step1",
             "event_type": "EVENT_COMPLETED",
         }
     )

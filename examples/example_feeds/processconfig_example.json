@@ -1,23 +1,23 @@
 {
-  "process_id": "proc_news_pipeline_001",
+  "pipeline_id": "proc_news_pipeline_001",
   "software_version": "1.0.0",
   "input_dataset_id": "ds_news_002",
   "dataflow": {
     "nodes": [
       {
-        "subprocess_id": "FetchFeedItems1",
-        "subprocess_type": "FetchFeedItems"
+        "plugin_worker_id": "FetchFeedItems1",
+        "plugin_type": "FetchFeedItems"
       },
       {
-        "subprocess_id": "EmbedData1",
-        "subprocess_type": "EmbedData"
+        "plugin_worker_id": "EmbedData1",
+        "plugin_type": "EmbedData"
       }
     ],
     "edges": [
       { "from": "FetchFeedItems1", "to": "EmbedData1" }
     ]
   },
-  "subprocess_config": {
+  "plugin_config": {
     "FetchFeedItems1": {},
     "EmbedData1": {
       "model": "text-embedding-3-small"

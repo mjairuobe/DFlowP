@@ -42,12 +42,12 @@ async def event_bus_fresh():
 
 
 @pytest.fixture
-def unique_process_id():
+def unique_pipeline_id():
     """Generiert eine eindeutige Prozess-ID für Tests."""
     return f"test_process_{uuid.uuid4().hex[:12]}"
 
 
 @pytest.fixture
-def unique_subprocess_id():
+def unique_plugin_worker_id():
     """Generiert eine eindeutige Subprozess-ID für Tests."""
     return f"test_subprocess_{uuid.uuid4().hex[:12]}"

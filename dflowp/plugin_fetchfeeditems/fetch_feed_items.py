@@ -7,8 +7,8 @@ import feedparser
 import httpx
 from pymongo.errors import DuplicateKeyError
 
-from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess import BasePluginWorker
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_processruntime.subprocesses.io_transformation_state import (
     IOTransformationState,
     TransformationStatus,
@@ -19,7 +19,7 @@ from dflowp_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class FetchFeedItems(BaseSubprocess):
+class FetchFeedItems(BasePluginWorker):
     """
     Nimmt eine Liste von RSS-Feeds (aus Dataset/JSON) und fetched alle Feeds.
     Output: Einzelne Artikel mit Quelle (1 Feed -> N Artikel).
@@ -37,7 +37,7 @@ class FetchFeedItems(BaseSubprocess):
         }
 
     @staticmethod
-    def _build_output_data_id(context: SubprocessContext) -> str:
+    def _build_output_data_id(context: PluginWorkerContext) -> str:
         """
         Erzeugt robuste Output-ID mit Kontext + Zufallsteil.
 
@@ -48,19 +48,19 @@ class FetchFeedItems(BaseSubprocess):
             document_type="data",
         )
         return (
-            f"{base}_{context.process_id}_{context.subprocess_id}_"
+            f"{base}_{context.pipeline_id}_{context.plugin_worker_id}_"
             f"{uuid.uuid4().hex[:10]}"
         )
 
     async def run(
         self,
-        context: SubprocessContext,
+        context: PluginWorkerContext,
         event_emitter: Optional[Any] = None,
         state_updater: Optional[Any] = None,
         data_repository: Optional[Any] = None,
         dataset_repository: Optional[Any] = None,
     ) -> list[IOTransformationState]:
-        log_source = f"[{context.process_id}][{context.subprocess_id}]"
+        log_source = f"[{context.pipeline_id}][{context.plugin_worker_id}]"
         if not data_repository:
             raise ValueError("data_repository erforderlich")
 

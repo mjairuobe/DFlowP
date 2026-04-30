@@ -18,7 +18,7 @@ from dflowp_core.database.mongo import (
 )
 from dflowp.plugin_fetchfeeditems.fetch_feed_items import FetchFeedItems
 from dflowp_processruntime.subprocesses.io_transformation_state import IOTransformationState
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 
 PLUGIN_NAME = "FetchFeedItems"
 PLUGIN_VERSION = os.environ.get("SOFTWARE_VERSION", "dev")
@@ -68,7 +68,7 @@ async def plugin_info() -> dict[str, Any]:
 @app.post("/plugin/run", response_model=PluginRunResponse)
 async def plugin_run(request: PluginRunRequest) -> PluginRunResponse:
     try:
-        context = SubprocessContext.model_validate(request.context)
+        context = PluginWorkerContext.model_validate(request.context)
         data_repo = DataRepository()
         io_states: list[IOTransformationState] = await _plugin.run(
             context=context,

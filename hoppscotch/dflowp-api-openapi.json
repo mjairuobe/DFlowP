@@ -300,12 +300,12 @@
         }
       }
     },
-    "/api/v1/processes/{process_id}": {
+    "/api/v1/pipelines/{pipeline_id}": {
       "get": {
-        "summary": "Prozess im Detail lesen",
+        "summary": "Pipeline im Detail lesen",
         "parameters": [
           {
-            "name": "process_id",
+            "name": "pipeline_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -315,7 +315,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Prozess-Dokument",
+            "description": "Pipeline-Dokument",
             "content": {
               "application/json": {
                 "schema": {
@@ -333,10 +333,10 @@
         }
       }
     },
-    "/api/v1/subprocesses": {
+    "/api/v1/plugin-workers": {
       "get": {
-        "summary": "Subprozesse auflisten",
-        "description": "Liefert Subprozesse mit Pagination.",
+        "summary": "Plugin-Worker auflisten",
+        "description": "Liefert Plugin-Worker mit Pagination.",
         "parameters": [
           {
             "name": "page",
@@ -362,7 +362,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginierte Subprozess-Liste",
+            "description": "Paginierte Plugin-Worker-Liste",
             "content": {
               "application/json": {
                 "schema": {
@@ -377,12 +377,12 @@
         }
       }
     },
-    "/api/v1/subprocesses/{subprocess_id}": {
+    "/api/v1/plugin-workers/{plugin_worker_id}": {
       "get": {
-        "summary": "Subprozess im Detail lesen",
+        "summary": "Plugin-Worker im Detail lesen",
         "parameters": [
           {
-            "name": "subprocess_id",
+            "name": "plugin_worker_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -392,7 +392,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Subprozess-Dokument",
+            "description": "Plugin-Worker-Dokument",
             "content": {
               "application/json": {
                 "schema": {

@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import uvicorn
 
 from dflowp_processruntime.engine.runtime import Runtime
-from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
+from dflowp_processruntime.processes.process_configuration import PipelineConfiguration
 from dflowp_core.database.mongo import resolve_mongodb_uri
 from dflowp_core.utils.document_naming import build_human_readable_document_id
 from dflowp_core.utils.logger import get_logger
@@ -23,8 +23,8 @@ logger = get_logger(__name__)
 
 MONGODB_URI = resolve_mongodb_uri()
 MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "dflowp")
-CONFIG_PATH = os.environ.get("PROCESS_CONFIG", "examples/processconfig_example.json")
-INPUT_PATH = os.environ.get("INPUT_DATA", "examples/inputdata_set.json")
+CONFIG_PATH = os.environ.get("PIPELINE_CONFIG", "examples/example_feeds/processconfig_example.json")
+INPUT_PATH = os.environ.get("INPUT_DATA", "examples/example_feeds/inputdata_set.json")
 EVENTSYSTEM_URL = os.environ.get("DFLOWP_EVENTSYSTEM_URL", "http://eventsystem:8001")
 RUNTIME_PUBLIC_URL = os.environ.get("DFLOWP_RUNTIME_PUBLIC_URL", "http://worker:8002")
 RUNTIME_EVENT_PORT = int(os.environ.get("DFLOWP_RUNTIME_EVENT_PORT", "8002"))
@@ -37,9 +37,6 @@ class RuntimeEventPayload(BaseModel):
     pipeline_id: str | None = None
     plugin_worker_id: str | None = None
     plugin_worker_replica_id: int | None = 1
-    process_id: str | None = None
-    subprocess_id: str | None = None
-    subprocess_instance_id: int | None = 1
     event_type: str
     event_time: str | None = None
     payload: dict | None = None
@@ -109,7 +106,7 @@ async def _bootstrap_runtime() -> Runtime:
         domain="pipeline",
         document_type="proc",
     )
-    config = ProcessConfiguration.from_dict(config_dict)
+    config = PipelineConfiguration.from_dict(config_dict)
     config.apply_default_openai_key_from_env()
 
     await runtime.load_input_dataset(
@@ -117,22 +114,22 @@ async def _bootstrap_runtime() -> Runtime:
         input_json_path=INPUT_PATH,
     )
     logger.info("Starte Pipeline '%s' ...", config.pipeline_id)
-    await runtime.engine.start_process(config)
+    await runtime.engine.start_pipeline(config)
     return runtime
 
 
-async def _poll_pending_processes(shutdown: asyncio.Event, runtime: Runtime) -> None:
+async def _poll_pending_pipelines(shutdown: asyncio.Event, runtime: Runtime) -> None:
     poll_interval = float(os.environ.get("DFLOWP_POLL_INTERVAL", "5"))
-    logger.info("Pending-Prozess-Polling aktiv (Intervall: %ss)", poll_interval)
+    logger.info("Pending-Pipeline-Polling aktiv (Intervall: %ss)", poll_interval)
     while not shutdown.is_set():
-        claimed = await runtime.process_repository.claim_next_pending()
+        claimed = await runtime.pipeline_repository.claim_next_pending()
         if claimed:
-            pipeline_id = claimed.get("pipeline_id") or claimed.get("process_id")
+            pipeline_id = claimed.get("pipeline_id")
             if not pipeline_id:
-                logger.warning("Wartender Eintrag ohne pipeline_id/process_id wird übersprungen.")
+                logger.warning("Wartender Eintrag ohne pipeline_id wird übersprungen.")
                 continue
             logger.info("Übernehme wartende Pipeline '%s' …", pipeline_id)
-            await runtime.engine.activate_pending_process(pipeline_id)
+            await runtime.engine.activate_pending_pipeline(pipeline_id)
             continue
         try:
             await asyncio.wait_for(shutdown.wait(), timeout=poll_interval)
@@ -159,7 +156,7 @@ async def _main_async() -> None:
     _runtime = await _bootstrap_runtime()
     await _subscribe_runtime()
 
-    poll_task = asyncio.create_task(_poll_pending_processes(_shutdown_event, _runtime))
+    poll_task = asyncio.create_task(_poll_pending_pipelines(_shutdown_event, _runtime))
     server = uvicorn.Server(
         uvicorn.Config(
             app=app,

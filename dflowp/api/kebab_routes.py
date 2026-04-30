@@ -16,7 +16,7 @@ from dflowp.api.deps import (
     get_data_item_repository,
     get_event_repository,
     get_plugin_configuration_repository,
-    get_process_repository,
+    get_pipeline_repository,
 )
 from dflowp.api.event_format import format_event_for_api, format_event_page
 from dflowp.api.list_summaries import (
@@ -42,7 +42,7 @@ from dflowp_core.database.dataflow_state_repository import DataflowStateReposito
 from dflowp_core.database.data_item_repository import DataItemRepository
 from dflowp_core.database.event_repository import EventRepository
 from dflowp_core.database.plugin_configuration_repository import PluginConfigurationRepository
-from dflowp_core.database.process_repository import ProcessRepository
+from dflowp_core.database.pipeline_repository import PipelineRepository
 
 router = APIRouter(
     prefix="/api/v1",
@@ -116,19 +116,19 @@ async def post_data(
 @router.get("/pipelines")
 async def list_pipelines(
     pagination: tuple[int, int] = Depends(_pagination),
-    process_repo: ProcessRepository = Depends(get_process_repository),
+    pipeline_repo: PipelineRepository = Depends(get_pipeline_repository),
 ) -> dict[str, Any]:
     page, page_size = pagination
-    raw = await process_repo.list_pipelines(page=page, page_size=page_size)
+    raw = await pipeline_repo.list_pipelines(page=page, page_size=page_size)
     return apply_summary_to_page(raw, summarize_pipeline_list_item)
 
 
 @router.get("/pipelines/{pipeline_id}")
 async def get_pipeline(
     pipeline_id: str,
-    process_repo: ProcessRepository = Depends(get_process_repository),
+    pipeline_repo: PipelineRepository = Depends(get_pipeline_repository),
 ) -> dict[str, Any]:
-    doc = await process_repo.find_by_id(pipeline_id)
+    doc = await pipeline_repo.find_by_id(pipeline_id)
     if not doc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -140,7 +140,7 @@ async def get_pipeline(
 @router.post("/pipelines", status_code=status.HTTP_201_CREATED)
 async def create_pipeline(
     request: PipelineCreateRequest = Body(...),
-    process_repo: ProcessRepository = Depends(get_process_repository),
+    pipeline_repo: PipelineRepository = Depends(get_pipeline_repository),
     data_item_repo: DataItemRepository = Depends(get_data_item_repository),
 ) -> dict[str, Any]:
     return await create_pipeline_document(
@@ -151,7 +151,7 @@ async def create_pipeline(
         plugin_config=request.plugin_config,
         input_data=request.input_data,
         start_immediately=request.start_immediately,
-        process_repo=process_repo,
+        pipeline_repo=pipeline_repo,
         data_item_repo=data_item_repo,
     )
 
@@ -160,9 +160,9 @@ async def create_pipeline(
 async def stop_pipeline(
     pipeline_id: str,
     request: ProcessStopRequest = Body(default=ProcessStopRequest()),
-    process_repo: ProcessRepository = Depends(get_process_repository),
+    pipeline_repo: PipelineRepository = Depends(get_pipeline_repository),
 ) -> dict[str, Any]:
-    existing = await process_repo.find_by_id(pipeline_id)
+    existing = await pipeline_repo.find_by_id(pipeline_id)
     if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -171,17 +171,17 @@ async def stop_pipeline(
     update: dict[str, Any] = {"status": "stopped"}
     if request.reason:
         update["cancelled_reason"] = request.reason
-    await process_repo.update(pipeline_id, update)
-    return await process_repo.find_by_id(pipeline_id) or existing
+    await pipeline_repo.update(pipeline_id, update)
+    return await pipeline_repo.find_by_id(pipeline_id) or existing
 
 
 @router.post("/pipelines/{pipeline_id}/clone", status_code=status.HTTP_201_CREATED)
 async def clone_pipeline(
     pipeline_id: str,
     request: PipelineCloneRequest = Body(...),
-    process_repo: ProcessRepository = Depends(get_process_repository),
+    pipeline_repo: PipelineRepository = Depends(get_pipeline_repository),
 ) -> dict[str, Any]:
-    source = await process_repo.find_by_id(pipeline_id)
+    source = await pipeline_repo.find_by_id(pipeline_id)
     if not source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -190,10 +190,10 @@ async def clone_pipeline(
     target = request.new_pipeline_id or f"{pipeline_id}_copy"
     if not request.new_pipeline_id:
         counter = 1
-        while await process_repo.find_by_id(target):
+        while await pipeline_repo.find_by_id(target):
             counter += 1
             target = f"{pipeline_id}_copy_{counter}"
-    copied = await process_repo.copy_pipeline_with_reexecution(
+    copied = await pipeline_repo.copy_pipeline_with_reexecution(
         source_pipeline_id=pipeline_id,
         target_pipeline_id=target,
         parent_plugin_worker_ids=request.parent_plugin_worker_ids,
@@ -211,9 +211,9 @@ async def clone_pipeline(
 @router.delete("/pipelines/{pipeline_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_pipeline(
     pipeline_id: str,
-    process_repo: ProcessRepository = Depends(get_process_repository),
+    pipeline_repo: PipelineRepository = Depends(get_pipeline_repository),
 ) -> None:
-    if not await process_repo.delete_by_id(pipeline_id):
+    if not await pipeline_repo.delete_by_id(pipeline_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pipeline '{pipeline_id}' wurde nicht gefunden.",
@@ -224,9 +224,9 @@ async def delete_pipeline(
 async def get_plugin_worker_for_pipeline(
     pipeline_id: str,
     plugin_worker_id: str,
-    process_repo: ProcessRepository = Depends(get_process_repository),
+    pipeline_repo: PipelineRepository = Depends(get_pipeline_repository),
 ) -> dict[str, Any]:
-    doc = await process_repo.find_plugin_worker(pipeline_id, plugin_worker_id)
+    doc = await pipeline_repo.find_plugin_worker(pipeline_id, plugin_worker_id)
     if not doc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -241,10 +241,10 @@ async def get_plugin_worker_for_pipeline(
 @router.get("/plugin-workers")
 async def list_plugin_workers(
     pagination: tuple[int, int] = Depends(_pagination),
-    process_repo: ProcessRepository = Depends(get_process_repository),
+    pipeline_repo: PipelineRepository = Depends(get_pipeline_repository),
 ) -> dict[str, Any]:
     page, page_size = pagination
-    return await process_repo.list_plugin_workers(page=page, page_size=page_size)
+    return await pipeline_repo.list_plugin_workers(page=page, page_size=page_size)
 
 
 # --- Dataflows ---

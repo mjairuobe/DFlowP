@@ -1,4 +1,4 @@
-"""Pipeline-Konfiguration (vormals ProcessConfiguration) – vollständiger Startkontext."""
+"""Pipeline-Konfiguration – vollständiger Startkontext."""
 
 import os
 from typing import Any
@@ -27,10 +27,10 @@ class PipelineConfiguration(BaseModel):
         dataflow = d.get("dataflow")
         if isinstance(dataflow, dict):
             dataflow = parse_dataflow(dataflow)
-        pipeline_id = d.get("pipeline_id") or d.get("process_id")
+        pipeline_id = d.get("pipeline_id")
         if not pipeline_id:
-            raise KeyError("pipeline_id oder process_id erforderlich")
-        raw_cfg = d.get("plugin_config") or d.get("subprocess_config") or {}
+            raise KeyError("pipeline_id erforderlich")
+        raw_cfg = d.get("plugin_config") or {}
         return cls(
             pipeline_id=pipeline_id,
             software_version=d.get("software_version", "0.1.0"),
@@ -71,6 +71,3 @@ class PipelineConfiguration(BaseModel):
         if raw_version:
             self.software_version = build_semantic_software_version(raw_version)
 
-
-# Alias für bestehende Importe
-ProcessConfiguration = PipelineConfiguration

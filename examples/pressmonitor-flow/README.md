@@ -38,6 +38,7 @@ curl -sS -X GET \
 ## 2) Input-Dataset mit wenigen Feeds anlegen
 
 Wichtig: Fuer `doc_type=dataset` wird hier `rows` genutzt (kleiner Testdatensatz).
+Die beiden Feeds stammen aus `examples/example_feeds/inputdata_set_big.json` und sind reale RSS-Quellen.
 
 ```bash
 curl -sS -X POST \
@@ -49,16 +50,16 @@ curl -sS -X POST \
     \"id\": \"${INPUT_DATASET_ID}\",
     \"rows\": [
       {
-        \"title\": \"Heise Security\",
-        \"xmlUrl\": \"https://www.heise.de/security/rss/news-atom.xml\",
-        \"htmlUrl\": \"https://www.heise.de/security/\",
-        \"topic\": \"security\"
+        \"title\": \"tagesschau.de\",
+        \"xmlUrl\": \"https://www.tagesschau.de/index~rss2.xml\",
+        \"htmlUrl\": \"https://www.tagesschau.de/\",
+        \"topic\": \"news\"
       },
       {
-        \"title\": \"Tagesschau Inland\",
-        \"xmlUrl\": \"https://www.tagesschau.de/xml/rss2\",
-        \"htmlUrl\": \"https://www.tagesschau.de/inland/\",
-        \"topic\": \"inland\"
+        \"title\": \"DER SPIEGEL - Schlagzeilen\",
+        \"xmlUrl\": \"https://www.spiegel.de/schlagzeilen/index.rss\",
+        \"htmlUrl\": \"https://www.spiegel.de/\",
+        \"topic\": \"news\"
       }
     ]
   }" | tee "${TMP_DIR}/dataset.json"
@@ -66,7 +67,7 @@ curl -sS -X POST \
 
 ## 3) Pipeline erstellen (`pressmonitor-flow`)
 
-Die API akzeptiert im `dataflow` sowohl `plugin_worker_id/plugin_type` als auch Legacy-Felder `subprocess_id/subprocess_type`.
+Die API akzeptiert im `dataflow` `plugin_worker_id/plugin_type` (empfohlen).
 
 ```bash
 curl -sS -X POST \
@@ -79,9 +80,9 @@ curl -sS -X POST \
     \"input_dataset_id\": \"${INPUT_DATASET_ID}\",
     \"dataflow\": {
       \"nodes\": [
-        {\"subprocess_id\": \"FetchFeedItems1\", \"subprocess_type\": \"FetchFeedItems\"},
-        {\"subprocess_id\": \"EmbedData1\", \"subprocess_type\": \"EmbedData\"},
-        {\"subprocess_id\": \"ClusterPress1\", \"subprocess_type\": \"Clustering_DBSCAN\"}
+        {\"plugin_worker_id\": \"FetchFeedItems1\", \"plugin_type\": \"FetchFeedItems\"},
+        {\"plugin_worker_id\": \"EmbedData1\", \"plugin_type\": \"EmbedData\"},
+        {\"plugin_worker_id\": \"ClusterPress1\", \"plugin_type\": \"Clustering_DBSCAN\"}
       ],
       \"edges\": [
         {\"from\": \"FetchFeedItems1\", \"to\": \"EmbedData1\"},

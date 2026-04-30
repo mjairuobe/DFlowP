@@ -26,8 +26,8 @@ def _canon_dataflow_id_from_doc(df: dict[str, Any]) -> str:
     norm_nodes = sorted(
         [
             {
-                "plugin_worker_id": n.get("plugin_worker_id") or n.get("subprocess_id"),
-                "plugin_type": n.get("plugin_type") or n.get("subprocess_type"),
+                "plugin_worker_id": n.get("plugin_worker_id"),
+                "plugin_type": n.get("plugin_type"),
             }
             for n in nodes
         ],
@@ -127,10 +127,10 @@ class PipelineRepository:
                     "_id": 0,
                     "producer_pipeline_id": "$pipeline_id",
                     "plugin_worker_id": {
-                        "$ifNull": ["$nodes.plugin_worker_id", "$nodes.subprocess_id"],
+                        "$ifNull": ["$nodes.plugin_worker_id", None],
                     },
                     "plugin_type": {
-                        "$ifNull": ["$nodes.plugin_type", "$nodes.subprocess_type"],
+                        "$ifNull": ["$nodes.plugin_type", None],
                     },
                     "event_status": "$nodes.event_status",
                     "io_transformation_states": "$nodes.io_transformation_states",
@@ -161,7 +161,6 @@ class PipelineRepository:
                 "$match": {
                     "$or": [
                         {"nodes.plugin_worker_id": plugin_worker_id},
-                        {"nodes.subprocess_id": plugin_worker_id},
                     ]
                 }
             },
@@ -170,7 +169,6 @@ class PipelineRepository:
                 "$match": {
                     "$or": [
                         {"nodes.plugin_worker_id": plugin_worker_id},
-                        {"nodes.subprocess_id": plugin_worker_id},
                     ]
                 }
             },
@@ -179,10 +177,10 @@ class PipelineRepository:
                     "_id": 0,
                     "producer_pipeline_id": "$pipeline_id",
                     "plugin_worker_id": {
-                        "$ifNull": ["$nodes.plugin_worker_id", "$nodes.subprocess_id"],
+                        "$ifNull": ["$nodes.plugin_worker_id", None],
                     },
                     "plugin_type": {
-                        "$ifNull": ["$nodes.plugin_type", "$nodes.subprocess_type"],
+                        "$ifNull": ["$nodes.plugin_type", None],
                     },
                     "event_status": "$nodes.event_status",
                     "io_transformation_states": "$nodes.io_transformation_states",
@@ -209,7 +207,7 @@ class PipelineRepository:
                 return {
                     "producer_pipeline_id": pipeline_id,
                     "plugin_worker_id": _node_id_key(n),
-                    "plugin_type": n.get("plugin_type") or n.get("subprocess_type"),
+                    "plugin_type": n.get("plugin_type"),
                     "event_status": n.get("event_status"),
                     "io_transformation_states": n.get("io_transformation_states", []),
                 }
@@ -351,8 +349,8 @@ class PipelineRepository:
         """Neuer Lauf-Graph (leere IO-States) aus Dataflow-Definition-Dokument."""
         out_nodes: list[dict[str, Any]] = []
         for n in df.get("nodes", []) or []:
-            wid = n.get("plugin_worker_id") or n.get("subprocess_id")
-            ptype = n.get("plugin_type") or n.get("subprocess_type")
+            wid = n.get("plugin_worker_id")
+            ptype = n.get("plugin_type")
             if not wid:
                 continue
             out_nodes.append(
@@ -463,41 +461,3 @@ class PipelineRepository:
             doc["_id"] = str(doc["_id"])
         return doc
 
-    # --- API-/Legacy-Aliase (Prozess/Subprozess-Benennung) ---
-    async def list_processes(
-        self,
-        *,
-        page: int,
-        page_size: int,
-    ) -> dict[str, Any]:
-        return await self.list_pipelines(page=page, page_size=page_size)
-
-    async def list_subprocesses(
-        self,
-        *,
-        page: int,
-        page_size: int,
-    ) -> dict[str, Any]:
-        return await self.list_plugin_workers(page=page, page_size=page_size)
-
-    async def find_subprocess_by_id(self, subprocess_id: str) -> Optional[dict[str, Any]]:
-        return await self.find_plugin_worker_by_id(subprocess_id)
-
-    async def copy_process_with_reexecution(
-        self,
-        *,
-        source_process_id: str,
-        target_process_id: str,
-        parent_subprocess_ids: list[str],
-        subprocess_config_override: Optional[dict[str, dict[str, Any]]] = None,
-    ) -> Optional[dict[str, Any]]:
-        return await self.copy_pipeline_with_reexecution(
-            source_pipeline_id=source_process_id,
-            target_pipeline_id=target_process_id,
-            parent_plugin_worker_ids=parent_subprocess_ids,
-            plugin_config_override=subprocess_config_override,
-        )
-
-
-# Rückwärtskompatibler Name für bestehende Importe während der Migration
-ProcessRepository = PipelineRepository

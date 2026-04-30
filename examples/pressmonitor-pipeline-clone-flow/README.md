@@ -31,6 +31,7 @@ echo "Arbeitsverzeichnis: ${TMP_DIR}"
 ## 1) Quellpipeline inkl. kleinem Input erzeugen
 
 Hier wird `input_data` direkt bei `POST /pipelines` genutzt. Die API legt dabei das Dataset automatisch an.
+Die beiden Feeds stammen aus `examples/example_feeds/inputdata_set_big.json` und sind reale RSS-Quellen.
 
 ```bash
 curl -sS -X POST \
@@ -43,9 +44,9 @@ curl -sS -X POST \
     \"input_dataset_id\": \"${INPUT_DATASET_ID}\",
     \"dataflow\": {
       \"nodes\": [
-        {\"subprocess_id\": \"FetchFeedItems1\", \"subprocess_type\": \"FetchFeedItems\"},
-        {\"subprocess_id\": \"EmbedData1\", \"subprocess_type\": \"EmbedData\"},
-        {\"subprocess_id\": \"ClusterPress1\", \"subprocess_type\": \"Clustering_DBSCAN\"}
+        {\"plugin_worker_id\": \"FetchFeedItems1\", \"plugin_type\": \"FetchFeedItems\"},
+        {\"plugin_worker_id\": \"EmbedData1\", \"plugin_type\": \"EmbedData\"},
+        {\"plugin_worker_id\": \"ClusterPress1\", \"plugin_type\": \"Clustering_DBSCAN\"}
       ],
       \"edges\": [
         {\"from\": \"FetchFeedItems1\", \"to\": \"EmbedData1\"},
@@ -59,14 +60,14 @@ curl -sS -X POST \
     },
     \"input_data\": [
       {
-        \"title\": \"Feed A\",
-        \"xmlUrl\": \"https://example.org/feed-a.xml\",
-        \"htmlUrl\": \"https://example.org/a\"
+        \"title\": \"tagesschau.de\",
+        \"xmlUrl\": \"https://www.tagesschau.de/index~rss2.xml\",
+        \"htmlUrl\": \"https://www.tagesschau.de/\"
       },
       {
-        \"title\": \"Feed B\",
-        \"xmlUrl\": \"https://example.org/feed-b.xml\",
-        \"htmlUrl\": \"https://example.org/b\"
+        \"title\": \"DER SPIEGEL - Schlagzeilen\",
+        \"xmlUrl\": \"https://www.spiegel.de/schlagzeilen/index.rss\",
+        \"htmlUrl\": \"https://www.spiegel.de/\"
       }
     ],
     \"start_immediately\": false

@@ -9,8 +9,8 @@ from typing import Any, Optional
 import numpy as np
 from sklearn.cluster import DBSCAN
 
-from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess import BasePluginWorker
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_processruntime.subprocesses.io_transformation_state import (
     IOTransformationState,
     TransformationStatus,
@@ -23,11 +23,11 @@ from dflowp_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class ClusteringDBSCAN(BaseSubprocess):
+class ClusteringDBSCAN(BasePluginWorker):
     """
     Erwartet Input-`Data` wie von EmbedData: `content.embedding` (Liste von float).
 
-    Konfiguration (subprocess_config):
+    Konfiguration (plugin_config):
     - eps: float (Standard: 0.5)
     - min_samples: int (Standard: 5)
     - metric: str (Standard: "euclidean"), siehe sklearn DBSCAN
@@ -41,16 +41,16 @@ class ClusteringDBSCAN(BaseSubprocess):
         super().__init__("Clustering_DBSCAN")
 
     @staticmethod
-    def _build_dataset_id(context: SubprocessContext) -> str:
+    def _build_dataset_id(context: PluginWorkerContext) -> str:
         base = build_human_readable_document_id(
             domain="cluster",
             document_type="dataset",
         )
-        return f"{base}_{context.process_id}_{context.subprocess_id}_{uuid.uuid4().hex[:10]}"
+        return f"{base}_{context.pipeline_id}_{context.plugin_worker_id}_{uuid.uuid4().hex[:10]}"
 
     async def run(
         self,
-        context: SubprocessContext,
+        context: PluginWorkerContext,
         event_emitter: Optional[Any] = None,
         state_updater: Optional[Any] = None,
         data_repository: Optional[Any] = None,
@@ -59,7 +59,7 @@ class ClusteringDBSCAN(BaseSubprocess):
         if not dataset_repository:
             raise ValueError("dataset_repository erforderlich")
 
-        src = f"[{context.process_id}][{context.subprocess_id}]"
+        src = f"[{context.pipeline_id}][{context.plugin_worker_id}]"
         logger.info("%s Clustering_DBSCAN gestartet", src)
 
         cfg = context.config

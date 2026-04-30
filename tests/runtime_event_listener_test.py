@@ -25,10 +25,10 @@ async def test_runtime_listener_forwards_event_to_engine(monkeypatch) -> None:
 
     payload = rel.RuntimeEventPayload(
         event_id="evt-1",
-        process_id="proc-1",
-        subprocess_id="sub-1",
+        pipeline_id="proc-1",
+        plugin_worker_id="sub-1",
         event_type="EVENT_COMPLETED",
-        subprocess_instance_id=1,
+        plugin_worker_replica_id=1,
         payload={"k": "v"},
     )
     await rel.receive_runtime_event(payload)

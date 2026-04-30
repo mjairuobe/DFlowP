@@ -3,8 +3,8 @@
 import uuid
 from typing import Any, Optional
 
-from dflowp_processruntime.subprocesses.subprocess import BaseSubprocess
-from dflowp_processruntime.subprocesses.subprocess_context import SubprocessContext
+from dflowp_processruntime.subprocesses.subprocess import BasePluginWorker
+from dflowp_processruntime.subprocesses.subprocess_context import PluginWorkerContext
 from dflowp_processruntime.subprocesses.io_transformation_state import (
     IOTransformationState,
     TransformationStatus,
@@ -17,7 +17,7 @@ from dflowp_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class EmbedData(BaseSubprocess):
+class EmbedData(BasePluginWorker):
     """
     Erstellt Embeddings aus Artikel-Attributen (z.B. title, summary).
     Attribute werden in der Subprozess-Konfiguration angegeben (embedding_attributes).
@@ -39,19 +39,19 @@ class EmbedData(BaseSubprocess):
         super().__init__("EmbedData")
 
     @staticmethod
-    def _build_output_data_id(context: SubprocessContext) -> str:
+    def _build_output_data_id(context: PluginWorkerContext) -> str:
         base = build_human_readable_document_id(
             domain="embedding",
             document_type="data",
         )
         return (
-            f"{base}_{context.process_id}_{context.subprocess_id}_"
+            f"{base}_{context.pipeline_id}_{context.plugin_worker_id}_"
             f"{uuid.uuid4().hex[:10]}"
         )
 
     async def run(
         self,
-        context: SubprocessContext,
+        context: PluginWorkerContext,
         event_emitter: Optional[Any] = None,
         state_updater: Optional[Any] = None,
         data_repository: Optional[Any] = None,
@@ -60,7 +60,7 @@ class EmbedData(BaseSubprocess):
         if not data_repository:
             raise ValueError("data_repository erforderlich")
 
-        process_subprocess_source = f"[{context.process_id}][{context.subprocess_id}]"
+        process_subprocess_source = f"[{context.pipeline_id}][{context.plugin_worker_id}]"
         logger.info("%s EmbedData gestartet", process_subprocess_source)
 
         attrs = context.config.get(

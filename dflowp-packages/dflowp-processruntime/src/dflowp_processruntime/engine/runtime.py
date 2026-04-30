@@ -5,7 +5,7 @@ Verantwortlichkeiten:
 - MongoDB-Verbindung herstellen
 - Repositories instanziieren
 - Plugins laden
-- ProcessEngine aufbauen und zurückgeben
+- PipelineEngine aufbauen und zurückgeben
 """
 
 import json
@@ -13,17 +13,17 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from dflowp_processruntime.engine.process_engine import ProcessEngine
+from dflowp_processruntime.engine.process_engine import PipelineEngine
 from dflowp_core.eventinterfaces.event_service import get_event_service
-from dflowp_processruntime.processes.process_configuration import ProcessConfiguration
+from dflowp_processruntime.processes.process_configuration import PipelineConfiguration
 from dflowp_core.database.data_repository import DataRepository
 from dflowp_core.database.dataflow_state_repository import DataflowStateRepository
 from dflowp_core.database.dataset_repository import DatasetRepository
 from dflowp_core.database.event_repository import EventRepository
 from dflowp_core.database.mongo import connect_to_mongodb, close_mongodb_connection, resolve_mongodb_uri
-from dflowp_core.database.process_repository import ProcessRepository
+from dflowp_core.database.pipeline_repository import PipelineRepository
 from dflowp_processruntime.plugins.plugin_loader import (
-    get_subprocess,
+    get_plugin_worker,
     load_remote_plugin_services,
 )
 from dflowp_core.utils.document_naming import build_human_readable_document_id
@@ -39,7 +39,7 @@ DFLOWP_RUNTIME_ENABLE_LOCAL_EVENT_SUBS = (
 class Runtime:
     """
     Verbindet alle Komponenten des Frameworks und stellt eine
-    fertig konfigurierte ProcessEngine bereit.
+    fertig konfigurierte PipelineEngine bereit.
     """
 
     def __init__(
@@ -55,13 +55,13 @@ class Runtime:
                 os.environ.get("DFLOWP_RUNTIME_ENABLE_LOCAL_EVENT_SUBS", "1") != "0"
             )
         self._enable_local_event_subscriptions = enable_local_event_subscriptions
-        self._engine: Optional[ProcessEngine] = None
-        self._process_repo: Optional[ProcessRepository] = None
+        self._engine: Optional[PipelineEngine] = None
+        self._pipeline_repo: Optional[PipelineRepository] = None
 
     async def start(self) -> "Runtime":
         """
         Stellt die Datenbankverbindung her, lädt Plugins und
-        initialisiert die ProcessEngine.
+        initialisiert die PipelineEngine.
         """
         logger.info("DFlowP Runtime startet...")
 
@@ -74,13 +74,13 @@ class Runtime:
         load_remote_plugin_services()
         logger.info("Remote-Plugin-Clients aus DFLOWP_PLUGIN_ENDPOINTS registriert")
 
-        process_repo = ProcessRepository()
+        pipeline_repo = PipelineRepository()
         dataflow_state_repo = DataflowStateRepository()
         data_repo = DataRepository()
         dataset_repo = DatasetRepository()
         event_repo = EventRepository()
 
-        await process_repo.create_indexes()
+        await pipeline_repo.create_indexes()
         await data_repo.create_indexes()
         await dataset_repo.create_indexes()
         await event_repo.create_indexes()
@@ -88,22 +88,22 @@ class Runtime:
         event_service = get_event_service()
         event_service.set_event_repository(event_repo)
 
-        self._engine = ProcessEngine(
+        self._engine = PipelineEngine(
             event_service=event_service,
-            process_repository=process_repo,
+            pipeline_repository=pipeline_repo,
             dataflow_state_repository=dataflow_state_repo,
             data_repository=data_repo,
             dataset_repository=dataset_repo,
-            get_subprocess=get_subprocess,
+            get_plugin_worker=get_plugin_worker,
             enable_local_event_subscriptions=self._enable_local_event_subscriptions,
         )
         self._engine.start()
 
-        self._process_repo = process_repo
+        self._pipeline_repo = pipeline_repo
         self._data_repo = data_repo
         self._dataset_repo = dataset_repo
 
-        logger.info("ProcessEngine bereit.")
+        logger.info("PipelineEngine bereit.")
         return self
 
     async def stop(self) -> None:
@@ -112,16 +112,16 @@ class Runtime:
         logger.info("DFlowP Runtime gestoppt.")
 
     @property
-    def engine(self) -> ProcessEngine:
+    def engine(self) -> PipelineEngine:
         if self._engine is None:
             raise RuntimeError("Runtime wurde noch nicht gestartet. Rufe zuerst await runtime.start() auf.")
         return self._engine
 
     @property
-    def process_repository(self) -> ProcessRepository:
-        if self._process_repo is None:
+    def pipeline_repository(self) -> PipelineRepository:
+        if self._pipeline_repo is None:
             raise RuntimeError("Runtime wurde noch nicht gestartet. Rufe zuerst await runtime.start() auf.")
-        return self._process_repo
+        return self._pipeline_repo
 
     async def load_input_dataset(
         self,

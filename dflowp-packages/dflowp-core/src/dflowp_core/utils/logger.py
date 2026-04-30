@@ -95,17 +95,17 @@ def get_logger(name: str, level: int | str = logging.INFO) -> logging.Logger:
 
 
 def get_component_logger(component: str, level: int | str = logging.INFO) -> logging.LoggerAdapter:
-    """LoggerAdapter mit fixer Quellenangabe (z. B. Eventsystem, ProcessEngine)."""
+    """LoggerAdapter mit fixer Quellenangabe (z. B. Eventsystem, PipelineEngine)."""
     base_logger = get_logger(component, level=level)
     return logging.LoggerAdapter(base_logger, extra={"source": component})
 
 
-def get_process_subprocess_logger(
-    process_id: str,
-    subprocess_id: str,
+def get_pipeline_plugin_worker_logger(
+    pipeline_id: str,
+    plugin_worker_id: str,
     level: int | str = logging.INFO,
 ) -> logging.LoggerAdapter:
-    """LoggerAdapter mit Quelle im Format [process_id][subprocess_id]."""
-    source = f"[{process_id}][{subprocess_id}]"
+    """LoggerAdapter mit Quelle im Format [pipeline_id][plugin_worker_id]."""
+    source = f"[{pipeline_id}][{plugin_worker_id}]"
     base_logger = get_logger(f"dflowp.{source}", level=level)
     return logging.LoggerAdapter(base_logger, extra={"source": source})
