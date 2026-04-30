@@ -92,7 +92,9 @@ echo "SOURCE_DATAFLOW_STATE_ID=${SOURCE_DATAFLOW_STATE_ID}"
 echo "SOURCE_DATAFLOW_ID=${SOURCE_DATAFLOW_ID}"
 ```
 
-## 3) Alternativen HDBSCAN-Dataflow anlegen
+## 3) Auf Pipeline Fertigstellung warten
+
+## 4) Alternativen HDBSCAN-Dataflow anlegen
 
 ```bash
 curl -sS -X POST \
@@ -113,7 +115,7 @@ curl -sS -X POST \
   }" | tee "${TMP_DIR}/hdbscan_dataflow.json"
 ```
 
-## 4) Clone ausfuehren (DBSCAN -> HDBSCAN)
+## 5) Clone ausfuehren (DBSCAN -> HDBSCAN)
 
 `parent_plugin_worker_ids` steuert, ab welchen Nodes und Nachfolgern der Re-Run-Reset passiert.
 
@@ -132,7 +134,7 @@ curl -sS -X POST \
   }" | tee "${TMP_DIR}/clone_pipeline.json"
 ```
 
-## 5) Clone pruefen
+## 6) Clone pruefen
 
 ```bash
 CLONE_DATAFLOW_STATE_ID="$(python3 - "${TMP_DIR}/clone_pipeline.json" <<'PY'
@@ -158,7 +160,7 @@ test "${SOURCE_DATAFLOW_STATE_ID}" != "${CLONE_DATAFLOW_STATE_ID}" && echo "OK: 
 test "${CLONE_DATAFLOW_ID}" = "${HDBSCAN_DATAFLOW_ID}" && echo "OK: Clone nutzt HDBSCAN-Dataflow"
 ```
 
-## 6) Dataflow-State des Clones ansehen
+## 7) Dataflow-State des Clones ansehen
 
 ```bash
 curl -sS -X GET \
@@ -170,7 +172,7 @@ curl -sS -X GET \
 Erwartung: mindestens die durch `parent_plugin_worker_ids` adressierten Nodes stehen auf `Not Started` und haben leere `io_transformation_states`.
 Zusatzcheck: Der verwendete Dataflow enthaelt `ClusterPress1` mit `plugin_type` = `Clustering_HDBSCAN`.
 
-## 7) Optional: Events fuer Quelle/Clone vergleichen
+## 8) Optional: Events fuer Quelle/Clone vergleichen
 
 ```bash
 curl -sS -X GET \
