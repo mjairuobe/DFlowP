@@ -94,6 +94,8 @@ echo "SOURCE_DATAFLOW_ID=${SOURCE_DATAFLOW_ID}"
 
 ## 3) Auf Pipeline Fertigstellung warten
 
+Der Klon soll auf fertiggestellten Daten der Quellpipeline aufbauen, weshalb auf den Status EVENT_COMPLETED.
+
 ## 4) Alternativen HDBSCAN-Dataflow anlegen
 
 ```bash
