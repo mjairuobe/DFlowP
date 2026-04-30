@@ -62,7 +62,11 @@ curl -sS -X POST \
   }" | tee "${TMP_DIR}/source_pipeline.json"
 ```
 
-## 2) Test-Clone mit Config-Override erstellen
+## 2) Auf Pipeline Fertigstellung warten
+
+Der Klon soll auf fertiggestellten Daten der Quellpipeline aufbauen, weshalb auf den Status EVENT_COMPLETED.
+
+## 3) Test-Clone mit Config-Override erstellen
 
 `plugin_config` wird auf die bestehende Konfiguration gemerged.
 
@@ -80,7 +84,7 @@ curl -sS -X POST \
   }" | tee "${TMP_DIR}/testclone_pipeline.json"
 ```
 
-## 3) Referenzen aus Quelle und Clone vergleichen
+## 4) Referenzen aus Quelle und Clone vergleichen
 
 ```bash
 SOURCE_PLUGIN_CONFIGURATION_ID="$(python3 - "${TMP_DIR}/source_pipeline.json" <<'PY'
@@ -122,7 +126,7 @@ test "${CLONE_DATAFLOW_ID}" = "${SOURCE_DATAFLOW_ID}" && echo "OK: Clone nutzt d
 test "${SOURCE_PLUGIN_CONFIGURATION_ID}" != "${CLONE_PLUGIN_CONFIGURATION_ID}" && echo "OK: neue Plugin-Konfiguration erzeugt"
 ```
 
-## 4) Effektive Clone-Konfiguration lesen
+## 5) Effektive Clone-Konfiguration lesen
 
 ```bash
 curl -sS -X GET \
@@ -131,7 +135,11 @@ curl -sS -X GET \
   -H "Accept: application/json"
 ```
 
-## 5) Clone-Dataflow-State lesen
+## 6) Auf Pipeline Fertigstellung warten
+
+Auf den Status EVENT_COMPLETED warten, um die Daten auszuwerten. Liegt der Status bei EVENT_FAILED, ist ein Fehler mit der Software vorhanden.
+
+## 7) Clone-Dataflow-State lesen
 
 ```bash
 curl -sS -X GET \
