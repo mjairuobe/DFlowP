@@ -64,7 +64,7 @@ curl -sS -X POST \
 
 ## 2) Auf Pipeline Fertigstellung warten
 
-Der Klon soll auf fertiggestellten Daten der Quellpipeline aufbauen, weshalb auf den Status EVENT_COMPLETED.
+Der Klon soll auf fertiggestellten Daten der Quellpipeline aufbauen, weshalb auf den Status EVENT_COMPLETED. Liegt der Status bei EVENT_FAILED, ist ein Fehler mit der Software vorhanden.
 
 ## 3) Test-Clone mit Config-Override erstellen
 
